@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} — Inzyts Report</title>
+    <style>
+        :root {
+            --turquoise: #2dd4bf;
+            --cobalt: #1e3a5f;
+            --cobalt-light: #2a4f7a;
+            --deep-twilight: #0f172a;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --border: #e2e8f0;
+            --bg-light: #f8fafc;
+            --bg-code: #1e1e2e;
+            --warning-bg: #fef3c7;
+            --warning-border: #f59e0b;
+            --warning-text: #92400e;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            color: var(--text-primary);
+            line-height: 1.6;
+            background: #fff;
+        }
+
+        .report-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Header */
+        .report-header {
+            background: linear-gradient(135deg, var(--cobalt), var(--cobalt-light));
+            color: #fff;
+            padding: 2.5rem 2rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+        }
+
+        .report-header h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .report-header .brand {
+            font-size: 0.85rem;
+            opacity: 0.8;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .report-header .brand .logo-text {
+            font-weight: 700;
+            font-size: 1rem;
+            color: var(--turquoise);
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .meta-item {
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 0.5rem 0.75rem;
+        }
+
+        .meta-item .label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            opacity: 0.7;
+        }
+
+        .meta-item .value {
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        /* PII Warning Banner */
+        .pii-warning {
+            background: var(--warning-bg);
+            border: 1px solid var(--warning-border);
+            border-left: 4px solid var(--warning-border);
+            color: var(--warning-text);
+            padding: 1rem 1.25rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            font-size: 0.9rem;
+        }
+
+        .pii-warning h3 {
+            font-size: 0.95rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .pii-warning ul {
+            margin-left: 1.5rem;
+            margin-top: 0.25rem;
+        }
+
+        .pii-warning li { margin-bottom: 0.15rem; }
+
+        /* Executive Summary */
+        .executive-summary {
+            background: var(--bg-light);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .executive-summary h2 {
+            font-size: 1.25rem;
+            color: var(--cobalt);
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--turquoise);
+        }
+
+        .executive-summary .summary-prose {
+            margin-bottom: 1.25rem;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .findings-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.25rem;
+            margin-top: 1rem;
+        }
+
+        @media (max-width: 600px) {
+            .findings-grid { grid-template-columns: 1fr; }
+        }
+
+        .findings-box {
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+
+        .findings-box h4 {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--cobalt);
+            margin-bottom: 0.5rem;
+        }
+
+        .findings-box ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .findings-box li {
+            padding: 0.3rem 0;
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+            padding-left: 1rem;
+            position: relative;
+        }
+
+        .findings-box li::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0.65rem;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--turquoise);
+        }
+
+        .findings-box.recommendations li::before {
+            background: var(--cobalt-light);
+        }
+
+        /* Section */
+        .section {
+            margin-bottom: 2rem;
+        }
+
+        .section h2 {
+            font-size: 1.3rem;
+            color: var(--cobalt);
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .section h3 {
+            font-size: 1.1rem;
+            color: var(--text-primary);
+            margin: 1rem 0 0.5rem;
+        }
+
+        .section p, .section li {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .section ul, .section ol {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .section img {
+            max-width: 100%;
+            border-radius: 8px;
+            margin: 1rem 0;
+            border: 1px solid var(--border);
+        }
+
+        /* Code blocks */
+        .code-cell {
+            background: var(--bg-code);
+            color: #e2e8f0;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+            font-size: 0.82rem;
+            line-height: 1.5;
+            margin: 0.75rem 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .code-output {
+            background: #f1f5f9;
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--turquoise);
+            padding: 0.75rem 1rem;
+            border-radius: 0 8px 8px 0;
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 0.8rem;
+            margin: 0 0 1rem 0;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.88rem;
+        }
+
+        th {
+            background: var(--cobalt);
+            color: #fff;
+            padding: 0.6rem 0.75rem;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        td {
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        tr:nth-child(even) td {
+            background: var(--bg-light);
+        }
+
+        /* Metrics */
+        .metrics-table {
+            margin-top: 1.5rem;
+        }
+
+        /* Footer */
+        .report-footer {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 2px solid var(--border);
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        .report-footer .brand {
+            color: var(--turquoise);
+            font-weight: 700;
+        }
+
+        /* Print styles */
+        @media print {
+            .report-container { max-width: 100%; padding: 0; }
+            .report-header { break-after: avoid; }
+            .section { break-inside: avoid; }
+            .code-cell { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <div class="report-container">
+        <!-- Header -->
+        <div class="report-header">
+            <div class="brand">
+                <span class="logo-text">Inzyts</span>
+                <span>Analysis Report</span>
+            </div>
+            <h1>{{ title }}</h1>
+            <div class="meta-grid">
+                <div class="meta-item">
+                    <div class="label">Mode</div>
+                    <div class="value">{{ mode }}</div>
+                </div>
+                <div class="meta-item">
+                    <div class="label">Generated</div>
+                    <div class="value">{{ generated_at }}</div>
+                </div>
+                {% if model %}
+                <div class="meta-item">
+                    <div class="label">Model</div>
+                    <div class="value">{{ model }}</div>
+                </div>
+                {% endif %}
+                {% if version %}
+                <div class="meta-item">
+                    <div class="label">Version</div>
+                    <div class="value">{{ version }}</div>
+                </div>
+                {% endif %}
+                {% if question %}
+                <div class="meta-item" style="grid-column: 1 / -1;">
+                    <div class="label">Question</div>
+                    <div class="value">{{ question }}</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- PII Warning -->
+        {% if pii_result and pii_result.has_pii %}
+        <div class="pii-warning">
+            <h3>&#9888; PII Detected</h3>
+            <p>This report contains content that may include personally identifiable information.
+               {{ pii_result.findings | length }} potential PII item(s) detected across {{ pii_result.scanned_cells }} cells.</p>
+            <ul>
+                {% for finding in pii_result.findings[:5] %}
+                <li><strong>{{ finding.pii_type | upper }}</strong> ({{ finding.severity }}) — {{ finding.location }}</li>
+                {% endfor %}
+                {% if pii_result.findings | length > 5 %}
+                <li><em>... and {{ pii_result.findings | length - 5 }} more</em></li>
+                {% endif %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <!-- Executive Summary -->
+        {% if executive_summary %}
+        <div class="executive-summary">
+            <h2>Executive Summary</h2>
+
+            {% if executive_summary.summary_text %}
+            <div class="summary-prose">{{ executive_summary.summary_text }}</div>
+            {% endif %}
+
+            <div class="findings-grid">
+                <div class="findings-box">
+                    <h4>Key Findings</h4>
+                    <ul>
+                        {% for finding in executive_summary.key_findings %}
+                        <li>{{ finding }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+
+                <div class="findings-box recommendations">
+                    <h4>Recommendations</h4>
+                    <ul>
+                        {% for rec in executive_summary.recommendations %}
+                        <li>{{ rec }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            {% if executive_summary.data_quality_highlights %}
+            <div class="findings-box" style="margin-top: 1rem;">
+                <h4>Data Quality</h4>
+                <ul>
+                    {% for highlight in executive_summary.data_quality_highlights %}
+                    <li>{{ highlight }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {% if executive_summary.generated_by == 'fallback' %}
+            <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.75rem; font-style: italic;">
+                Summary generated from notebook content (LLM summary unavailable).
+            </p>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Notebook Sections -->
+        {% for section in sections %}
+        <div class="section">
+            {% if section.title %}
+            <h2>{{ section.title }}</h2>
+            {% endif %}
+
+            {% for cell in section.cells %}
+                {% if cell.cell_type == 'markdown' %}
+                <div class="markdown-content">{{ cell.html_content }}</div>
+                {% elif cell.cell_type == 'code' %}
+                <div class="code-cell">{{ cell.source }}</div>
+                    {% if cell.text_output %}
+                    <div class="code-output">{{ cell.text_output }}</div>
+                    {% endif %}
+                    {% for img in cell.images %}
+                    <img src="data:image/png;base64,{{ img }}" alt="Chart output" />
+                    {% endfor %}
+                {% endif %}
+            {% endfor %}
+        </div>
+        {% endfor %}
+
+        <!-- Execution Metrics -->
+        {% if metrics %}
+        <div class="section metrics-table">
+            <h2>Execution Metrics</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Metric</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for key, value in metrics.items() %}
+                    <tr>
+                        <td>{{ key }}</td>
+                        <td>{{ value }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- Footer -->
+        <div class="report-footer">
+            <p>Generated by <span class="brand">Inzyts</span> &mdash; Multi-Agent Data Analysis Platform</p>
+            <p>{{ generated_at }}</p>
+        </div>
+    </div>
+</body>
+</html>

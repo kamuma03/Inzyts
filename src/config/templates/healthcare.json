@@ -1,0 +1,96 @@
+{
+    "domain_name": "Healthcare",
+    "description": "Patient data, diagnoses, and medical records",
+    "concepts": [
+        {
+            "name": "Patient ID",
+            "description": "Unique identifier for patients",
+            "regex_patterns": [
+                "patient",
+                "mrn",
+                "subject_id"
+            ],
+            "synonyms": [
+                "patient_id",
+                "pid",
+                "subject_id"
+            ]
+        },
+        {
+            "name": "Diagnosis",
+            "description": "Medical diagnosis code or description",
+            "regex_patterns": [
+                "diag",
+                "icd",
+                "condition"
+            ],
+            "synonyms": [
+                "diagnosis",
+                "dx",
+                "icd10",
+                "condition"
+            ]
+        },
+        {
+            "name": "Admission Date",
+            "description": "Date of hospital admission",
+            "regex_patterns": [
+                "admit",
+                "admission"
+            ],
+            "synonyms": [
+                "admission_date",
+                "admit_dt"
+            ]
+        },
+        {
+            "name": "Discharge Date",
+            "description": "Date of hospital discharge",
+            "regex_patterns": [
+                "discharge",
+                "disch"
+            ],
+            "synonyms": [
+                "discharge_date",
+                "disch_dt"
+            ]
+        }
+    ],
+    "recommended_analyses": [
+        {
+            "concept": "Patient Flow",
+            "analysis_type": "time_series",
+            "description": "Analyze admission and discharge trends over time",
+            "required_columns": [
+                "Admission Date"
+            ]
+        },
+        {
+            "concept": "Length of Stay",
+            "analysis_type": "regression",
+            "description": "Predict length of stay based on patient factors",
+            "required_columns": [
+                "Admission Date",
+                "Discharge Date"
+            ]
+        }
+    ],
+    "kpis": [
+        {
+            "name": "Average Length of Stay (ALOS)",
+            "formula_description": "Mean(Discharge Date - Admission Date)",
+            "required_concepts": [
+                "Admission Date",
+                "Discharge Date"
+            ]
+        },
+        {
+            "name": "Readmission Rate",
+            "formula_description": "Percentage of patients readmitted within 30 days",
+            "required_concepts": [
+                "Patient ID",
+                "Admission Date"
+            ]
+        }
+    ]
+}

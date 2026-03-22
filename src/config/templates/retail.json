@@ -1,0 +1,102 @@
+{
+    "domain_name": "Retail",
+    "description": "Sales transactions, customers, and products",
+    "concepts": [
+        {
+            "name": "Customer ID",
+            "description": "Unique identifier for customers",
+            "regex_patterns": [
+                "cust",
+                "client"
+            ],
+            "synonyms": [
+                "customer_id",
+                "client_id",
+                "cid"
+            ]
+        },
+        {
+            "name": "Transaction ID",
+            "description": "Unique identifier for sales transactions",
+            "regex_patterns": [
+                "trans",
+                "order",
+                "invoice"
+            ],
+            "synonyms": [
+                "transaction_id",
+                "order_id",
+                "invoice_no"
+            ]
+        },
+        {
+            "name": "Product ID",
+            "description": "Identifier for items sold",
+            "regex_patterns": [
+                "sku",
+                "prod",
+                "item"
+            ],
+            "synonyms": [
+                "product_id",
+                "sku",
+                "item_id"
+            ]
+        },
+        {
+            "name": "Sales Amount",
+            "description": "Monetary value of the transaction",
+            "regex_patterns": [
+                "amount",
+                "sales",
+                "revenue",
+                "total"
+            ],
+            "synonyms": [
+                "sales",
+                "amount",
+                "total_price",
+                "revenue"
+            ]
+        }
+    ],
+    "recommended_analyses": [
+        {
+            "concept": "Customer Segmentation",
+            "analysis_type": "clustering",
+            "description": "Segment customers based on purchasing behavior (RFM)",
+            "required_columns": [
+                "Customer ID",
+                "Sales Amount",
+                "Transaction Date"
+            ]
+        },
+        {
+            "concept": "Market Basket Analysis",
+            "analysis_type": "association",
+            "description": "Find products frequently bought together",
+            "required_columns": [
+                "Transaction ID",
+                "Product ID"
+            ]
+        }
+    ],
+    "kpis": [
+        {
+            "name": "Average Order Value (AOV)",
+            "formula_description": "Sum(Sales Amount) / Count(Transaction ID)",
+            "required_concepts": [
+                "Sales Amount",
+                "Transaction ID"
+            ]
+        },
+        {
+            "name": "Customer Lifetime Value (CLV)",
+            "formula_description": "Estimated total revenue from a customer",
+            "required_concepts": [
+                "Customer ID",
+                "Sales Amount"
+            ]
+        }
+    ]
+}

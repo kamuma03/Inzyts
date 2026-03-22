@@ -1,0 +1,97 @@
+{
+    "domain_name": "Finance",
+    "description": "Financial transactions, accounts, and risk",
+    "concepts": [
+        {
+            "name": "Account ID",
+            "description": "Unique identifier for accounts",
+            "regex_patterns": [
+                "account",
+                "acct"
+            ],
+            "synonyms": [
+                "account_id",
+                "acct_no",
+                "account_number"
+            ]
+        },
+        {
+            "name": "Transaction Amount",
+            "description": "Value of transaction",
+            "regex_patterns": [
+                "amount",
+                "value",
+                "amt"
+            ],
+            "synonyms": [
+                "amount",
+                "trans_amt",
+                "value"
+            ]
+        },
+        {
+            "name": "Transaction Type",
+            "description": "Category of transaction (debit, credit, transfer)",
+            "regex_patterns": [
+                "type",
+                "category",
+                "desc"
+            ],
+            "synonyms": [
+                "trans_type",
+                "type",
+                "description"
+            ]
+        },
+        {
+            "name": "Fraud Label",
+            "description": "Indicator of fraudulent activity",
+            "regex_patterns": [
+                "fraud",
+                "is_fraud",
+                "class"
+            ],
+            "synonyms": [
+                "is_fraud",
+                "fraud",
+                "class"
+            ]
+        }
+    ],
+    "recommended_analyses": [
+        {
+            "concept": "Fraud Detection",
+            "analysis_type": "classification",
+            "description": "Predict fraudulent transactions",
+            "required_columns": [
+                "Fraud Label",
+                "Transaction Amount"
+            ]
+        },
+        {
+            "concept": "Spending Pattern Analysis",
+            "analysis_type": "clustering",
+            "description": "Cluster accounts based on transaction behavior",
+            "required_columns": [
+                "Transaction Amount",
+                "Transaction Type"
+            ]
+        }
+    ],
+    "kpis": [
+        {
+            "name": "Fraud Rate",
+            "formula_description": "Count(Fraud Label=1) / Total Transactions",
+            "required_concepts": [
+                "Fraud Label"
+            ]
+        },
+        {
+            "name": "Total Volume",
+            "formula_description": "Sum(Transaction Amount)",
+            "required_concepts": [
+                "Transaction Amount"
+            ]
+        }
+    ]
+}

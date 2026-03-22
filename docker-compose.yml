@@ -1,0 +1,233 @@
+services:
+  db:
+    image: postgres:15.5-alpine
+    restart: on-failure:5
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-inzyts}
+    ports:
+      # Bind to localhost only — do NOT expose to external networks in production.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    networks:
+      - db
+
+  redis:
+    image: redis:7.2-alpine
+    restart: on-failure:5
+    ports:
+      # Bind to localhost only — do NOT expose to external networks in production.
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - db
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend
+    restart: on-failure:5
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-inzyts}
+      POSTGRES_HOST: db
+      # Explicitly map for Pydantic BaseSettings with prefix
+      INZYTS__DB__HOST: db
+      INZYTS__DB__USER: ${POSTGRES_USER:-postgres}
+      INZYTS__DB__PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      INZYTS__DB__DB: ${POSTGRES_DB:-inzyts}
+      INZYTS__DB__PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      # Override Ollama URL for Docker to reach host machine
+      INZYTS__LLM__OLLAMA_BASE_URL: http://host.docker.internal:11434
+      # Pass Jupyter Token explicitly
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN}
+      INZYTS__JUPYTER__TOKEN: ${JUPYTER_TOKEN}
+      # JWT signing secret — REQUIRED. Generate: openssl rand -hex 32
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set in .env}
+      # Default admin credentials (used only on first boot when no users exist)
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set in .env}
+      # crewai's db_storage_path() uses HOME to create ~/.local/share/app at import time.
+      # The inzyts user has no home dir (--no-create-home), so point HOME to /app.
+      HOME: /app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+      - ./alembic:/app/alembic
+      - ./tests:/app/tests
+      - /app/__pycache__
+      - ./data/uploads:/app/data/uploads
+      - ./logs:/app/logs
+      - ./output:/app/output
+      # Mount datasets directory (set DATASETS_DIR in .env or defaults to ./data)
+      - ${DATASETS_DIR:-./data}:/data/datasets
+    networks:
+      - backend
+      - db
+
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: jupyter
+    image: inzyts-jupyter:latest
+    ports:
+      - "8888:8888"
+    environment:
+      - JUPYTER_TOKEN=${JUPYTER_TOKEN:?JUPYTER_TOKEN must be set in .env}
+      - JUPYTER_ENABLE_LAB=yes
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+      - ./output:/app/output
+      - ./data/uploads:/app/data/uploads
+      # Mount datasets for Jupyter access (set DATASETS_DIR in .env or defaults to ./data)
+      - ${DATASETS_DIR:-./data}:/data/datasets
+    working_dir: /app
+    command: start-notebook.sh --config /app/config/jupyter_server_config.py
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    networks:
+      - backend
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend
+    restart: on-failure:5
+    # --pool=prefork is the default on Linux (inside the container).
+    # If running natively on Windows (outside Docker), use --pool=solo.
+    command: celery -A src.server.celery_app worker --loglevel=info --pool=prefork
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-inzyts}
+      POSTGRES_HOST: db
+      # Explicitly map for Pydantic BaseSettings with prefix
+      INZYTS__DB__HOST: db
+      INZYTS__DB__USER: ${POSTGRES_USER:-postgres}
+      INZYTS__DB__PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      INZYTS__DB__DB: ${POSTGRES_DB:-inzyts}
+      INZYTS__DB__PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      # Override Ollama URL for Docker to reach host machine
+      INZYTS__LLM__OLLAMA_BASE_URL: http://host.docker.internal:11434
+      # Pass Jupyter Token explicitly
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN}
+      INZYTS__JUPYTER__TOKEN: ${JUPYTER_TOKEN}
+      # JWT signing secret — REQUIRED. Generate: openssl rand -hex 32
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set in .env}
+      # Default admin credentials (used only on first boot when no users exist)
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set in .env}
+      # crewai's db_storage_path() uses HOME to create ~/.local/share/app at import time.
+      # The inzyts user has no home dir (--no-create-home), so point HOME to /app.
+      HOME: /app
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    volumes:
+      - ./src:/app/src
+      - ./config:/app/config
+      - ./alembic:/app/alembic
+      - ./data/uploads:/app/data/uploads
+      - ./logs:/app/logs
+      - ./output:/app/output
+      # Mount datasets for worker access (set DATASETS_DIR in .env or defaults to ./data)
+      - ${DATASETS_DIR:-./data}:/data/datasets
+    networks:
+      - backend
+      - db
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      # Browser talks to localhost:8000 (mapped)
+      # Server-side calls (if any) talk to http://backend:8000
+      - VITE_API_URL=http://localhost:8000
+      - BACKEND_URL=http://backend:8000
+      # NOTE: VITE_API_TOKEN is intentionally omitted — Vite bakes VITE_* vars into
+      # the compiled JS bundle (visible in static assets). The JWT token is obtained
+      # at runtime via the login form and stored in sessionStorage only.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - backend
+
+networks:
+  backend:
+  db:
+
+volumes:
+  postgres_data:
+  redis_data:

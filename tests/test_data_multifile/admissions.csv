@@ -1,0 +1,5 @@
+AdmissionID,PatientID,Admission Date,Diagnosis
+101,1,2023-01-01,Flu
+102,2,2023-02-01,Broken Leg
+103,3,2023-03-01,Heart Attack
+104,1,2023-04-01,Checkup

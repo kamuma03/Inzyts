@@ -1,0 +1,98 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+.env.local
+.env.production.local
+
+# Credentials and keys
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Inzyts specific
+logs/
+*.log
+output/
+data/uploads/
+# Keep example data but ignore others
+data/*.csv
+!data/Bank_Churn.csv
+.DA_Agent_cache/
+.Inzyts_cache/
+~/.Inzyts_cache/
+
+# Kernel session artifacts
+*.kernel.json
+jupyter_runtime/
+.ipynb_checkpoints/
+
+# Node/Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.npm/
+frontend/.cache/
+
+# IDEs
+.vscode/
+.idea/
+.claude/
+.gemini/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+requirements.md
+libs/
+
+# Testing
+.coverage
+htmlcov/
+tests_datasets
+
+# Cache directory
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build artifacts
+*.tsbuildinfo
