@@ -23,15 +23,29 @@ async def connect(sid, environ):
     """Authenticate the WebSocket connection and store user identity on the session."""
     token = None
 
-    # Prefer the Authorization header over the query string to avoid token leaking
-    # into server access logs. Query string is kept as a fallback for clients that
-    # cannot set custom headers (e.g. browser-native WebSocket).
-    headers: dict[str, str] = {}
-    for k, v in environ.get("headers_raw", environ.get("asgi.scope", {}).get("headers", [])):
-        key = k.decode("latin-1").lower() if isinstance(k, bytes) else k.lower()
-        val = v.decode("latin-1") if isinstance(v, bytes) else v
-        headers[key] = val
-    auth_header = headers.get("authorization")
+    # Extract the Authorization header from the environ dict.
+    #
+    # python-socketio 5.x + python-engineio's ASGI translate_request() converts
+    # the raw ASGI scope into a WSGI-style environ dict where HTTP headers
+    # become "HTTP_<UPPER_NAME>" keys (e.g. HTTP_AUTHORIZATION).  The original
+    # ASGI scope is also available at environ["asgi.scope"]["headers"] as a
+    # list of (bytes, bytes) tuples.
+    #
+    # We check all three locations for robustness:
+    #   1. WSGI-style key (primary — always present via translate_request)
+    #   2. ASGI scope headers (fallback)
+    #   3. Direct "headers" key (in case of future socketio changes)
+    auth_header = environ.get("HTTP_AUTHORIZATION", "")
+
+    if not auth_header:
+        # Fallback: read from raw ASGI scope headers
+        raw_headers = environ.get("asgi.scope", {}).get("headers", [])
+        for k, v in raw_headers:
+            key = k.decode("latin-1").lower() if isinstance(k, bytes) else k.lower()
+            if key == "authorization":
+                auth_header = v.decode("latin-1") if isinstance(v, bytes) else v
+                break
+
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.split(" ")[1]
 

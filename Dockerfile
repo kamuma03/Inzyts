@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     libmagic1 \
     curl \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first to leverage caching
@@ -41,7 +42,10 @@ RUN mkdir -p data/uploads logs output .local .cache \
     && chown -R inzyts:inzyts data logs output .local .cache \
     && chmod 750 data/uploads
 
-USER inzyts
+# Entrypoint fixes bind-mount ownership then drops to inzyts via gosu
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+ENTRYPOINT ["docker-entrypoint.sh"]
 
 # Expose port (Internal to Docker network, mapped in compose)
 EXPOSE 8000

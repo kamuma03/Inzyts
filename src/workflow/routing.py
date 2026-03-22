@@ -111,6 +111,13 @@ def route_phase2_recursion(
     if state.phase2_iteration >= settings.recursion.phase2_max_iterations:
         return "Orchestrator", "Phase 2 max iterations reached"
 
+    # 2b. Guard against codegen↔validator loops that bypass the strategy
+    # (phase2_iteration only increments through the strategy node).
+    # Use total validation reports as a hard ceiling.
+    max_validations = settings.recursion.phase2_max_iterations * 3
+    if len(state.analysis_validation_reports) >= max_validations:
+        return "Orchestrator", "Phase 2 max validation attempts reached"
+
     # 3. Check for Rollback (did we make it worse?)
     previous_score = (
         state.phase2_quality_trajectory[-2]
@@ -124,6 +131,10 @@ def route_phase2_recursion(
     # 4. Analyze specific issues to route correctly
     issues = validation_result.issues
 
+    # Systemic failures (check FIRST — repeated issues should escalate, not loop)
+    if has_systemic_issues(issues, state.issue_frequency):
+        return "Orchestrator", "Systemic issues in Phase 2"
+
     # Strategy was flawed (e.g., wrong model type selected)
     if has_strategy_issues(issues):
         return "StrategyAgent", "Strategy needs refinement"
@@ -131,10 +142,6 @@ def route_phase2_recursion(
     # Implementation was flawed (e.g., syntax error, API mismatch)
     if has_code_generation_issues(issues):
         return "AnalysisCodeGenerator", "Code needs improvement"
-
-    # Systemic failures
-    if has_systemic_issues(issues, state.issue_frequency):
-        return "Orchestrator", "Systemic issues in Phase 2"
 
     # Default Fallback
     return "AnalysisCodeGenerator", "General improvement needed"

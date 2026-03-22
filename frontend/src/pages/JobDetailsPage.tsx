@@ -86,7 +86,7 @@ export const JobDetailsPage: React.FC = () => {
                     role="tabpanel"
                     id={`tabpanel-${activeTab}`}
                     aria-labelledby={`tab-${activeTab}`}
-                    className="flex-1 flex flex-col animate-[fadeIn_0.2s_ease-out]"
+                    className="flex-1 flex flex-col min-h-0 animate-[fadeIn_0.2s_ease-out]"
                 >
                     {activeTab === 'status' && (
                         <div className="flex-1 p-6 border border-[var(--border-color)] rounded-xl bg-[var(--bg-true-cobalt)] overflow-auto">

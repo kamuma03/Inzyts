@@ -558,10 +558,14 @@ def analysis_validator_node(state: AnalysisState) -> Dict[str, Any]:
         quality_trajectory = list(state.phase2_quality_trajectory)
         quality_trajectory.append(result.get("quality_score", 0.0))
 
+        # Update issue frequency (for systemic issue detection in routing)
+        issue_frequency = update_issue_frequency(state, result.get("issues", []))
+
         logger.log_execution_time("analysis_validator_node", time.time() - start_time)
         return {
             "analysis_validation_reports": validation_reports,
             "phase2_quality_trajectory": quality_trajectory,
+            "issue_frequency": issue_frequency,
             "total_tokens_used": state.total_tokens_used + tokens_used,
             "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
             "completion_tokens_used": state.completion_tokens_used + completion_used,

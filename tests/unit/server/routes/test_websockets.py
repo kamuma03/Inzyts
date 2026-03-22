@@ -43,15 +43,17 @@ def mock_async_session_maker():
 
 @pytest.mark.asyncio
 async def test_connect_no_token(mock_verify_token_async, mock_async_session_maker):
-    environ = {"QUERY_STRING": "", "headers_raw": []}
+    # WSGI-style environ from engineio's translate_request — no auth header
+    environ = {"QUERY_STRING": "", "asgi.scope": {"headers": []}}
     assert await connect("sid-123", environ) is False
     mock_verify_token_async.assert_not_called()
 
 @pytest.mark.asyncio
-async def test_connect_with_header_token_invalid(mock_verify_token_async, mock_async_session_maker):
+async def test_connect_with_wsgi_token_invalid(mock_verify_token_async, mock_async_session_maker):
+    # Primary path: HTTP_AUTHORIZATION key (WSGI-style from translate_request)
     environ = {
         "QUERY_STRING": "",
-        "headers_raw": [(b"authorization", b"Bearer bad_token")]
+        "HTTP_AUTHORIZATION": "Bearer bad_token",
     }
     mock_verify_token_async.return_value = None
 
@@ -60,10 +62,11 @@ async def test_connect_with_header_token_invalid(mock_verify_token_async, mock_a
     assert mock_verify_token_async.call_args[0][0] == "bad_token"
 
 @pytest.mark.asyncio
-async def test_connect_with_header_token_valid(mock_verify_token_async, mock_async_session_maker, mock_sio_save_session):
+async def test_connect_with_wsgi_token_valid(mock_verify_token_async, mock_async_session_maker, mock_sio_save_session):
+    # Primary path: HTTP_AUTHORIZATION key (WSGI-style from translate_request)
     environ = {
         "QUERY_STRING": "",
-        "headers_raw": [(b"authorization", b"Bearer header_token")]
+        "HTTP_AUTHORIZATION": "Bearer header_token",
     }
     mock_user = MagicMock()
     mock_user.username = "testuser"
@@ -75,11 +78,27 @@ async def test_connect_with_header_token_valid(mock_verify_token_async, mock_asy
     assert mock_verify_token_async.call_args[0][0] == "header_token"
 
 @pytest.mark.asyncio
-async def test_connect_with_header_token_invalid(mock_verify_token_async, mock_async_session_maker):
-    # Non-Bearer authorization header: no token extracted, falls through to query string
+async def test_connect_with_asgi_scope_token(mock_verify_token_async, mock_async_session_maker, mock_sio_save_session):
+    # Fallback path: token in asgi.scope headers (raw bytes tuples)
     environ = {
         "QUERY_STRING": "",
-        "headers_raw": [(b"authorization", b"Basic not_a_bearer_token")]
+        "asgi.scope": {"headers": [(b"authorization", b"Bearer scope_token")]},
+    }
+    mock_user = MagicMock()
+    mock_user.username = "testuser"
+    mock_verify_token_async.return_value = mock_user
+
+    result = await connect("sid-123", environ)
+    assert result is None
+    mock_verify_token_async.assert_called_once()
+    assert mock_verify_token_async.call_args[0][0] == "scope_token"
+
+@pytest.mark.asyncio
+async def test_connect_non_bearer_token(mock_verify_token_async, mock_async_session_maker):
+    # Non-Bearer authorization header: no token extracted
+    environ = {
+        "QUERY_STRING": "",
+        "HTTP_AUTHORIZATION": "Basic not_a_bearer_token",
     }
     assert await connect("sid-123", environ) is False
 
