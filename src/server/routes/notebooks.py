@@ -101,6 +101,35 @@ async def get_notebook_html(
         )
 
 
+@router.get("/{job_id}/download")
+async def download_notebook(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+    _token: str = Depends(verify_token),
+):
+    """Download the generated Jupyter Notebook (.ipynb) file."""
+    from fastapi.responses import FileResponse
+
+    result = await db.execute(select(Job).filter(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if not job.result_path:
+        raise HTTPException(
+            status_code=404, detail="No notebook generated for this job yet"
+        )
+
+    notebook_path = Path(job.result_path)
+    _validate_notebook_path(notebook_path)
+    if not notebook_path.exists():
+        raise HTTPException(status_code=404, detail="Notebook file not found")
+
+    return FileResponse(
+        path=str(notebook_path),
+        media_type="application/x-ipynb+json",
+        filename=notebook_path.name,
+    )
 
 
 

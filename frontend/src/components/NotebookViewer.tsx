@@ -281,14 +281,27 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                     <div className="flex items-center gap-2">
                         {/* .ipynb download */}
                         {resultPath && (
-                            <a
-                                href={`/output/${resultPath.split('/').pop()}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[0.8rem] text-[var(--bg-turquoise-surf)] no-underline px-2 py-1"
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        const response = await AnalysisAPI.downloadNotebook(jobId);
+                                        const blob = new Blob([response.data], { type: 'application/x-ipynb+json' });
+                                        const url = URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = url;
+                                        a.download = resultPath.split('/').pop() || `notebook_${jobId}.ipynb`;
+                                        document.body.appendChild(a);
+                                        a.click();
+                                        document.body.removeChild(a);
+                                        URL.revokeObjectURL(url);
+                                    } catch (err) {
+                                        if (import.meta.env.DEV) console.error('Notebook download failed', err);
+                                    }
+                                }}
+                                className="text-[0.8rem] text-[var(--bg-turquoise-surf)] bg-transparent border-none cursor-pointer px-2 py-1"
                             >
                                 .ipynb
-                            </a>
+                            </button>
                         )}
 
                         {/* Export dropdown */}

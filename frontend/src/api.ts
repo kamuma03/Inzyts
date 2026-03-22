@@ -269,6 +269,14 @@ export const AnalysisAPI = {
         return response.data;
     },
 
+    downloadNotebook: async (jobId: string) => {
+        const response = await api.get(
+            `/notebooks/${encodeURIComponent(jobId)}/download`,
+            { responseType: 'blob' },
+        );
+        return response;
+    },
+
     getNotebookCells: async (jobId: string) => {
         const response = await api.get(`/notebooks/${encodeURIComponent(jobId)}/cells`);
         return response.data; // { cells: [...], job_id: string }
