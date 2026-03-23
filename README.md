@@ -9,7 +9,7 @@
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)](#-installation)
 [![License](https://img.shields.io/badge/license-Apache_2.0-orange.svg)](LICENSE)
 [![LangGraph](https://img.shields.io/badge/powered_by-LangGraph-purple.svg)](https://langchain-ai.github.io/langgraph/)
-[![Status](https://img.shields.io/badge/status-Production_Ready-success.svg)](https://github.com/kamuma03/Inzyts)
+[![Status](https://img.shields.io/badge/status-Beta-yellow.svg)](https://github.com/kamuma03/Inzyts)
 [![Tests](https://img.shields.io/badge/tests-1100+_passing-brightgreen.svg)](tests/)
 [![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen.svg)](tests/)
 
@@ -21,7 +21,7 @@
 
 ## 📖 Overview
 
-**Inzyts** is a **production-ready, autonomous data analysis system** that transforms raw CSV data into comprehensive Jupyter notebooks with minimal human intervention. Built on LangGraph's stateful orchestration, it employs a **27-agent architecture** with **7-mode execution** to handle exploratory, predictive, diagnostic, comparative, forecasting, segmentation, and dimensionality reduction workflows.
+**Inzyts** is an **autonomous data analysis system** that transforms raw CSV data into comprehensive Jupyter notebooks with minimal human intervention. Built on LangGraph's stateful orchestration, it employs a **27-agent architecture** with **7-mode execution** to handle exploratory, predictive, diagnostic, comparative, forecasting, segmentation, and dimensionality reduction workflows.
 
 ### 💻 Technology Stack
 
@@ -57,7 +57,7 @@
 - **💬 Conversational Follow-Up**: Ask follow-up questions against generated notebooks — new cells generated and executed inline
 - **🎨 Modern UI**: Ink Black theme with real-time agent trace and token tracking
 - **📄 Report Export**: One-click export to PDF, HTML, PowerPoint, or Markdown with executive summaries and PII detection
-- **🌐 Multi-Interface**: Production-ready CLI and Web UI with Docker deployment
+- **🌐 Multi-Interface**: CLI and Web UI with Docker deployment
 - **🔌 LLM Agnostic**: Works with Anthropic Claude, OpenAI, Google Gemini, or local Ollama
 
 ---
@@ -81,7 +81,7 @@
 - **Smart Caching**: Phase 1 results are cached for 7 days, enabling instant mode switching and significant cost savings.
 - **Exclude Columns**: Filter out PII or irrelevant columns from analysis.
 
-### ⚡ Interactive & Production Ready
+### ⚡ Interactive
 - **Interactive Notebooks**: Edit individual code cells with natural language ("Make this a pie chart") — powered by a lightweight CellEditAgent and persistent kernel sessions.
 - **Conversational Follow-Up Analysis**: Ask follow-up questions ("Why is Cluster 2 the largest?") and get new analysis cells generated, executed, and rendered inline. Conversations persist across server restarts.
 - **Inline Chart Rendering**: Base64-encoded matplotlib/seaborn charts displayed directly in the interactive cell viewer.

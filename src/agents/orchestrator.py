@@ -305,6 +305,18 @@ class OrchestratorAgent(BaseAgent):
 
         intent = state.user_intent or UserIntent(csv_path=state.csv_path)
 
+        ext_meta = ExtendedMetadata(
+            row_count=meta["row_count"],
+            column_count=meta["column_count"],
+            column_names=meta["columns"],
+            nan_counts=meta["missing_values"],
+            initial_dtypes=meta["types"],
+            duplicate_count=meta["duplicates"],
+            unique_counts=unique_counts,
+            sample_data=preview_df.to_dict(orient="list"),
+            memory_usage_bytes=meta["memory_usage"],
+        )
+
         handoff = OrchestratorToProfilerHandoff(
             csv_path=state.csv_path,
             csv_preview=preview_df.to_dict(),
@@ -312,26 +324,13 @@ class OrchestratorAgent(BaseAgent):
             column_names=meta["columns"],
             user_intent=intent,
             iteration=state.phase1_iteration + 1,
-            column_missing_values=meta["missing_values"],
-            column_initial_types=meta["types"],
-            duplicate_row_count=meta["duplicates"],
-            column_unique_counts=unique_counts,
-            csv_sample=sample_df.to_dict(),
-            data_dictionary=intent.data_dictionary or {},
+            # Legacy fields intentionally left at defaults — all metadata
+            # now lives in extended_metadata to avoid duplication.
+            # data_dictionary omitted — available via user_intent.data_dictionary
             multi_file_input=intent.multi_file_input,
             merged_dataset=state.merged_dataset,
             join_report=state.join_report,
-            extended_metadata=ExtendedMetadata(
-                row_count=meta["row_count"],
-                column_count=meta["column_count"],
-                column_names=meta["columns"],
-                nan_counts=meta["missing_values"],
-                initial_dtypes=meta["types"],
-                duplicate_count=meta["duplicates"],
-                unique_counts=unique_counts,
-                sample_data=preview_df.to_dict(orient="list"),
-                memory_usage_bytes=meta["memory_usage"],
-            ),
+            extended_metadata=ext_meta,
         )
 
         return {

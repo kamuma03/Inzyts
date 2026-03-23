@@ -38,8 +38,12 @@ class PromptBuilder:
             # Force include Gender if Geography is present to handle common omission
             if "Geography" in cols and "Gender" not in cols:
                 cols = cols.replace("]", ", 'Gender']")
+            # Concise format: keep actionable info, drop verbose rationale
+            # to reduce token usage without losing accuracy.
+            params_str = f", params={step.parameters}" if step.parameters else ""
             preprocessing_lines.append(
-                step.description if hasattr(step, "description") else str(step)
+                f"  {step.order}. {step.step_type.upper()}: "
+                f"{step.method} on {cols}{params_str}"
             )
         preprocessing = "\n".join(preprocessing_lines)
 
@@ -50,7 +54,8 @@ class PromptBuilder:
 
         models = "\n".join(
             [
-                f"  - {m.model_name} ({m.import_path}): {m.rationale}"
+                f"  - {m.model_name} ({m.import_path})"
+                + (f", hyperparams={m.hyperparameters}" if m.hyperparameters else "")
                 for m in strategy.models_to_train
             ]
         )
@@ -89,39 +94,45 @@ Do NOT rely on the list above alone. Check `X` dynamically:
         feedback_section = ""
         if state.analysis_validation_reports:
             latest_report = state.analysis_validation_reports[-1]
-            # Assuming report is a dict or object with 'issues' or 'content'
-            # Based on logs, it has 'quality_score', 'issues_count'.
-            # We need the actual issues list if possible, or at least the fact it failed.
 
-            # Let's try to extract issues from the report object or dict
-            issues_list = []
-            suggestions_list: list[str] = []
+            # Use pre-formatted feedback when available (ValidationReport property)
+            from src.models.validation import ValidationReport
 
-            if isinstance(latest_report, dict):
+            if isinstance(latest_report, ValidationReport):
+                feedback_text = latest_report.formatted_feedback
+            elif isinstance(latest_report, dict):
                 issues_list = latest_report.get("issues", [])
                 suggestions_list = latest_report.get("suggestions", [])
+                parts = [
+                    f"- Issue: {i.message if hasattr(i, 'message') else str(i)}"
+                    for i in issues_list
+                ]
+                parts.extend([f"- Suggestion: {s}" for s in suggestions_list])
+                feedback_text = "\n".join(parts)
             elif hasattr(latest_report, "issues"):
+                # Generic object fallback (e.g. duck-typed report)
                 issues_list = latest_report.issues
                 suggestions_list = getattr(latest_report, "suggestions", [])
+                parts = [
+                    f"- Issue: {i.message if hasattr(i, 'message') else str(i)}"
+                    for i in issues_list
+                ]
+                parts.extend([f"- Suggestion: {s}" for s in suggestions_list])
+                feedback_text = "\n".join(parts)
+            else:
+                feedback_text = ""
 
-            feedback_msgs = [
-                f"- Issue: {issue.message if hasattr(issue, 'message') else str(issue)}"
-                for issue in issues_list
-            ]
-            feedback_msgs.extend([f"- Suggestion: {s}" for s in suggestions_list])
-
-            feedback_text = "\n".join(feedback_msgs)
-
-            feedback_section = f"""
+            if feedback_text:
+                feedback_section = f"""
 IMPORTANT: The previous attempt to generate this code FAILED validation.
 Refine the code to address these specific issues:
 {feedback_text}
 """
-            if (
-                "metrics" in feedback_text.lower()
-                or "compute required evaluation metrics" in feedback_text.lower()
-            ):
-                feedback_section += "\nCRITICAL: You previously failed to compute specific metrics. You MUST write Python code to calculate accuracy, F1, etc. using sklearn and store them in `evaluation_results`."
+                if (
+                    "metrics" in feedback_text.lower()
+                    or "compute required evaluation metrics" in feedback_text.lower()
+                ):
+                    feedback_section += "\nCRITICAL: You previously failed to compute specific metrics. You MUST write Python code to calculate accuracy, F1, etc. using sklearn and store them in `evaluation_results`."
 
         return f"""{mode_instruction}
 

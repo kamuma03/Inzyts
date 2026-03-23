@@ -104,6 +104,20 @@ class ValidationReport(BaseModel):
     # Suggestions for improvement
     suggestions: List[str] = []
 
+    @property
+    def formatted_feedback(self) -> str:
+        """Pre-format issues and suggestions into a compact feedback string.
+
+        Used by the retry prompt builder to avoid re-extracting and formatting
+        on every retry iteration, saving token overhead.
+        """
+        parts: List[str] = []
+        for issue in self.issues:
+            parts.append(f"- Issue: {issue.message}")
+        for s in self.suggestions:
+            parts.append(f"- Suggestion: {s}")
+        return "\n".join(parts)
+
 
 # ============================================================================
 # Phase 1 Validation Criteria

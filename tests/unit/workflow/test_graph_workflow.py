@@ -662,6 +662,8 @@ class TestPhase2Nodes:
         state.analysis_code_outputs = [MagicMock()]
         state.analysis_validation_reports = []
         state.phase2_quality_trajectory = []
+        state.issue_frequency = {}
+        state.strategy_outputs = []
         state.total_tokens_used = 0
         state.prompt_tokens_used = 0
         state.completion_tokens_used = 0

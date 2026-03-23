@@ -70,6 +70,20 @@ class ProfileLock(BaseModel):
     # Lock integrity
     lock_hash: str = ""
 
+    @staticmethod
+    def _compute_handoff_hash(handoff: Any) -> str:
+        """Compute a deterministic integrity hash for the profile handoff.
+
+        Excludes ``profile_cells`` (presentation-only) from the hash to
+        reduce serialisation cost — only the data-integrity fields (column
+        profiles, quality scores, feature types, etc.) are hashed.
+        """
+        if not handoff:
+            return ""
+        # Exclude bulky presentation-only fields from the hash
+        data = handoff.model_dump_json(exclude={"profile_cells"})
+        return hashlib.sha256(data.encode()).hexdigest()
+
     def grant_lock(
         self,
         cells: List[Any],
@@ -97,13 +111,7 @@ class ProfileLock(BaseModel):
         self.iterations_to_lock = iteration
         # Deterministic hash for integrity verification
         try:
-            self.lock_hash = (
-                hashlib.sha256(
-                    self.profile_handoff.model_dump_json().encode()
-                ).hexdigest()
-                if self.profile_handoff
-                else ""
-            )
+            self.lock_hash = self._compute_handoff_hash(self.profile_handoff)
         except Exception as e:
             from src.utils.logger import get_logger
             get_logger().error(f"Hash computation failed during lock grant: {e}")
@@ -119,14 +127,7 @@ class ProfileLock(BaseModel):
         if not self.is_locked():
             return True
         try:
-            current_hash = (
-                hashlib.sha256(
-                    self.profile_handoff.model_dump_json().encode()
-                ).hexdigest()
-                if self.profile_handoff
-                else ""
-            )
-            return current_hash == self.lock_hash
+            return self._compute_handoff_hash(self.profile_handoff) == self.lock_hash
         except Exception:
             return False
 

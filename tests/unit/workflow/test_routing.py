@@ -205,6 +205,7 @@ class TestRoutePhase2Recursion:
         state.phase2_iteration = 0
         state.issue_frequency = {}
         state.phase2_quality_trajectory = []
+        state.analysis_validation_reports = []
 
         # Mock ProfileLock
         profile_lock = MagicMock(spec=ProfileLock)

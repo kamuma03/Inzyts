@@ -27,7 +27,7 @@
 
 ## Executive Summary
 
-Inzyts v0.10.0 is a **production-ready, 27-agent autonomous data analysis system** with 7-mode pipeline execution, smart caching, self-correcting validation loops, JWT authentication, SQL database integration, conversational follow-up, interactive cell editing, and hardened Docker deployment. This roadmap outlines the evolution to **v3.0.0**, transforming Inzyts from a powerful analysis tool into a complete **enterprise-grade data science platform**.
+Inzyts v0.10.0 is a **27-agent autonomous data analysis system** with 7-mode pipeline execution, smart caching, self-correcting validation loops, JWT authentication, SQL database integration, conversational follow-up, interactive cell editing, and hardened Docker deployment. This roadmap outlines the evolution to **v3.0.0**, transforming Inzyts from a powerful analysis tool into a complete **enterprise-grade data science platform**.
 
 ### Strategic Goals Summary
 
@@ -59,7 +59,7 @@ Inzyts v0.10.0 is a **production-ready, 27-agent autonomous data analysis system
 | Attribute | Details |
 |-----------|---------|
 | **Product Name** | Inzyts |
-| **Current Version** | v0.10.0 (Production Ready) |
+| **Current Version** | v0.10.0 (Beta) |
 | **Core Problem Solved** | Eliminates tedious manual data exploration; transforms raw CSV/SQL data into comprehensive, executable Jupyter notebooks autonomously |
 | **Target Users** | Data Analysts, Data Scientists, Business Analysts, Product Managers, Enterprise Teams |
 | **Architecture** | 27-agent LangGraph orchestration with 7-mode pipeline execution |

@@ -272,7 +272,12 @@ class DataProfilerAgent(BaseAgent):
         ]
 
         if handoff:
-            context_parts.append(f"Duplicate Rows: {handoff.duplicate_row_count}")
+            dup_count = (
+                handoff.extended_metadata.duplicate_count
+                if handoff.extended_metadata
+                else handoff.duplicate_row_count
+            )
+            context_parts.append(f"Duplicate Rows: {dup_count}")
 
         context_parts.append(f"Columns: {list(df.columns)}")
         context_parts.append("\nColumn Info:")
@@ -292,7 +297,10 @@ class DataProfilerAgent(BaseAgent):
             dtype = str(df[col].dtype)
 
             # Use pre-calculated metrics if available (faster/consistent)
-            if handoff and col in handoff.column_unique_counts:
+            ext = handoff.extended_metadata if handoff else None
+            if ext and col in ext.unique_counts:
+                unique = ext.unique_counts[col]
+            elif handoff and col in handoff.column_unique_counts:
                 unique = handoff.column_unique_counts[col]
             else:
                 try:
@@ -315,10 +323,19 @@ class DataProfilerAgent(BaseAgent):
                 f"  - {col}: dtype={dtype}, unique={unique}, null={null_pct:.1f}%, samples={sample}{desc_str}"
             )
 
-        if handoff and handoff.data_dictionary and not dictionary:
-            # Fallback to simple dict in handoff if explicit DataDictionary object not provided
+        # Fallback to simple dict from handoff or user_intent if no explicit
+        # DataDictionary object was provided.  Prefer handoff.data_dictionary
+        # for backwards compat, then user_intent.data_dictionary.
+        dd = None
+        if not dictionary and handoff:
+            dd = handoff.data_dictionary or (
+                handoff.user_intent.data_dictionary
+                if handoff.user_intent
+                else None
+            )
+        if dd:
             context_parts.append("\nData Dictionary (from intent):")
-            for field, desc in handoff.data_dictionary.items():
+            for field, desc in dd.items():
                 if field in df.columns:
                     context_parts.append(f"  - {field}: {desc}")
 

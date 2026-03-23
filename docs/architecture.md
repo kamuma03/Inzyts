@@ -1,10 +1,10 @@
 # System Architecture Documentation
 
-**Status**: Production-Ready
+**Status**: Beta
 
 ## 1. System Overview
 
-**Inzyts - Analyze. Predict. Discover.** is a production-ready, automated pipeline designed to take raw data (CSV, SQL databases, cloud storage, or REST APIs) and user intent as input, and produce high-quality, executable Jupyter Notebooks as output.
+**Inzyts - Analyze. Predict. Discover.** is an automated pipeline designed to take raw data (CSV, SQL databases, cloud storage, or REST APIs) and user intent as input, and produce high-quality, executable Jupyter Notebooks as output.
 
 It employs a **Seven-Mode Pipeline** with **27 Specialized Agents** orchestrated by **LangGraph**:
 

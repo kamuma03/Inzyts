@@ -401,6 +401,17 @@ def transition_to_phase2_node(state: AnalysisState) -> Dict[str, Any]:
         result["prompt_tokens_used"] = state.prompt_tokens_used + save_prompt + transition_prompt
         result["completion_tokens_used"] = state.completion_tokens_used + save_completion + transition_completion
 
+        # --- Token optimisation: prune Phase 1 iteration history ---
+        # The profile lock already snapshots everything Phase 2 needs
+        # (cells, handoff, quality score, validation report).  Keeping
+        # the full list of intermediate profiler/code/validation outputs
+        # only inflates serialisation cost on Celery without benefit.
+        # We retain the *latest* entry so rollback logging stays useful.
+        for key in ("profiler_outputs", "profile_code_outputs", "profile_validation_reports"):
+            items = getattr(state, key, [])
+            if len(items) > 1:
+                result[key] = items[-1:]
+
     return result
 
 
@@ -561,8 +572,16 @@ def analysis_validator_node(state: AnalysisState) -> Dict[str, Any]:
         # Update issue frequency (for systemic issue detection in routing)
         issue_frequency = update_issue_frequency(state, result.get("issues", []))
 
+        # --- Token optimisation: prune old Phase 2 iterations ---
+        # Keep only the latest strategy/code outputs plus the best (for
+        # rollback).  The validation reports list is kept to the last two
+        # so the retry prompt can reference the most recent failure while
+        # earlier reports (already consumed) are discarded.
+        if len(validation_reports) > 2:
+            validation_reports = validation_reports[-2:]
+
         logger.log_execution_time("analysis_validator_node", time.time() - start_time)
-        return {
+        updates: Dict[str, Any] = {
             "analysis_validation_reports": validation_reports,
             "phase2_quality_trajectory": quality_trajectory,
             "issue_frequency": issue_frequency,
@@ -570,6 +589,17 @@ def analysis_validator_node(state: AnalysisState) -> Dict[str, Any]:
             "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
             "completion_tokens_used": state.completion_tokens_used + completion_used,
         }
+        # --- Token optimisation: prune old Phase 2 iterations ---
+        # Keep only the latest outputs.  The best state for rollback is
+        # stored separately in phase2_best_strategy / phase2_best_code.
+        try:
+            if isinstance(state.strategy_outputs, list) and len(state.strategy_outputs) > 2:
+                updates["strategy_outputs"] = state.strategy_outputs[-1:]
+            if isinstance(state.analysis_code_outputs, list) and len(state.analysis_code_outputs) > 2:
+                updates["analysis_code_outputs"] = state.analysis_code_outputs[-1:]
+        except (TypeError, AttributeError):
+            pass
+        return updates
     except Exception as e:
         tokens_used = analysis_validator.llm_agent.total_tokens - start_tokens
         prompt_used = analysis_validator.llm_agent.prompt_tokens - start_prompt

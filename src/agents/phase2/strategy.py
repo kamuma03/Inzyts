@@ -155,9 +155,19 @@ class StrategyAgent(BaseAgent):
     ) -> str:
         """Build the prompt for strategy generation."""
 
-        # Column summary
+        # Column summary — exclude pure identifiers and user-excluded columns
+        # to reduce prompt size.  Identifiers (e.g. row IDs, UUIDs) carry no
+        # analytical value and are never used in modelling.  The full column
+        # inventory is still preserved in the locked profile for reference.
+        excluded_names = set(
+            state.user_intent.exclude_columns if state.user_intent else []
+        )
         columns_info = []
         for col in profile.column_profiles:
+            if col.name in excluded_names:
+                continue
+            if col.detected_type.value in ("identifier", "numeric_identifier"):
+                continue
             columns_info.append(
                 f"  - {col.name}: {col.detected_type.value}, "
                 f"unique={col.unique_count}, null={col.null_percentage:.1f}%"
@@ -216,7 +226,13 @@ DOMAIN KPIS:
             else "  None"
         )
         preproc_str = self._format_preprocessing_recommendations(profile)
-        features_str = json.dumps(dict(profile.identified_feature_types), indent=2)
+        # Strip identifiers and excluded columns from feature types dump
+        filtered_features = {
+            k: v
+            for k, v in profile.identified_feature_types.items()
+            if k not in excluded_names and v.value not in ("identifier",)
+        }
+        features_str = json.dumps(dict(filtered_features), indent=2)
 
         return textwrap.dedent(f"""
             Design an analysis strategy for this LOCKED data profile.
