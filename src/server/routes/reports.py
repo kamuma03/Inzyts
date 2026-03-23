@@ -139,6 +139,7 @@ async def export_report_get(
     job, notebook_path = await _get_job_notebook(job_id, db)
     metadata = _build_job_metadata(job)
 
+    stored_summary = job.executive_summary
     try:
         exporter = _get_exporter()
         loop = asyncio.get_running_loop()
@@ -148,6 +149,7 @@ async def export_report_get(
                 notebook_path=str(notebook_path),
                 job_metadata=metadata,
                 format=report_format,
+                stored_summary=stored_summary,
             ),
         )
     except RuntimeError as e:
@@ -184,6 +186,7 @@ async def export_report_post(
     job, notebook_path = await _get_job_notebook(job_id, db)
     metadata = _build_job_metadata(job)
 
+    stored_summary = job.executive_summary if request.include_executive_summary else None
     try:
         exporter = _get_exporter()
         loop = asyncio.get_running_loop()
@@ -195,6 +198,7 @@ async def export_report_post(
                 format=report_format,
                 include_executive_summary=request.include_executive_summary,
                 include_pii_masking=request.include_pii_masking,
+                stored_summary=stored_summary,
             ),
         )
     except RuntimeError as e:
@@ -224,9 +228,27 @@ async def get_executive_summary(
     db: AsyncSession = Depends(get_db),
     _token: str = Depends(verify_token),
 ):
-    """Generate an executive summary for a completed analysis."""
+    """Return the executive summary for a completed analysis.
+
+    Returns the pre-generated summary stored in the database.
+    For jobs created before this feature, generates on-demand and persists
+    the result so subsequent requests are free.
+    """
     job, notebook_path = await _get_job_notebook(job_id, db)
 
+    # Return stored summary if available
+    if job.executive_summary:
+        s = job.executive_summary
+        return ExecutiveSummaryResponse(
+            job_id=job_id,
+            key_findings=s.get("key_findings", []),
+            data_quality_highlights=s.get("data_quality_highlights", []),
+            recommendations=s.get("recommendations", []),
+            summary_text=s.get("summary_text", ""),
+            generated_by=s.get("generated_by", "unknown"),
+        )
+
+    # Backfill: generate once for old jobs, then persist
     try:
         gen = _get_summary_gen()
         loop = asyncio.get_running_loop()
@@ -238,6 +260,10 @@ async def get_executive_summary(
         raise HTTPException(
             status_code=500, detail="Executive summary generation failed"
         )
+
+    # Persist so future requests don't regenerate
+    job.executive_summary = summary.model_dump()  # type: ignore
+    await db.commit()
 
     return ExecutiveSummaryResponse(
         job_id=job_id,

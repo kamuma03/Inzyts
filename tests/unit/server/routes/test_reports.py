@@ -51,6 +51,7 @@ def _mock_job_with_notebook(tmp_path):
     mock_job.mode = "exploratory"
     mock_job.title = "Test Analysis"
     mock_job.question = "What happened?"
+    mock_job.executive_summary = None
     return mock_job
 
 

@@ -261,6 +261,17 @@ def execution_task(self, job_id: str, csv_path: Optional[str] = None, mode: str 
                     if final_state.final_notebook_path:
                         job.status = JobStatus.COMPLETED  # type: ignore
                         job.result_path = final_state.final_notebook_path  # type: ignore
+
+                        # Generate and persist executive summary so it doesn't
+                        # need to be regenerated (and re-billed) on every view.
+                        try:
+                            from src.services.executive_summary import ExecutiveSummaryGenerator
+                            summary = ExecutiveSummaryGenerator().generate(
+                                final_state.final_notebook_path, timeout_seconds=90
+                            )
+                            job.executive_summary = summary.model_dump()  # type: ignore
+                        except Exception as e:
+                            logger.warning(f"Executive summary generation failed for job {job_id}: {e}")
                     else:
                         job.status = JobStatus.FAILED  # type: ignore
                         job.error_message = "; ".join(

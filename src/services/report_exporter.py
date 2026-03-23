@@ -90,6 +90,7 @@ class ReportExporter:
         format: ReportFormat = ReportFormat.HTML,
         include_executive_summary: bool = True,
         include_pii_masking: bool = False,
+        stored_summary: Optional[Dict[str, Any]] = None,
     ) -> ReportResult:
         """Generate a report from a completed analysis notebook.
 
@@ -99,6 +100,7 @@ class ReportExporter:
             format: Target export format.
             include_executive_summary: Whether to generate executive summary.
             include_pii_masking: Whether to mask detected PII in output.
+            stored_summary: Pre-generated summary from the database (avoids re-invoking LLM).
 
         Returns:
             ReportResult with file path and metadata.
@@ -113,13 +115,19 @@ class ReportExporter:
         # 2. Run PII scan
         pii_result = self._pii_detector.scan_notebook(notebook_path)
 
-        # 3. Generate executive summary
+        # 3. Use stored summary or generate fresh
         exec_summary: Optional[ExecutiveSummary] = None
         if include_executive_summary:
-            try:
-                exec_summary = self._summary_generator.generate(notebook_path)
-            except Exception as e:
-                logger.warning(f"Executive summary generation failed: {e}")
+            if stored_summary:
+                try:
+                    exec_summary = ExecutiveSummary(**stored_summary)
+                except Exception:
+                    logger.warning("Failed to parse stored summary, regenerating")
+            if exec_summary is None:
+                try:
+                    exec_summary = self._summary_generator.generate(notebook_path)
+                except Exception as e:
+                    logger.warning(f"Executive summary generation failed: {e}")
 
         # 4. Process notebook cells into sections
         sections = self._parse_sections(nb, include_pii_masking)

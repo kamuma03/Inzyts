@@ -58,6 +58,9 @@ class Job(Base):
     error_message = Column(String(2000), nullable=True)
     logs_location = Column(String, nullable=True)  # Path to log file
 
+    # Executive summary (generated once after notebook assembly)
+    executive_summary = Column(JSON, nullable=True)
+
     # Metrics
     token_usage = Column(
         JSON, default=dict
