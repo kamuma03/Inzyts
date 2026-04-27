@@ -4,6 +4,10 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+    // Load env files from the project root so VITE_* vars defined in
+    // /home/mukan/Documents/Inzyts/.env (alongside backend env) are picked
+    // up automatically. Without this, Vite only reads frontend/.env*.
+    envDir: '..',
     plugins: [
         react(),
         tailwindcss(),
