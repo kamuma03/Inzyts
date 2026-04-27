@@ -122,8 +122,10 @@ export interface JobSummary {
     mode: string;
     created_at: string;
     cost_estimate?: {
-        total: number;
-        currency: string;
+        total?: number;
+        estimated_cost_usd?: number;
+        currency?: string;
+        [key: string]: number | string | undefined;
     };
     token_usage?: {
         prompt?: number;
@@ -135,6 +137,7 @@ export interface JobSummary {
     };
     result_path?: string;
     csv_path?: string;
+    question?: string | null;
     error_message?: string;
 }
 export interface AnalysisResponse {

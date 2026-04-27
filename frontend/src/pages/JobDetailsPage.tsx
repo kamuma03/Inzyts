@@ -7,6 +7,8 @@ import { NotebookViewer } from '../components/NotebookViewer';
 import { DataOverview } from '../components/DataOverview';
 import { AgentTrace } from '../components/AgentTrace';
 import { ErrorState } from '../components/ErrorState';
+import { CommandCenterView } from '../components/command-center/CommandCenterView';
+import { featureFlags } from '../featureFlags';
 import { Clock } from 'lucide-react';
 import { STATUS_STYLES } from '../constants/statusStyles';
 
@@ -50,6 +52,13 @@ export const JobDetailsPage: React.FC = () => {
 
     const displayStatus = selectedJob.status;
     const statusStyle = STATUS_STYLES[displayStatus] || STATUS_STYLES.cancelled;
+
+    // Command Center surface — gated by VITE_FEATURE_COMMAND_CENTER. Falls back
+    // to the legacy tabs layout below when the flag is off so rollback is a
+    // one-line env change.
+    if (featureFlags.commandCenter) {
+        return <CommandCenterView job={selectedJob} />;
+    }
 
     return (
         <div className="flex-1 flex flex-col min-h-0 min-w-0">

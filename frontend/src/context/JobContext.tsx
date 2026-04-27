@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { JobSummary, AnalysisAPI } from '../api';
+import { JobSummary, AnalysisAPI, type RunMetrics, type PhaseStatus } from '../api';
 import { useSocket, LogMessage, AgentEvent, ProgressUpdate } from '../hooks/useSocket';
 import { ToastType, ToastProps } from '../components/Toast';
 import { AnalysisFormInitialValues } from '../components/AnalysisForm';
@@ -13,6 +13,8 @@ interface JobContextType {
     logs: LogMessage[];
     events: AgentEvent[];
     progress: ProgressUpdate | null;
+    metrics: RunMetrics | null;
+    phases: PhaseStatus[] | null;
     toasts: ToastProps[];
     initialFormState: AnalysisFormInitialValues | null;
 
@@ -51,7 +53,7 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
     const [historicalLogs, setHistoricalLogs] = useState<LogMessage[]>([]);
 
     // Socket Hook
-    const { logs, events, progress, isConnected } = useSocket(activeJobId);
+    const { logs, events, progress, metrics, phases, isConnected } = useSocket(activeJobId);
 
     // -- Toast Logic --
     const addToast = (message: string, type: ToastType = 'info') => {
@@ -195,6 +197,8 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
         logs: mergedLogs, // Expose the merged logs instead of just socket logs
         events,
         progress,
+        metrics,
+        phases,
         toasts,
         initialFormState,
         setActiveJobId,
