@@ -313,9 +313,6 @@ def run_wizard(force: bool = False) -> bool:
     api_token = prompt("API token (server-to-server)", default=generate_hex())
     env_vars["INZYTS_API_TOKEN"] = api_token
 
-    jupyter_token = prompt("Jupyter token", default=generate_hex())
-    env_vars["JUPYTER_TOKEN"] = jupyter_token
-
     # ── 7. Optional: Datasets directory ──────────────────────────────────
 
     section("Data Directories (optional)")

@@ -1,6 +1,8 @@
 #!/bin/bash
 # Inzyts Application Starter
-# Starts the full Docker stack (Backend + Frontend + DB + Redis + Jupyter)
+# Starts the full Docker stack (Backend + Frontend + DB + Redis + Worker)
+# Live notebook execution runs in-process inside the Worker container via
+# KernelSandbox (PR1) — no separate Jupyter Server is needed.
 
 set -e
 
