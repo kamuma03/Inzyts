@@ -142,27 +142,30 @@ export const ConfigPanel: FC<ConfigPanelProps> = ({
                 </div>
             </div>
 
-            {/* Analysis Goal */}
-            <div>
-                <label className="block text-[0.8rem] mb-1.5 text-[var(--text-secondary)]">Analysis Goal</label>
-                <ModeSelector
-                    selectedMode={mode}
-                    onSelect={setMode}
-                    suggestedMode={suggestedMode}
-                    suggestionExplanation={suggestionExplanation}
-                    suggestionConfidence={suggestionConfidence}
-                    suggestionMatchedKeywords={suggestionMatchedKeywords}
-                />
-            </div>
-
-            {/* Question + Cache — side by side */}
+            {/* Question + Cache — side by side. Question moved above the mode
+                selector so the suggestion pill / Why? card render directly
+                below the input that drives them, matching the design canvas. */}
             <div className="grid grid-cols-[1fr_auto] gap-4 items-end">
                 <div>
-                    <label className="block text-[0.8rem] mb-1.5 text-[var(--text-secondary)]">Analysis Question / Goal</label>
+                    <div className="flex items-baseline gap-2 mb-1.5">
+                        <label
+                            htmlFor="analysis-question"
+                            className="text-[0.8rem] text-[var(--text-secondary)]"
+                        >
+                            Your Question
+                        </label>
+                        <span
+                            className="ml-auto font-mono text-[10px] text-[var(--text-dim)]"
+                            aria-hidden="true"
+                        >
+                            local · debounced 300ms
+                        </span>
+                    </div>
                     <textarea
+                        id="analysis-question"
                         value={question}
                         onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setQuestion(e.target.value)}
-                        placeholder="e.g. What factors correlate most strongly with the target?"
+                        placeholder="e.g. Forecast next quarter's revenue and flag the product lines driving change"
                         rows={3}
                         className="w-full py-2 px-2.5 rounded border border-[var(--border-color)] font-[inherit] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-[0.85rem]"
                     />
@@ -176,6 +179,19 @@ export const ConfigPanel: FC<ConfigPanelProps> = ({
                     />
                     <span className="text-[0.8rem] text-[var(--text-primary)]">Use cache</span>
                 </label>
+            </div>
+
+            {/* Analysis Goal */}
+            <div>
+                <label className="block text-[0.8rem] mb-1.5 text-[var(--text-secondary)]">Analysis Goal</label>
+                <ModeSelector
+                    selectedMode={mode}
+                    onSelect={setMode}
+                    suggestedMode={suggestedMode}
+                    suggestionExplanation={suggestionExplanation}
+                    suggestionConfidence={suggestionConfidence}
+                    suggestionMatchedKeywords={suggestionMatchedKeywords}
+                />
             </div>
         </>
     );
