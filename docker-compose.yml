@@ -212,6 +212,10 @@ services:
       # Server-side calls (if any) talk to http://backend:8000
       - VITE_API_URL=http://localhost:8000
       - BACKEND_URL=http://backend:8000
+      # Forward feature flags from the project-root .env so they reach the
+      # Vite dev server / build. Empty string when unset → flag stays false.
+      # Backend secrets are NOT forwarded — only explicitly-listed VITE_* vars.
+      - VITE_FEATURE_COMMAND_CENTER=${VITE_FEATURE_COMMAND_CENTER:-}
       # NOTE: VITE_API_TOKEN is intentionally omitted — Vite bakes VITE_* vars into
       # the compiled JS bundle (visible in static assets). The JWT token is obtained
       # at runtime via the login form and stored in sessionStorage only.
