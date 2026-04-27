@@ -14,7 +14,7 @@ interface ShortcutHint {
 
 const SHORTCUT_HINTS: ShortcutHint[] = [
     { keys: 'J / K', label: 'next / prev event' },
-    { keys: '1–5', label: 'switch tab' },
+    { keys: '1–6', label: 'switch tab' },
     { keys: '⌘↵', label: 're-run' },
     { keys: 'Esc', label: 'clear selection' },
 ];

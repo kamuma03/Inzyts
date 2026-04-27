@@ -5,11 +5,8 @@ import { useJobContext } from '../../context/JobContext';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useMetricsHistory } from '../../hooks/useRunMetrics';
 import { TopStrip } from './TopStrip';
-import { PipelineRail } from './PipelineRail';
-import { ColumnInspector } from './ColumnInspector';
-import { CostBreakdown } from './CostBreakdown';
-import { QuestionCard } from './QuestionCard';
 import { PreviewTabs, type PreviewTabId } from './PreviewTabs';
+import { OverviewPanel } from './panels/OverviewPanel';
 import { VisualPanel } from './panels/VisualPanel';
 import { CodePanel } from './panels/CodePanel';
 import { DataPanel } from './panels/DataPanel';
@@ -23,6 +20,7 @@ interface CommandCenterViewProps {
 }
 
 const TAB_DEFS = [
+    { id: 'overview' as const, label: 'Overview' },
     { id: 'visual' as const, label: 'Visual' },
     { id: 'code' as const, label: 'Code' },
     { id: 'data' as const, label: 'Data' },
@@ -31,27 +29,36 @@ const TAB_DEFS = [
 ];
 
 const TAB_BY_HOTKEY: Record<string, PreviewTabId> = {
-    '1': 'visual',
-    '2': 'code',
-    '3': 'data',
-    '4': 'logs',
-    '5': 'events',
+    '1': 'overview',
+    '2': 'visual',
+    '3': 'code',
+    '4': 'data',
+    '5': 'logs',
+    '6': 'events',
 };
 
-/** Top-level orchestrator for the analyst surface. */
+const DEFAULT_TAB_FOR_STATUS = (status: string): PreviewTabId =>
+    status === 'completed' ? 'visual' : 'overview';
+
+/** Top-level analyst surface. All contextual information (pipeline, columns,
+ *  cost, question) and all output views (notebook, code, data, logs, events)
+ *  are top-level tabs sharing the full page width. The previous 3-column
+ *  layout with cramped side rails is gone. */
 export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
     const navigate = useNavigate();
     const { logs, events, metrics, phases, isConnected, handleCancelJob } = useJobContext();
     const history = useMetricsHistory(metrics, job.id);
 
     const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<PreviewTabId>('visual');
+    const [activeTab, setActiveTab] = useState<PreviewTabId>(() =>
+        DEFAULT_TAB_FOR_STATUS(job.status),
+    );
 
     const isCompleted = job.status === 'completed';
+    const isRunning = job.status === 'running' || job.status === 'pending';
 
     const handleRerun = useCallback(() => {
-        // Re-runs go via the home form so the user can tweak params.
-        // ⌘↵ navigates back; the form pre-fills from initialFormState if wired upstream.
+        // ⌘↵ goes back to the home form so users can tweak params before re-running.
         navigate('/');
     }, [navigate]);
 
@@ -63,13 +70,12 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
             '3': () => setActiveTab(TAB_BY_HOTKEY['3']),
             '4': () => setActiveTab(TAB_BY_HOTKEY['4']),
             '5': () => setActiveTab(TAB_BY_HOTKEY['5']),
+            '6': () => setActiveTab(TAB_BY_HOTKEY['6']),
             'cmd+enter': handleRerun,
             'ctrl+enter': handleRerun,
         },
         { enabled: true },
     );
-
-    const isRunning = job.status === 'running' || job.status === 'pending';
 
     const codeStreaming = !isCompleted;
     const tabs = TAB_DEFS.map((t) => {
@@ -119,49 +125,30 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
                 onExport={isCompleted ? () => navigate(`/jobs/${job.id}`) : undefined}
             />
 
-            <div
-                className="flex-1 grid gap-3 min-h-0"
-                style={{ gridTemplateColumns: '270px 1fr 320px' }}
-            >
-                {/* Left rail */}
-                <PipelineRail phases={phases} mode={job.mode} />
+            {isRunning && <TrafficRow history={history} />}
 
-                {/* Center stack — PreviewTabs takes full vertical space.
-                    TrafficRow is shown only while the job is actively running
-                    (live signals are stale post-completion); EventStream now
-                    lives inside the tabs as its 5th panel. */}
-                <main className="flex flex-col gap-3 min-h-0 min-w-0">
-                    {isRunning && <TrafficRow history={history} />}
-
-                    <div className="flex-1 min-h-0 border border-[var(--border-color)] rounded-lg bg-[var(--bg-true-cobalt)] overflow-hidden flex flex-col">
-                        <PreviewTabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab}>
-                            {{
-                                visual: <VisualPanel job={job} />,
-                                code: <CodePanel job={job} events={events} />,
-                                data: <DataPanel jobId={job.id} />,
-                                logs: <LogsPanel logs={logs} />,
-                                events: (
-                                    <div className="h-full p-2">
-                                        <EventStream events={events} />
-                                    </div>
-                                ),
-                            }}
-                        </PreviewTabs>
-                    </div>
-                </main>
-
-                {/* Right rail */}
-                <aside className="flex flex-col gap-3 min-h-0 min-w-0">
-                    <QuestionCard question={job.question ?? null} />
-                    <div className="flex-1 min-h-0 min-w-0">
-                        <ColumnInspector
-                            jobId={job.id}
-                            selectedColumn={selectedColumn}
-                            onSelect={setSelectedColumn}
-                        />
-                    </div>
-                    <CostBreakdown jobId={job.id} refreshKey={job.status} />
-                </aside>
+            <div className="flex-1 min-h-0 min-w-0 border border-[var(--border-color)] rounded-lg bg-[var(--bg-true-cobalt)] overflow-hidden flex flex-col">
+                <PreviewTabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab}>
+                    {{
+                        overview: (
+                            <OverviewPanel
+                                job={job}
+                                phases={phases}
+                                selectedColumn={selectedColumn}
+                                onSelectColumn={setSelectedColumn}
+                            />
+                        ),
+                        visual: <VisualPanel job={job} />,
+                        code: <CodePanel job={job} events={events} />,
+                        data: <DataPanel jobId={job.id} />,
+                        logs: <LogsPanel logs={logs} />,
+                        events: (
+                            <div className="h-full p-2">
+                                <EventStream events={events} />
+                            </div>
+                        ),
+                    }}
+                </PreviewTabs>
             </div>
 
             <StatusBar isConnected={isConnected} phases={phases} />
