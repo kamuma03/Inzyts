@@ -201,6 +201,10 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
         } else if (e.key === 'End') {
             e.preventDefault();
             nextIndex = ANALYSIS_MODES.length - 1;
+        } else if (/^[1-7]$/.test(e.key)) {
+            // Direct selection by number — analyst-friendly hotkey.
+            e.preventDefault();
+            nextIndex = parseInt(e.key, 10) - 1;
         } else {
             return;
         }
@@ -249,9 +253,9 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
                 role="radiogroup"
                 aria-label="Analysis mode selection"
                 onKeyDown={handleKeyDown}
-                className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3 mt-2"
+                className="grid grid-cols-[repeat(auto-fit,minmax(168px,1fr))] gap-2 mt-2"
             >
-                {ANALYSIS_MODES.map((mode) => {
+                {ANALYSIS_MODES.map((mode, idx) => {
                     const isSelected = selectedMode === mode.id;
                     const isSuggested = suggestedMode === mode.id && !isSelected;
                     const Icon = mode.icon;
@@ -263,31 +267,59 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
                             type="button"
                             role="radio"
                             aria-checked={isSelected}
-                            aria-label={`${mode.label} mode: ${mode.desc}`}
+                            aria-label={`${mode.label} mode: ${mode.desc}. Press ${idx + 1} to select.`}
                             tabIndex={isSelected ? 0 : -1}
-                            className={`p-3 cursor-pointer flex flex-col gap-2 transition-all duration-200 w-full text-left appearance-none text-inherit rounded-lg ${
+                            className={`group relative px-3 py-2.5 cursor-pointer flex flex-col gap-1.5 transition-all duration-150 w-full text-left appearance-none text-inherit rounded-md border ${
                                 isSelected
-                                    ? 'border-2 border-[var(--bg-turquoise-surf)] bg-[rgba(0,255,238,0.05)]'
+                                    ? 'border-[var(--bg-turquoise-surf)] bg-[rgba(76,201,240,0.08)] shadow-[inset_0_0_0_1px_rgba(76,201,240,0.4)]'
                                     : isSuggested
-                                        ? 'border-2 border-[rgba(0,255,238,0.4)] bg-[rgba(0,255,238,0.02)]'
-                                        : 'border border-[var(--border-color)] bg-[rgba(0,0,0,0.2)]'
+                                        ? 'border-[rgba(76,201,240,0.4)] bg-[var(--bg-surface-hi)]'
+                                        : 'border-[var(--border-color)] bg-[var(--bg-surface-hi)] hover:border-[var(--text-dim)] hover:bg-[rgba(255,255,255,0.02)]'
                             }`}
                         >
-                            <div className={`flex items-center gap-2 font-semibold ${isSelected ? 'text-[var(--bg-turquoise-surf)]' : 'text-[var(--text-primary)]'}`}>
-                                <Icon size={18} />
-                                <span>{mode.label}</span>
+                            {/* Top row: number prefix + icon + label + suggested chip + info */}
+                            <div className="flex items-center gap-2">
+                                <span
+                                    className={`font-mono text-[10px] tabular-nums leading-none ${
+                                        isSelected ? 'text-[var(--bg-turquoise-surf)]' : 'text-[var(--text-dim)]'
+                                    }`}
+                                    aria-hidden="true"
+                                >
+                                    {idx + 1}
+                                </span>
+                                <Icon
+                                    size={14}
+                                    className={isSelected ? 'text-[var(--bg-turquoise-surf)]' : 'text-[var(--text-secondary)]'}
+                                />
+                                <span
+                                    className={`text-[13px] font-semibold tracking-tight truncate ${
+                                        isSelected ? 'text-[var(--bg-turquoise-surf)]' : 'text-[var(--text-primary)]'
+                                    }`}
+                                >
+                                    {mode.label}
+                                </span>
                                 {isSuggested && (
-                                    <span className="ml-auto text-[0.65rem] font-bold px-[5px] py-px rounded-[3px] bg-[rgba(0,255,238,0.15)] text-[var(--bg-turquoise-surf)] uppercase tracking-[0.5px]">
+                                    <span className="ml-auto text-[9px] font-bold px-1 py-px rounded bg-[rgba(76,201,240,0.15)] text-[var(--bg-turquoise-surf)] uppercase tracking-[1px] shrink-0">
                                         Suggested
                                     </span>
                                 )}
-                                <span className={isSuggested ? '' : 'ml-auto'}>
+                                <span className={isSuggested ? 'shrink-0' : 'ml-auto shrink-0'}>
                                     <InfoTooltip text={mode.detailedDesc} />
                                 </span>
                             </div>
-                            <p className="m-0 text-[0.8rem] text-[var(--text-secondary)] leading-[1.4]">
+
+                            {/* Description — denser, dimmer */}
+                            <p className="m-0 text-[11px] text-[var(--text-dim)] leading-[1.4] line-clamp-2">
                                 {mode.desc}
                             </p>
+
+                            {/* Selected indicator — bottom-left bar */}
+                            {isSelected && (
+                                <span
+                                    aria-hidden="true"
+                                    className="absolute bottom-0 left-0 right-0 h-px bg-[var(--bg-turquoise-surf)]"
+                                />
+                            )}
                         </button>
                     );
                 })}
