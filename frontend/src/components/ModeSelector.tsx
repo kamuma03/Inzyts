@@ -163,9 +163,28 @@ interface ModeSelectorProps {
     onSelect: (mode: AnalysisRequest['mode']) => void;
     suggestedMode?: AnalysisRequest['mode'] | null;
     suggestionExplanation?: string | null;
+    suggestionConfidence?: number | null;
+    suggestionMatchedKeywords?: string[];
 }
 
-export const ModeSelector: FC<ModeSelectorProps> = ({ selectedMode, onSelect, suggestedMode, suggestionExplanation }) => {
+const confidenceColor = (c: number | null | undefined): string => {
+    if (c == null) return 'var(--text-dim)';
+    if (c >= 0.7) return 'var(--status-good)';
+    if (c >= 0.5) return 'var(--status-warn)';
+    return 'var(--text-dim)';
+};
+
+const confidenceLabel = (c: number | null | undefined): string => {
+    if (c == null) return 'unknown';
+    if (c >= 0.7) return 'high confidence';
+    if (c >= 0.5) return 'medium confidence';
+    return 'low confidence';
+};
+
+export const ModeSelector: FC<ModeSelectorProps> = ({
+    selectedMode, onSelect, suggestedMode, suggestionExplanation,
+    suggestionConfidence, suggestionMatchedKeywords,
+}) => {
     const handleKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
         const currentIndex = ANALYSIS_MODES.findIndex(m => m.id === selectedMode);
         let nextIndex = currentIndex;
@@ -197,12 +216,25 @@ export const ModeSelector: FC<ModeSelectorProps> = ({ selectedMode, onSelect, su
             {suggestedMode && suggestedMode !== selectedMode && (
                 <div className="flex items-center gap-2 px-3 py-2 mb-3 bg-[rgba(0,255,238,0.08)] border border-[rgba(0,255,238,0.25)] rounded-[6px] text-[0.85rem] text-[var(--text-secondary)]">
                     <Wand2 size={14} className="text-[var(--bg-turquoise-surf)] shrink-0" />
+                    <span
+                        aria-label={`Suggested mode: ${ANALYSIS_MODES.find(m => m.id === suggestedMode)?.label || suggestedMode}, ${confidenceLabel(suggestionConfidence)}`}
+                        className="inline-block w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: confidenceColor(suggestionConfidence) }}
+                        title={confidenceLabel(suggestionConfidence)}
+                    />
                     <span>
                         AI suggests <strong className="text-[var(--bg-turquoise-surf)]">
                             {ANALYSIS_MODES.find(m => m.id === suggestedMode)?.label || suggestedMode}
                         </strong>
-                        {suggestionExplanation && <span> — {suggestionExplanation}</span>}
+                        {suggestionMatchedKeywords && suggestionMatchedKeywords.length > 0 && (
+                            <span> — matched {suggestionMatchedKeywords.map(k => `"${k}"`).join(', ')}</span>
+                        )}
                     </span>
+                    {suggestionExplanation && (
+                        <span className="ml-2 shrink-0">
+                            <InfoTooltip text={suggestionExplanation} />
+                        </span>
+                    )}
                     <button
                         type="button"
                         onClick={() => onSelect(suggestedMode)}

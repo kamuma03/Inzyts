@@ -8,7 +8,14 @@ from sqlalchemy import select
 from src.config import settings
 from src.server.db.database import get_db
 from src.server.db.models import Job, JobProgress, JobStatus, User, UserRole
-from src.server.models.schemas import JobStatusResponse, JobSummary
+from src.server.models.schemas import (
+    ColumnProfileResponse,
+    ColumnStats,
+    CostBreakdownResponse,
+    CostBreakdownRow,
+    JobStatusResponse,
+    JobSummary,
+)
 from src.server.middleware.auth import verify_token
 from src.server.rate_limiter import limiter
 from src.utils.logger import get_logger
@@ -165,6 +172,178 @@ async def get_job_status(
         cost_estimate=job.cost_estimate,  # type: ignore
         created_at=job.created_at,  # type: ignore
     )
+
+
+_DTYPE_LABEL = {
+    "numeric_continuous": "float",
+    "numeric_discrete": "int",
+    "numeric_identifier": "int",
+    "categorical": "category",
+    "categorical_text": "category",
+    "categorical_nominal": "category",
+    "categorical_ordinal": "category",
+    "categorical_binary": "bool",
+    "binary": "bool",
+    "datetime": "datetime",
+    "text": "text",
+    "identifier": "text",
+    "unknown": "text",
+}
+
+
+def _format_cardinality(unique_count: int, dtype_label: str, stats) -> str:
+    """Produce a compact 'cardinality_or_range' string for the inspector list."""
+    if dtype_label in ("float", "int") and stats is not None:
+        lo = getattr(stats, "min", None)
+        hi = getattr(stats, "max", None)
+        if lo is not None and hi is not None:
+            return f"{lo:.0f}–{hi:.0f}"
+    if unique_count > 1_000_000:
+        return f"{unique_count / 1_000_000:.1f}M unique"
+    if unique_count > 1_000:
+        return f"{unique_count / 1_000:.1f}K unique"
+    if dtype_label in ("category", "bool"):
+        return f"{unique_count} levels"
+    return f"{unique_count} unique"
+
+
+def _resolve_role(
+    name: str,
+    feature_type: str | None,
+    target_names: set[str],
+    temporal_names: set[str],
+) -> str:
+    if name in target_names:
+        return "target"
+    if name in temporal_names:
+        return "time"
+    if feature_type in ("numeric_continuous", "numeric_discrete"):
+        return "metric"
+    if feature_type in (
+        "categorical_low_cardinality",
+        "categorical_high_cardinality",
+        "binary",
+    ):
+        return "dim"
+    if feature_type == "datetime":
+        return "time"
+    return "other"
+
+
+async def _load_locked_handoff(job: Job):
+    """Load the locked Phase-1 handoff for ``job`` from the on-disk profile cache."""
+    if not job.csv_hash:
+        return None
+    try:
+        from src.utils.cache_manager import CacheManager
+
+        cache = CacheManager().load_cache(str(job.csv_hash))
+        if not cache:
+            return None
+        return cache.profile_handoff
+    except Exception as e:
+        logger.warning(f"Failed to load profile cache for job {job.id}: {e}")
+        return None
+
+
+@router.get("/jobs/{job_id}/columns", response_model=list[ColumnProfileResponse])
+async def get_job_columns(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(verify_token),
+):
+    """Return per-column profile rows for the Command Center inspector."""
+    result = await db.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    user_role = getattr(current_user, "role", None) or UserRole.VIEWER
+    if user_role != UserRole.ADMIN and job.user_id and job.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    handoff = await _load_locked_handoff(job)
+    if handoff is None:
+        return []
+
+    target_names = {c.column_name for c in (handoff.recommended_target_candidates or ())}
+    temporal_names = set(handoff.temporal_columns or ())
+    feature_types = handoff.identified_feature_types or {}
+    row_count = handoff.row_count or 0
+
+    rows: list[ColumnProfileResponse] = []
+    for col in handoff.column_profiles:
+        dtype_value = col.detected_type.value if hasattr(col.detected_type, "value") else str(col.detected_type)
+        dtype_label = _DTYPE_LABEL.get(dtype_value, "text")
+        ft = feature_types.get(col.name)
+        ft_value = ft.value if hasattr(ft, "value") else (ft if isinstance(ft, str) else None)
+        role = _resolve_role(col.name, ft_value, target_names, temporal_names)
+        null_count = int(round((col.null_percentage or 0.0) * row_count))
+        stats_obj = col.statistics
+        stats_payload = None
+        if stats_obj is not None:
+            stats_payload = ColumnStats(
+                mean=getattr(stats_obj, "mean", None),
+                median=getattr(stats_obj, "median", None),
+                min=getattr(stats_obj, "min", None),
+                max=getattr(stats_obj, "max", None),
+                p99=getattr(stats_obj, "p99", None),
+            )
+
+        rows.append(
+            ColumnProfileResponse(
+                name=col.name,
+                dtype=dtype_label,
+                cardinality_or_range=_format_cardinality(
+                    col.unique_count or 0, dtype_label, stats_obj
+                ),
+                role=role,
+                null_count=null_count,
+                histogram=[],  # populated by a follow-up; UI degrades gracefully
+                stats=stats_payload,
+            )
+        )
+
+    return rows
+
+
+@router.get("/jobs/{job_id}/cost", response_model=CostBreakdownResponse)
+async def get_job_cost(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(verify_token),
+):
+    """Return per-phase cost breakdown for the Command Center cost panel."""
+    result = await db.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    user_role = getattr(current_user, "role", None) or UserRole.VIEWER
+    if user_role != UserRole.ADMIN and job.user_id and job.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    breakdown = job.cost_breakdown or []
+    rows = [CostBreakdownRow(**row) for row in breakdown if isinstance(row, dict)]
+
+    total = 0.0
+    estimate_flag = False
+    cost_blob = job.cost_estimate or {}
+    if isinstance(cost_blob, dict):
+        total = float(cost_blob.get("total") or cost_blob.get("estimated_cost_usd") or 0.0)
+        estimate_flag = bool(cost_blob.get("is_estimate") or "estimated" in (cost_blob.get("explanation") or "").lower())
+
+    if not rows and total > 0:
+        # Fallback for jobs that ran before per-phase attribution shipped.
+        rows = [CostBreakdownRow(
+            phase="all",
+            label="All phases (legacy job, breakdown unavailable)",
+            cost_usd=total,
+            is_estimate=True,
+        )]
+        estimate_flag = True
+
+    return CostBreakdownResponse(total_cost_usd=total, rows=rows, is_estimate=estimate_flag)
 
 
 @router.post("/jobs/{job_id}/cancel")

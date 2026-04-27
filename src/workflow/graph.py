@@ -31,6 +31,40 @@ logger = get_logger()
 # Agent instances are now retrieved via AgentFactory to prevent global initialization cost
 
 
+def _attribute_tokens(
+    updates: Dict[str, Any],
+    state: AnalysisState,
+    total: int,
+    prompt: int,
+    completion: int,
+    phase: Literal["phase1", "phase2", "extensions"],
+) -> None:
+    """Add token deltas to the global counters and a phase-specific bucket.
+
+    Mutates ``updates`` in place. The sum of the three phase buckets equals
+    the global ``total_tokens_used`` (invariant verified by the cost endpoint).
+
+    Uses ``getattr(..., 0)`` for the new per-phase fields so the helper
+    is robust against partial test mocks that don't pre-populate every
+    bucket on the state.
+    """
+    updates["total_tokens_used"] = state.total_tokens_used + total
+    updates["prompt_tokens_used"] = state.prompt_tokens_used + prompt
+    updates["completion_tokens_used"] = state.completion_tokens_used + completion
+    if phase == "phase1":
+        updates["phase1_tokens_used"] = getattr(state, "phase1_tokens_used", 0) + total
+        updates["phase1_prompt_tokens"] = getattr(state, "phase1_prompt_tokens", 0) + prompt
+        updates["phase1_completion_tokens"] = getattr(state, "phase1_completion_tokens", 0) + completion
+    elif phase == "phase2":
+        updates["phase2_tokens_used"] = getattr(state, "phase2_tokens_used", 0) + total
+        updates["phase2_prompt_tokens"] = getattr(state, "phase2_prompt_tokens", 0) + prompt
+        updates["phase2_completion_tokens"] = getattr(state, "phase2_completion_tokens", 0) + completion
+    elif phase == "extensions":
+        updates["extensions_tokens_used"] = getattr(state, "extensions_tokens_used", 0) + total
+        updates["extensions_prompt_tokens"] = getattr(state, "extensions_prompt_tokens", 0) + prompt
+        updates["extensions_completion_tokens"] = getattr(state, "extensions_completion_tokens", 0) + completion
+
+
 # ============================================================================
 # Node Functions
 # ============================================================================
@@ -67,10 +101,8 @@ def initialize_node(state: AnalysisState) -> Dict[str, Any]:
     completion_used = orchestrator.llm_agent.completion_tokens - start_completion
     logger.log_execution_time("initialize_node", time.time() - start_time)
 
-    # Update total tokens in result
-    result["total_tokens_used"] = state.total_tokens_used + tokens_used
-    result["prompt_tokens_used"] = state.prompt_tokens_used + prompt_used
-    result["completion_tokens_used"] = state.completion_tokens_used + completion_used
+    # Attribute tokens to Phase 1 — orchestrator setup runs before phase 1 begins.
+    _attribute_tokens(result, state, tokens_used, prompt_used, completion_used, "phase1")
     return result
 
 
@@ -87,9 +119,7 @@ def restore_cache_node(state: AnalysisState) -> Dict[str, Any]:
     completion_used = orchestrator.llm_agent.completion_tokens - start_completion
 
     if isinstance(result, dict):
-        result["total_tokens_used"] = state.total_tokens_used + tokens_used
-        result["prompt_tokens_used"] = state.prompt_tokens_used + prompt_used
-        result["completion_tokens_used"] = state.completion_tokens_used + completion_used
+        _attribute_tokens(result, state, tokens_used, prompt_used, completion_used, "phase1")
 
     logger.log_execution_time("restore_cache_node", time.time() - start_time)
     return result
@@ -114,11 +144,8 @@ def create_phase1_handoff_node(state: AnalysisState) -> Dict[str, Any]:
 
     logger.log_execution_time("create_phase1_handoff_node", time.time() - start_time)
 
-    # Update total tokens
     if isinstance(result, dict):
-        result["total_tokens_used"] = state.total_tokens_used + tokens_used
-        result["prompt_tokens_used"] = state.prompt_tokens_used + prompt_used
-        result["completion_tokens_used"] = state.completion_tokens_used + completion_used
+        _attribute_tokens(result, state, tokens_used, prompt_used, completion_used, "phase1")
 
     return result
 
@@ -152,12 +179,8 @@ def data_profiler_node(state: AnalysisState) -> Dict[str, Any]:
         if handoff:
             profiler_outputs.append(handoff)
 
-        updates = {
-            "profiler_outputs": profiler_outputs,
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
-        }
+        updates: Dict[str, Any] = {"profiler_outputs": profiler_outputs}
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
 
         if result.get("updated_csv_path"):
             updates["csv_path"] = result["updated_csv_path"]
@@ -173,12 +196,9 @@ def data_profiler_node(state: AnalysisState) -> Dict[str, Any]:
             "data_profiler_node (FAILED)", time.time() - start_time
         )
         logger.critical(f"DataProfiler Node crashed: {e}", exc_info=True)
-        return {
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
-            "errors": state.errors + [f"DataProfiler Crash: {str(e)}"],
-        }
+        updates = {"errors": state.errors + [f"DataProfiler Crash: {str(e)}"]}
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
+        return updates
 
 
 def profile_codegen_node(state: AnalysisState) -> Dict[str, Any]:
@@ -213,13 +233,12 @@ def profile_codegen_node(state: AnalysisState) -> Dict[str, Any]:
             code_outputs.append(handoff)
 
         logger.log_execution_time("profile_codegen_node", time.time() - start_time)
-        return {
+        updates: Dict[str, Any] = {
             "profile_code_outputs": code_outputs,
-            "phase1_iteration": state.phase1_iteration + 1,  # Increment iteration count
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
+            "phase1_iteration": state.phase1_iteration + 1,
         }
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
+        return updates
     except Exception as e:
         tokens_used = profile_codegen.llm_agent.total_tokens - start_tokens
         prompt_used = profile_codegen.llm_agent.prompt_tokens - start_prompt
@@ -227,12 +246,9 @@ def profile_codegen_node(state: AnalysisState) -> Dict[str, Any]:
         logger.log_execution_time(
             "profile_codegen_node (FAILED)", time.time() - start_time
         )
-        return {
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
-            "errors": state.errors + [f"ProfileCodeGen Crash: {str(e)}"],
-        }
+        updates = {"errors": state.errors + [f"ProfileCodeGen Crash: {str(e)}"]}
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
+        return updates
 
 
 def profile_validator_node(state: AnalysisState) -> Dict[str, Any]:
@@ -287,25 +303,21 @@ def profile_validator_node(state: AnalysisState) -> Dict[str, Any]:
             )
             # Cache is now saved in transition_to_phase2_node
 
-        return {
+        updates: Dict[str, Any] = {
             "profile_validation_reports": validation_reports,
             "phase1_quality_trajectory": quality_trajectory,
             "issue_frequency": issue_frequency,
             "profile_lock": profile_lock,
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
         }
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
+        return updates
     except Exception as e:
         tokens_used = profile_validator.llm_agent.total_tokens - start_tokens
         prompt_used = profile_validator.llm_agent.prompt_tokens - start_prompt
         completion_used = profile_validator.llm_agent.completion_tokens - start_completion
-        return {
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
-            "errors": state.errors + [f"ProfileValidator Crash: {str(e)}"],
-        }
+        updates = {"errors": state.errors + [f"ProfileValidator Crash: {str(e)}"]}
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
+        return updates
 
 
 def extension_node(state: AnalysisState) -> Dict[str, Any]:
@@ -337,9 +349,7 @@ def extension_node(state: AnalysisState) -> Dict[str, Any]:
             tokens_used = agent.llm_agent.total_tokens - start_tokens
             prompt_used = agent.llm_agent.prompt_tokens - start_prompt
             completion_used = agent.llm_agent.completion_tokens - start_completion
-            updates["total_tokens_used"] = state.total_tokens_used + tokens_used
-            updates["prompt_tokens_used"] = state.prompt_tokens_used + prompt_used
-            updates["completion_tokens_used"] = state.completion_tokens_used + completion_used
+            _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "extensions")
             logger.log_execution_time(
                 f"extension_node ({mode_val})", time.time() - start_time
             )
@@ -348,12 +358,8 @@ def extension_node(state: AnalysisState) -> Dict[str, Any]:
             prompt_used = agent.llm_agent.prompt_tokens - start_prompt
             completion_used = agent.llm_agent.completion_tokens - start_completion
             logger.error(f"Extension Agent {mode_val} failed: {e}")
-            updates = {
-                "errors": state.errors + [f"Extension {mode_val} failed: {e}"],
-                "total_tokens_used": state.total_tokens_used + tokens_used,
-                "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-                "completion_tokens_used": state.completion_tokens_used + completion_used,
-            }
+            updates = {"errors": state.errors + [f"Extension {mode_val} failed: {e}"]}
+            _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "extensions")
     else:
         # No extension agent for this mode (e.g. Predictive, Exploratory, Segmentation).
         # Log so that a missing registration for a new mode is immediately visible.
@@ -397,9 +403,16 @@ def transition_to_phase2_node(state: AnalysisState) -> Dict[str, Any]:
     logger.log_execution_time("transition_to_phase2_node", time.time() - start_time)
 
     if isinstance(result, dict):
-        result["total_tokens_used"] = state.total_tokens_used + save_tokens + transition_tokens
-        result["prompt_tokens_used"] = state.prompt_tokens_used + save_prompt + transition_prompt
-        result["completion_tokens_used"] = state.completion_tokens_used + save_completion + transition_completion
+        # Save-cache work belongs to phase 1; the transition itself opens phase 2.
+        _attribute_tokens(result, state, save_tokens, save_prompt, save_completion, "phase1")
+        # Re-read the now-updated globals so the transition delta is added on top.
+        # (We rebuild a phase-2 attribution from the updated totals.)
+        result["total_tokens_used"] = result["total_tokens_used"] + transition_tokens
+        result["prompt_tokens_used"] = result["prompt_tokens_used"] + transition_prompt
+        result["completion_tokens_used"] = result["completion_tokens_used"] + transition_completion
+        result["phase2_tokens_used"] = getattr(state, "phase2_tokens_used", 0) + transition_tokens
+        result["phase2_prompt_tokens"] = getattr(state, "phase2_prompt_tokens", 0) + transition_prompt
+        result["phase2_completion_tokens"] = getattr(state, "phase2_completion_tokens", 0) + transition_completion
 
         # --- Token optimisation: prune Phase 1 iteration history ---
         # The profile lock already snapshots everything Phase 2 needs
@@ -462,24 +475,20 @@ def strategy_node(state: AnalysisState) -> Dict[str, Any]:
             strategy_outputs.append(handoff)
 
         logger.log_execution_time("strategy_node", time.time() - start_time)
-        return {
+        updates: Dict[str, Any] = {
             "strategy_outputs": strategy_outputs,
             "phase2_iteration": state.phase2_iteration + 1,
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
         }
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase2")
+        return updates
     except Exception as e:
         tokens_used = selected_agent.llm_agent.total_tokens - start_tokens
         prompt_used = selected_agent.llm_agent.prompt_tokens - start_prompt
         completion_used = selected_agent.llm_agent.completion_tokens - start_completion
         logger.log_execution_time("strategy_node (FAILED)", time.time() - start_time)
-        return {
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
-            "errors": state.errors + [f"Strategy Crash: {str(e)}"],
-        }
+        updates = {"errors": state.errors + [f"Strategy Crash: {str(e)}"]}
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase2")
+        return updates
 
 
 def analysis_codegen_node(state: AnalysisState) -> Dict[str, Any]:
@@ -513,12 +522,9 @@ def analysis_codegen_node(state: AnalysisState) -> Dict[str, Any]:
             code_outputs.append(handoff)
 
         logger.log_execution_time("analysis_codegen_node", time.time() - start_time)
-        return {
-            "analysis_code_outputs": code_outputs,
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
-        }
+        updates: Dict[str, Any] = {"analysis_code_outputs": code_outputs}
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase2")
+        return updates
     except Exception as e:
         tokens_used = analysis_codegen.llm_agent.total_tokens - start_tokens
         prompt_used = analysis_codegen.llm_agent.prompt_tokens - start_prompt
@@ -526,12 +532,9 @@ def analysis_codegen_node(state: AnalysisState) -> Dict[str, Any]:
         logger.log_execution_time(
             "analysis_codegen_node (FAILED)", time.time() - start_time
         )
-        return {
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
-            "errors": state.errors + [f"AnalysisCodeGen Crash: {str(e)}"],
-        }
+        updates = {"errors": state.errors + [f"AnalysisCodeGen Crash: {str(e)}"]}
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase2")
+        return updates
 
 
 def analysis_validator_node(state: AnalysisState) -> Dict[str, Any]:
@@ -585,10 +588,8 @@ def analysis_validator_node(state: AnalysisState) -> Dict[str, Any]:
             "analysis_validation_reports": validation_reports,
             "phase2_quality_trajectory": quality_trajectory,
             "issue_frequency": issue_frequency,
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
         }
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase2")
         # --- Token optimisation: prune old Phase 2 iterations ---
         # Keep only the latest outputs.  The best state for rollback is
         # stored separately in phase2_best_strategy / phase2_best_code.
@@ -607,12 +608,9 @@ def analysis_validator_node(state: AnalysisState) -> Dict[str, Any]:
         logger.log_execution_time(
             "analysis_validator_node (FAILED)", time.time() - start_time
         )
-        return {
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
-            "errors": state.errors + [f"AnalysisValidator Crash: {str(e)}"],
-        }
+        updates = {"errors": state.errors + [f"AnalysisValidator Crash: {str(e)}"]}
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase2")
+        return updates
 
 
 def assemble_notebook_node(state: AnalysisState) -> Dict[str, Any]:
@@ -681,9 +679,7 @@ def assemble_notebook_node(state: AnalysisState) -> Dict[str, Any]:
     completion_used = orchestrator.llm_agent.completion_tokens - start_completion
 
     if isinstance(res, dict):
-        res["total_tokens_used"] = state.total_tokens_used + tokens_used
-        res["prompt_tokens_used"] = state.prompt_tokens_used + prompt_used
-        res["completion_tokens_used"] = state.completion_tokens_used + completion_used
+        _attribute_tokens(res, state, tokens_used, prompt_used, completion_used, "phase2")
 
     logger.log_execution_time("assemble_notebook_node", time.time() - start_time)
     return res
@@ -703,11 +699,8 @@ def exploratory_conclusions_node(state: AnalysisState) -> Dict[str, Any]:
         prompt_used = exploratory_agent.llm_agent.prompt_tokens - start_prompt
         completion_used = exploratory_agent.llm_agent.completion_tokens - start_completion
 
-        # Track tokens
         if isinstance(res, dict):
-            res["total_tokens_used"] = state.total_tokens_used + tokens_used
-            res["prompt_tokens_used"] = state.prompt_tokens_used + prompt_used
-            res["completion_tokens_used"] = state.completion_tokens_used + completion_used
+            _attribute_tokens(res, state, tokens_used, prompt_used, completion_used, "phase2")
 
         logger.log_execution_time(
             "exploratory_conclusions_node", time.time() - start_time
@@ -720,12 +713,9 @@ def exploratory_conclusions_node(state: AnalysisState) -> Dict[str, Any]:
         logger.log_execution_time(
             "exploratory_conclusions_node (FAILED)", time.time() - start_time
         )
-        return {
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
-            "errors": state.errors + [f"ExploratoryConclusions Crash: {str(e)}"],
-        }
+        updates: Dict[str, Any] = {"errors": state.errors + [f"ExploratoryConclusions Crash: {str(e)}"]}
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase2")
+        return updates
 
 
 def rollback_recovery_node(state: AnalysisState) -> Dict[str, Any]:
@@ -747,9 +737,7 @@ def rollback_recovery_node(state: AnalysisState) -> Dict[str, Any]:
     completion_used = orchestrator.llm_agent.completion_tokens - start_completion
 
     if isinstance(result, dict):
-        result["total_tokens_used"] = state.total_tokens_used + tokens_used
-        result["prompt_tokens_used"] = state.prompt_tokens_used + prompt_used
-        result["completion_tokens_used"] = state.completion_tokens_used + completion_used
+        _attribute_tokens(result, state, tokens_used, prompt_used, completion_used, "phase2")
 
     logger.log_execution_time("rollback_recovery_node", time.time() - start_time)
     return result
@@ -816,11 +804,8 @@ def sql_extraction_node(state: AnalysisState) -> Dict[str, Any]:
 
         logger.log_execution_time("sql_extraction_node", time.time() - start_time)
 
-        updates: Dict[str, Any] = {
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
-        }
+        updates: Dict[str, Any] = {}
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
 
         if result.get("csv_path"):
             updates["csv_path"] = result["csv_path"]
@@ -834,12 +819,9 @@ def sql_extraction_node(state: AnalysisState) -> Dict[str, Any]:
         completion_used = sql_agent.llm_agent.completion_tokens - start_completion
         logger.log_execution_time("sql_extraction_node (FAILED)", time.time() - start_time)
         logger.error(f"SQLExtraction Crash: {e}", exc_info=True)
-        return {
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
-            "errors": state.errors + [f"SQLExtraction Crash: {str(e)}"],
-        }
+        updates = {"errors": state.errors + [f"SQLExtraction Crash: {str(e)}"]}
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
+        return updates
 
 
 def data_merger_node(state: AnalysisState) -> Dict[str, Any]:
@@ -862,35 +844,26 @@ def data_merger_node(state: AnalysisState) -> Dict[str, Any]:
 
         logger.log_execution_time("data_merger_node", time.time() - start_time)
         if "error" in result:
-            return {
-                "errors": state.errors + [result["error"]],
-                "total_tokens_used": state.total_tokens_used + tokens_used,
-                "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-                "completion_tokens_used": state.completion_tokens_used + completion_used,
-            }
+            updates: Dict[str, Any] = {"errors": state.errors + [result["error"]]}
+            _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
+            return updates
 
-        return {
+        updates = {
             "merged_dataset": result.get("merged_dataset"),
             "join_report": result.get("join_report"),
-            "csv_path": result.get(
-                "csv_path", state.csv_path
-            ),  # Update path to merged file
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
+            "csv_path": result.get("csv_path", state.csv_path),
         }
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
+        return updates
     except Exception as e:
         tokens_used = data_merger.llm_agent.total_tokens - start_tokens
         prompt_used = data_merger.llm_agent.prompt_tokens - start_prompt
         completion_used = data_merger.llm_agent.completion_tokens - start_completion
         logger.log_execution_time("data_merger_node (FAILED)", time.time() - start_time)
         logger.error(f"DataMerger Crash: {e}", exc_info=True)
-        return {
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
-            "errors": state.errors + [f"DataMerger Crash: {str(e)}"],
-        }
+        updates = {"errors": state.errors + [f"DataMerger Crash: {str(e)}"]}
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
+        return updates
 
 
 def api_extraction_node(state: AnalysisState) -> Dict[str, Any]:
@@ -917,11 +890,8 @@ def api_extraction_node(state: AnalysisState) -> Dict[str, Any]:
 
         logger.log_execution_time("api_extraction_node", time.time() - start_time)
 
-        updates: Dict[str, Any] = {
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
-        }
+        updates: Dict[str, Any] = {}
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
 
         if result.get("csv_path"):
             updates["csv_path"] = result["csv_path"]
@@ -935,12 +905,9 @@ def api_extraction_node(state: AnalysisState) -> Dict[str, Any]:
         completion_used = api_agent.llm_agent.completion_tokens - start_completion
         logger.log_execution_time("api_extraction_node (FAILED)", time.time() - start_time)
         logger.error(f"APIExtraction Crash: {e}", exc_info=True)
-        return {
-            "total_tokens_used": state.total_tokens_used + tokens_used,
-            "prompt_tokens_used": state.prompt_tokens_used + prompt_used,
-            "completion_tokens_used": state.completion_tokens_used + completion_used,
-            "errors": state.errors + [f"APIExtraction Crash: {str(e)}"],
-        }
+        updates = {"errors": state.errors + [f"APIExtraction Crash: {str(e)}"]}
+        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
+        return updates
 
 
 def route_after_initialize(

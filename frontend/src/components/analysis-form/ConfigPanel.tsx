@@ -15,6 +15,8 @@ interface ConfigPanelProps {
     setMode: (v: AnalysisRequest['mode']) => void;
     suggestedMode: AnalysisRequest['mode'] | null;
     suggestionExplanation: string | null;
+    suggestionConfidence?: number | null;
+    suggestionMatchedKeywords?: string[];
     question: string;
     setQuestion: (v: string) => void;
     useCache: boolean;
@@ -27,7 +29,9 @@ const DICT_EXTENSIONS = ['.csv', '.json', '.txt'];
 export const ConfigPanel: FC<ConfigPanelProps> = ({
     dictPath, onDictFileChange, onDictFileDrop, targetCol, setTargetCol,
     excludeCols, setExcludeCols, mode, setMode,
-    suggestedMode, suggestionExplanation, question, setQuestion,
+    suggestedMode, suggestionExplanation,
+    suggestionConfidence, suggestionMatchedKeywords,
+    question, setQuestion,
     useCache, setUseCache, onDictClear,
 }) => {
     const [isDragOver, setIsDragOver] = useState(false);
@@ -146,6 +150,8 @@ export const ConfigPanel: FC<ConfigPanelProps> = ({
                     onSelect={setMode}
                     suggestedMode={suggestedMode}
                     suggestionExplanation={suggestionExplanation}
+                    suggestionConfidence={suggestionConfidence}
+                    suggestionMatchedKeywords={suggestionMatchedKeywords}
                 />
             </div>
 

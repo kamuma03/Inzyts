@@ -172,6 +172,12 @@ async def analyze(
 
         cost_data = cost_estimator.estimate_job_cost(csv_path, analysis_request.mode)
 
+    # Hash the resolved CSV bytes for opportunistic previous-job matching.
+    # Path B (SQL deferred) and Path D (API deferred) leave csv_path = None;
+    # the hash is back-filled by the workflow once those paths materialise the CSV.
+    from src.server.services.csv_hashing import hash_csv_file
+    csv_hash = await asyncio.to_thread(hash_csv_file, csv_path) if csv_path else None
+
     # 2. Create Job Record
     job_id = str(uuid.uuid4())
     new_job = Job(
@@ -181,6 +187,7 @@ async def analyze(
         mode=analysis_request.mode,
         title=analysis_request.title,
         csv_path=csv_path,
+        csv_hash=csv_hash,
         dict_path=analysis_request.dict_path,
         target_column=analysis_request.target_column,
         analysis_type=analysis_request.analysis_type,

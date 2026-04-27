@@ -227,11 +227,24 @@ class AnalysisState(BaseModel):
     issue_frequency: Dict[str, int] = {}
     escalation_log: List[EscalationEvent] = []
 
-    # Resource Tracking
+    # Resource Tracking — global totals
     total_tokens_used: int = 0
     prompt_tokens_used: int = 0
     completion_tokens_used: int = 0
     execution_time: float = 0.0
+
+    # Per-phase token attribution (sum equals the global totals).
+    # Drives /jobs/{id}/cost so the Command Center CostBreakdown panel
+    # shows where the money was spent.
+    phase1_tokens_used: int = 0
+    phase1_prompt_tokens: int = 0
+    phase1_completion_tokens: int = 0
+    phase2_tokens_used: int = 0
+    phase2_prompt_tokens: int = 0
+    phase2_completion_tokens: int = 0
+    extensions_tokens_used: int = 0
+    extensions_prompt_tokens: int = 0
+    extensions_completion_tokens: int = 0
 
     # Final Output
     final_notebook_path: Optional[str] = None

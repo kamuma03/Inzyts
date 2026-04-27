@@ -1,70 +1,65 @@
 import { useEffect, useRef, useState } from 'react';
-import { AnalysisAPI, ModeSuggestionResponse } from '../api';
+import type { Mode, SuggestionResult } from '../utils/modeHeuristic';
+import { suggestMode } from '../utils/modeHeuristic';
 
 interface ModeSuggestionState {
-    suggestedMode: ModeSuggestionResponse['suggested_mode'] | null;
-    confidence: ModeSuggestionResponse['confidence'] | null;
+    suggestedMode: Mode | null;
+    confidence: number | null;
     explanation: string | null;
-    isLoading: boolean;
+    matchedKeywords: string[];
 }
 
-export const useModeSuggestion = (question: string, targetColumn: string) => {
-    const [state, setState] = useState<ModeSuggestionState>({
-        suggestedMode: null,
-        confidence: null,
-        explanation: null,
-        isLoading: false,
-    });
+const EMPTY: ModeSuggestionState = {
+    suggestedMode: null,
+    confidence: null,
+    explanation: null,
+    matchedKeywords: [],
+};
+
+interface ProfileHints {
+    hasDatetime?: boolean;
+}
+
+export const useModeSuggestion = (
+    question: string,
+    targetColumn: string,
+    hints: ProfileHints = {},
+) => {
+    const [state, setState] = useState<ModeSuggestionState>(EMPTY);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const abortRef = useRef(false);
 
     useEffect(() => {
-        // Clear previous timer
-        if (timerRef.current) {
-            clearTimeout(timerRef.current);
-        }
+        if (timerRef.current) clearTimeout(timerRef.current);
 
         const trimmedQ = question.trim();
-        const trimmedT = targetColumn.trim();
-
-        // Nothing to suggest on
-        if (!trimmedQ && !trimmedT) {
-            setState({ suggestedMode: null, confidence: null, explanation: null, isLoading: false });
+        if (trimmedQ.length < 8) {
+            setState(EMPTY);
             return;
         }
 
-        abortRef.current = false;
-        setState(prev => ({ ...prev, isLoading: true }));
+        timerRef.current = setTimeout(() => {
+            const result: SuggestionResult | null = suggestMode(trimmedQ, {
+                hasDatetime: !!hints.hasDatetime,
+                hasTargetCol: !!targetColumn.trim(),
+            });
 
-        timerRef.current = setTimeout(async () => {
-            try {
-                const result = await AnalysisAPI.suggestMode(
-                    trimmedQ || undefined,
-                    trimmedT || undefined,
-                );
-                if (!abortRef.current) {
-                    setState({
-                        suggestedMode: result.suggested_mode,
-                        confidence: result.confidence,
-                        explanation: result.explanation,
-                        isLoading: false,
-                    });
-                }
-            } catch {
-                // Silently ignore errors — suggestion is non-critical
-                if (!abortRef.current) {
-                    setState(prev => ({ ...prev, isLoading: false }));
-                }
+            if (!result) {
+                setState(EMPTY);
+                return;
             }
-        }, 500);
+
+            setState({
+                suggestedMode: result.mode,
+                confidence: result.confidence,
+                explanation: result.explanation,
+                matchedKeywords: result.matched_keywords,
+            });
+        }, 300);
 
         return () => {
-            abortRef.current = true;
-            if (timerRef.current) {
-                clearTimeout(timerRef.current);
-            }
+            if (timerRef.current) clearTimeout(timerRef.current);
         };
-    }, [question, targetColumn]);
+    }, [question, targetColumn, hints.hasDatetime]);
 
     return state;
 };

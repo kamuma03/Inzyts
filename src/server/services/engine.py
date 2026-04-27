@@ -71,6 +71,11 @@ class SocketIOHandler(logging.Handler):
             self._tracker: Optional["ProgressTracker"] = ProgressTracker()
         except Exception:
             self._tracker = None
+        try:
+            from src.server.services.phase_state import PhaseStateTracker
+            self._phase_tracker: Optional["PhaseStateTracker"] = PhaseStateTracker()
+        except Exception:
+            self._phase_tracker = None
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
@@ -119,6 +124,22 @@ class SocketIOHandler(logging.Handler):
                         }, room=self.job_id)
                     except Exception:
                         pass  # Progress tracking must not break job execution
+
+                # Update phase-state tracker and emit phase_update on change
+                if self._phase_tracker:
+                    try:
+                        snapshot = self._phase_tracker.update_from_event(
+                            self.job_id,
+                            getattr(record, "event"),
+                            getattr(record, "agent", None),
+                        )
+                        if snapshot is not None:
+                            self.mgr.emit("phase_update", {
+                                "job_id": self.job_id,
+                                "phases": snapshot,
+                            }, room=self.job_id)
+                    except Exception:
+                        pass  # phase tracking must never break job execution
 
             self.mgr.emit("log", payload, room=self.job_id)
         except Exception as e:
@@ -173,8 +194,19 @@ class AnalysisTaskParams:
 
 
 @contextmanager
-def setup_job_logging(job_id: str, log_file: Path):
-    """Context manager for job-specific logging."""
+def setup_job_logging(
+    job_id: str,
+    log_file: Path,
+    *,
+    previous_job_id: Optional[str] = None,
+    previous_metrics: Optional[Dict] = None,
+):
+    """Context manager for job-specific logging.
+
+    Also spins up a 500ms ``metrics_snapshot`` aggregator and clears the
+    Command Center phase-state Redis blob on entry/exit so a re-run starts
+    from a clean rail.
+    """
     socket_handler = SocketIOHandler(job_id)
     socket_handler.setLevel(logging.INFO)
 
@@ -188,9 +220,33 @@ def setup_job_logging(job_id: str, log_file: Path):
     root_logger.addHandler(socket_handler)
     root_logger.addHandler(file_handler)
 
+    aggregator = None
+    try:
+        from src.server.services.metrics_aggregator import MetricsAggregator
+        aggregator = MetricsAggregator(
+            job_id,
+            previous_job_id=previous_job_id,
+            previous_metrics=previous_metrics,
+        )
+        aggregator.start()
+    except Exception as e:
+        logger.debug(f"MetricsAggregator failed to start for {job_id}: {e}")
+
+    # Reset any stale phase state from a previous run so the rail starts clean.
+    try:
+        from src.server.services.phase_state import PhaseStateTracker
+        PhaseStateTracker().clear(job_id)
+    except Exception:
+        pass
+
     try:
         yield
     finally:
+        if aggregator is not None:
+            try:
+                aggregator.stop()
+            except Exception:
+                pass
         root_logger.removeHandler(socket_handler)
         root_logger.removeHandler(file_handler)
         file_handler.close()
@@ -223,7 +279,45 @@ def execution_task(self, job_id: str, csv_path: Optional[str] = None, mode: str 
             job_id=job_id, csv_path=csv_path, mode=mode, **kwargs
         )
 
-        with setup_job_logging(job_id, log_file):
+        # Look up the most recent comparable completed job (same user + mode + csv_hash)
+        # for KPI deltas in the Command Center top strip.
+        previous_job_id: Optional[str] = None
+        previous_metrics: Optional[Dict] = None
+        try:
+            from sqlalchemy import select
+            user_id = getattr(job, "user_id", None)
+            csv_hash = getattr(job, "csv_hash", None)
+            if user_id and csv_hash:
+                prev_q = (
+                    select(Job)
+                    .where(Job.user_id == user_id)
+                    .where(Job.mode == job.mode)
+                    .where(Job.csv_hash == csv_hash)
+                    .where(Job.status == JobStatus.COMPLETED)
+                    .where(Job.id != job_id)
+                    .order_by(Job.created_at.desc())
+                    .limit(1)
+                )
+                prev = session.execute(prev_q).scalar_one_or_none()
+                if prev is not None:
+                    previous_job_id = prev.id  # type: ignore[assignment]
+                    prev_cost = (prev.cost_estimate or {}).get("total") if isinstance(prev.cost_estimate, dict) else None
+                    prev_tokens = (prev.token_usage or {}).get("total") if isinstance(prev.token_usage, dict) else None
+                    previous_metrics = {
+                        "tokens_used": prev_tokens,
+                        "cost_usd": prev_cost,
+                        "elapsed_seconds": None,
+                        "quality_score": None,
+                    }
+        except Exception as e:
+            logger.debug(f"previous-job lookup failed for {job_id}: {e}")
+
+        with setup_job_logging(
+            job_id,
+            log_file,
+            previous_job_id=previous_job_id,
+            previous_metrics=previous_metrics,
+        ):
             try:
                 job.status = JobStatus.RUNNING  # type: ignore
                 job.logs_location = str(log_file.absolute())  # type: ignore
@@ -257,6 +351,26 @@ def execution_task(self, job_id: str, csv_path: Optional[str] = None, mode: str 
 
                     cost = calculate_cost(prompt_tokens, completion_tokens, model_name)
                     job.cost_estimate = {"estimated_cost_usd": round(cost, 6), "total": round(cost, 6)}  # type: ignore
+
+                    # Per-phase cost breakdown — sum invariant: rows total ≈ overall cost.
+                    breakdown = []
+                    for phase_id, phase_label in (
+                        ("phase1", "Phase 1: Data Understanding"),
+                        ("extensions", "Extensions"),
+                        ("phase2", "Phase 2: Analysis & Modeling"),
+                    ):
+                        p_prompt = getattr(final_state, f"{phase_id}_prompt_tokens", 0)
+                        p_completion = getattr(final_state, f"{phase_id}_completion_tokens", 0)
+                        p_cost = calculate_cost(p_prompt, p_completion, model_name)
+                        breakdown.append({
+                            "phase": phase_id,
+                            "label": phase_label,
+                            "cost_usd": round(p_cost, 6),
+                            "prompt_tokens": p_prompt,
+                            "completion_tokens": p_completion,
+                            "is_estimate": False,
+                        })
+                    job.cost_breakdown = breakdown  # type: ignore
 
                     if final_state.final_notebook_path:
                         job.status = JobStatus.COMPLETED  # type: ignore

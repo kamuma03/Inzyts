@@ -57,20 +57,23 @@ describe('ModeSelector', () => {
         expect(screen.queryByText('Suggested')).not.toBeInTheDocument()
     })
 
-    it('shows AI suggestion banner with Apply button', () => {
+    it('shows AI suggestion banner with matched keywords and Apply button', () => {
         render(
             <ModeSelector
                 {...defaultProps}
                 selectedMode="exploratory"
                 suggestedMode="diagnostic"
-                suggestionExplanation="Keywords suggest diagnostic analysis."
+                suggestionExplanation='matched "why did", "caused"'
+                suggestionConfidence={0.7}
+                suggestionMatchedKeywords={['why did', 'caused']}
             />
         )
 
         expect(screen.getByText(/ai suggests/i)).toBeInTheDocument()
         // 'Diagnostic' appears in both the banner and the card label
         expect(screen.getAllByText('Diagnostic').length).toBeGreaterThanOrEqual(1)
-        expect(screen.getByText(/keywords suggest/i)).toBeInTheDocument()
+        // Matched keywords are visible in the banner
+        expect(screen.getByText(/matched "why did", "caused"/)).toBeInTheDocument()
         expect(screen.getByText('Apply')).toBeInTheDocument()
     })
 

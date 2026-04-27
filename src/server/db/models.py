@@ -47,6 +47,7 @@ class Job(Base):
 
     # Inputs
     csv_path = Column(String)
+    csv_hash = Column(String(64), nullable=True, index=True)  # sha256 of resolved CSV bytes
     multi_file_input = Column(JSON, nullable=True)  # v1.8.0 Multi-file configuration
     dict_path = Column(String, nullable=True)  # Data dictionary
     target_column = Column(String, nullable=True)
@@ -68,6 +69,9 @@ class Job(Base):
     cost_estimate = Column(
         JSON, default=dict
     )  # {"input": 0.0, "output": 0.0, "total": 0.0}
+    cost_breakdown = Column(
+        JSON, nullable=True
+    )  # [{"phase": "phase1", "cost_usd": 0.12, "is_estimate": false}, ...]
 
 
 class Project(Base):

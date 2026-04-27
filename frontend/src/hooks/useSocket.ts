@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import type { PhaseStatus, RunMetrics } from '../api';
 
 export interface LogMessage {
     timestamp: string;
@@ -29,6 +30,8 @@ export const useSocket = (jobId: string | null) => {
     const [logs, setLogs] = useState<LogMessage[]>([]);
     const [events, setEvents] = useState<AgentEvent[]>([]);
     const [progress, setProgress] = useState<ProgressUpdate | null>(null);
+    const [metrics, setMetrics] = useState<RunMetrics | null>(null);
+    const [phases, setPhases] = useState<PhaseStatus[] | null>(null);
     const [isConnected, setIsConnected] = useState(false);
     const socketRef = useRef<Socket | null>(null);
 
@@ -65,6 +68,8 @@ export const useSocket = (jobId: string | null) => {
             setLogs([]);
             setEvents([]);
             setProgress(null);
+            setMetrics(null);
+            setPhases(null);
         });
 
         socket.on('disconnect', () => {
@@ -110,6 +115,16 @@ export const useSocket = (jobId: string | null) => {
             setProgress(data);
         });
 
+        socket.on('metrics_snapshot', (data: RunMetrics) => {
+            if (!mounted) return;
+            setMetrics(data);
+        });
+
+        socket.on('phase_update', (data: { job_id: string; phases: PhaseStatus[] }) => {
+            if (!mounted) return;
+            setPhases(data.phases);
+        });
+
         return () => {
             mounted = false;
             socket.off('connect');
@@ -117,11 +132,13 @@ export const useSocket = (jobId: string | null) => {
             socket.off('log');
             socket.off('agent_event');
             socket.off('progress');
+            socket.off('metrics_snapshot');
+            socket.off('phase_update');
             socket.disconnect();
             // Clear the ref so stale socket instances don't linger when jobId changes.
             socketRef.current = null;
         };
     }, [jobId]);
 
-    return { logs, events, progress, isConnected };
+    return { logs, events, progress, metrics, phases, isConnected };
 };

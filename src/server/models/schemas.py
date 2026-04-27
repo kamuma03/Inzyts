@@ -295,3 +295,49 @@ class ModeSuggestionResponse(BaseModel):
     detection_method: str
     confidence: str  # "high", "medium", "low"
     explanation: str
+
+
+# ---------------------------------------------------------------------------
+# Command Center response schemas
+# ---------------------------------------------------------------------------
+
+
+class ColumnStats(BaseModel):
+    """Numeric stats surfaced for the Command Center column inspector."""
+
+    mean: float | None = None
+    median: float | None = None
+    min: float | None = None
+    max: float | None = None
+    p99: float | None = None
+
+
+class ColumnProfileResponse(BaseModel):
+    """Per-column profile rolled up for the Command Center right rail."""
+
+    name: str
+    dtype: str  # frontend-facing label: int / float / datetime / category / text / bool
+    cardinality_or_range: str  # "12 levels", "0–4.8K", "2.3M unique"
+    role: str  # target / time / dim / metric / pii / other
+    null_count: int
+    histogram: list[float] = Field(default_factory=list)  # normalised 0..1 bins
+    stats: ColumnStats | None = None
+
+
+class CostBreakdownRow(BaseModel):
+    """One row of the per-phase cost breakdown."""
+
+    phase: str  # "phase1" / "phase2" / "extensions"
+    label: str
+    cost_usd: float
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    is_estimate: bool = False
+
+
+class CostBreakdownResponse(BaseModel):
+    """Response payload for GET /jobs/{id}/cost."""
+
+    total_cost_usd: float
+    rows: list[CostBreakdownRow]
+    is_estimate: bool = False

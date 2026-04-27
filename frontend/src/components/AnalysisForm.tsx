@@ -59,7 +59,12 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
     const [isDragOver, setIsDragOver] = useState(false);
 
     // Mode suggestion
-    const { suggestedMode, explanation: suggestionExplanation } = useModeSuggestion(question, targetCol);
+    const {
+        suggestedMode,
+        explanation: suggestionExplanation,
+        confidence: suggestionConfidence,
+        matchedKeywords: suggestionMatchedKeywords,
+    } = useModeSuggestion(question, targetCol);
 
     // DB Test State
     const [dbTestResult, setDbTestResult] = useState<{ status: string; dialect?: string; host?: string | null; tables?: string[] | null; error?: string | null } | null>(null);
@@ -340,6 +345,8 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
                     excludeCols={excludeCols} setExcludeCols={setExcludeCols}
                     mode={mode} setMode={setMode}
                     suggestedMode={suggestedMode} suggestionExplanation={suggestionExplanation}
+                    suggestionConfidence={suggestionConfidence}
+                    suggestionMatchedKeywords={suggestionMatchedKeywords}
                     question={question} setQuestion={setQuestion}
                     useCache={useCache} setUseCache={setUseCache}
                 />

@@ -365,6 +365,114 @@ export const AnalysisAPI = {
     },
 };
 
+// ---------------------------------------------------------------------------
+// Command Center types
+// ---------------------------------------------------------------------------
+
+export interface PreviousMetrics {
+    tokens_used: number | null;
+    cost_usd: number | null;
+    elapsed_seconds: number | null;
+    quality_score: number | null;
+}
+
+export interface RunMetrics {
+    job_id: string;
+    elapsed_seconds: number;
+    eta_seconds: number | null;
+    tokens_used: number;
+    prompt_tokens: number;
+    completion_tokens: number;
+    cost_usd: number;
+    quality_score: number | null;
+    agents_active: number;
+    agents_total: number;
+    previous_job_id: string | null;
+    previous: PreviousMetrics | null;
+}
+
+export type PipelinePhaseId = 'phase1' | 'extensions' | 'phase2';
+export type PhaseStatusValue = 'queued' | 'running' | 'done' | 'failed';
+
+export interface AgentSummary {
+    name: string;
+    status: PhaseStatusValue;
+    started_at: number | null;
+    finished_at: number | null;
+}
+
+export interface SubStepStatus {
+    id: string;
+    name: string;
+    status: PhaseStatusValue;
+    started_at: number | null;
+    finished_at: number | null;
+    agents: AgentSummary[];
+}
+
+export interface PhaseStatus {
+    id: PipelinePhaseId;
+    name: string;
+    status: PhaseStatusValue;
+    started_at: number | null;
+    finished_at: number | null;
+    retries: number;
+    steps: SubStepStatus[];
+}
+
+export interface PhaseUpdatePayload {
+    job_id: string;
+    phases: PhaseStatus[];
+}
+
+export type ColumnDtype = 'int' | 'float' | 'datetime' | 'category' | 'text' | 'bool';
+export type ColumnRole = 'target' | 'time' | 'dim' | 'metric' | 'pii' | 'other';
+
+export interface ColumnStats {
+    mean?: number | null;
+    median?: number | null;
+    min?: number | null;
+    max?: number | null;
+    p99?: number | null;
+}
+
+export interface ColumnProfile {
+    name: string;
+    dtype: ColumnDtype;
+    cardinality_or_range: string;
+    role: ColumnRole;
+    null_count: number;
+    histogram: number[];
+    stats: ColumnStats | null;
+}
+
+export interface CostBreakdownRow {
+    phase: string;
+    label: string;
+    cost_usd: number;
+    prompt_tokens: number;
+    completion_tokens: number;
+    is_estimate: boolean;
+}
+
+export interface CostBreakdownResponse {
+    total_cost_usd: number;
+    rows: CostBreakdownRow[];
+    is_estimate: boolean;
+}
+
+// Adds Command Center API methods to AnalysisAPI surface.
+export const CommandCenterAPI = {
+    getColumns: async (jobId: string): Promise<ColumnProfile[]> => {
+        const response = await api.get<ColumnProfile[]>(`/jobs/${encodeURIComponent(jobId)}/columns`);
+        return response.data;
+    },
+    getCost: async (jobId: string): Promise<CostBreakdownResponse> => {
+        const response = await api.get<CostBreakdownResponse>(`/jobs/${encodeURIComponent(jobId)}/cost`);
+        return response.data;
+    },
+};
+
 export interface DomainTemplate {
     domain_name: string;
     description: string;

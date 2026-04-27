@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Libre+Caslon+Display&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Libre+Caslon+Display&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
 *,
@@ -40,6 +40,16 @@
   --text-primary: #e0e1dd;
   --text-secondary: #a0aab5;
   --border-color: #415a77;
+
+  /* Command Center role tokens */
+  --bg-surface-hi: #152133;
+  --text-dim: #5a6478;
+  --accent-violet: #a78bfa;
+  --status-good: #34d399;
+  --status-warn: #fbbf24;
+  --status-bad: #f87171;
+
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 body {
