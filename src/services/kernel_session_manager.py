@@ -99,6 +99,24 @@ print(df.dtypes.to_string())
         self.last_activity = time.time()
         return self.executor.execute_cell(code)
 
+    def execute_streaming(self, code: str, on_output) -> ExecutionResult:
+        """Execute code with per-message callbacks for streaming UI updates.
+
+        ``on_output`` is invoked synchronously with each Jupyter IOPub event
+        in nbformat shape — see KernelSandbox.execute_cell_streaming.
+        """
+        if not self.executor or not self.executor.kc:
+            raise RuntimeError("Kernel not initialized")
+
+        self.last_activity = time.time()
+        # The wrapper SandboxExecutor exposes the inner KernelSandbox as
+        # ._sandbox; reach through for the streaming method.
+        sandbox = getattr(self.executor, "_sandbox", None)
+        if sandbox and hasattr(sandbox, "execute_cell_streaming"):
+            return sandbox.execute_cell_streaming(code, on_output=on_output)
+        # Fallback for any executor that doesn't expose streaming.
+        return self.executor.execute_cell(code)
+
     def is_expired(self, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> bool:
         """Check if the session has been idle beyond the TTL."""
         return (time.time() - self.last_activity) > ttl_seconds
@@ -140,6 +158,41 @@ print("\\n".join(_lines[:50]))
             logger.warning(f"Kernel introspection failed for job {self.job_id}: {e}")
 
         return self.df_context  # Fallback
+
+    def restart(self) -> None:
+        """Restart the underlying kernel.
+
+        Used by the Live panel's "Restart kernel" control. Tears down the
+        current executor and re-bootstraps the dataset so subsequent cells
+        start from a known clean state.
+        """
+        if self.executor:
+            try:
+                self.executor.shutdown()
+            except Exception as e:
+                logger.warning(f"Restart shutdown raised for job {self.job_id}: {e}")
+            self.executor = None
+        self._initialized = False
+        self.last_activity = time.time()
+        # Re-run the same bootstrap that ``start`` did so the dataset is
+        # available again. Caller is responsible for handling any failure.
+        self.start()
+        logger.info(f"Kernel session restarted for job {self.job_id}")
+
+    def interrupt(self) -> None:
+        """Send an interrupt to the running cell, if any.
+
+        Best-effort: routes through the underlying kernel's interrupt
+        mechanism. For hard kills on a runaway cell, the wall-clock
+        timeout in ``SandboxPolicy`` will SIGKILL the process group.
+        """
+        if not self.executor or not self.executor.km:
+            return
+        try:
+            self.executor.km.interrupt_kernel()
+            logger.info(f"Interrupted kernel for job {self.job_id}")
+        except Exception as e:
+            logger.warning(f"Interrupt failed for job {self.job_id}: {e}")
 
     def shutdown(self) -> None:
         """Shutdown the kernel."""
@@ -281,6 +334,26 @@ class KernelSessionManager:
             session = self._sessions.pop(job_id, None)
             if session:
                 session.shutdown()
+
+    def restart_session(self, job_id: str) -> Optional[KernelSession]:
+        """Restart the kernel for an existing session, preserving the entry.
+
+        Returns the (now-restarted) session, or None if no session exists.
+        """
+        with self._session_lock:
+            session = self._sessions.get(job_id)
+            if session:
+                session.restart()
+                return session
+            return None
+
+    def interrupt_session(self, job_id: str) -> bool:
+        """Best-effort interrupt of the currently-running cell."""
+        session = self.get_session(job_id)
+        if not session:
+            return False
+        session.interrupt()
+        return True
 
     def cleanup_expired(self) -> None:
         """Remove all expired sessions."""

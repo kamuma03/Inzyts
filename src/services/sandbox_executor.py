@@ -335,6 +335,31 @@ class KernelSandbox:
         except (ProcessLookupError, PermissionError, OSError):
             pass
 
+    def execute_cell_streaming(
+        self,
+        code: str,
+        on_output: Optional[Callable[[Dict[str, Any]], None]] = None,
+    ) -> ExecutionResult:
+        """Execute one cell, calling ``on_output`` for every IOPub message.
+
+        ``on_output`` receives a dict in Jupyter notebook output format:
+
+            {"output_type": "stream", "name": "stdout"|"stderr", "text": "..."}
+            {"output_type": "display_data", "data": {"image/png": "base64...",
+                                                      "text/plain": "..."}}
+            {"output_type": "execute_result", "data": {...}}
+            {"output_type": "error", "ename": "...", "evalue": "...",
+             "traceback": ["..."]}
+            {"output_type": "status", "execution_state": "busy"|"idle"}
+
+        Returns the same ``ExecutionResult`` aggregate as ``execute_cell`` so
+        callers that don't care about streaming get a usable summary.
+
+        ``on_output`` is invoked synchronously on the calling thread; if it
+        raises, the exception is logged and execution continues.
+        """
+        return self._execute(code, on_output=on_output)
+
     def execute_cell(self, code: str) -> ExecutionResult:
         """Execute one cell and return a structured result.
 
@@ -342,6 +367,13 @@ class KernelSandbox:
         the kernel's process group, mark the result as ``ERR_TIMEOUT``, and
         leave it to the caller (or a kernel pool) to restart the kernel.
         """
+        return self._execute(code, on_output=None)
+
+    def _execute(
+        self,
+        code: str,
+        on_output: Optional[Callable[[Dict[str, Any]], None]],
+    ) -> ExecutionResult:
         result = ExecutionResult()
         output_parts: List[str] = []
         started_at = time.time()
@@ -383,6 +415,39 @@ class KernelSandbox:
 
                 msg_type = msg["header"]["msg_type"]
                 content = msg["content"]
+
+                # Stream to the optional callback in nbformat-shaped events
+                # so callers (e.g. the Live panel WS emitter) can render
+                # output incrementally. Errors in the callback are isolated
+                # so a flaky listener can never break the kernel loop.
+                if on_output is not None:
+                    try:
+                        if msg_type == "status":
+                            on_output({
+                                "output_type": "status",
+                                "execution_state": content.get("execution_state"),
+                            })
+                        elif msg_type == "stream":
+                            on_output({
+                                "output_type": "stream",
+                                "name": content.get("name"),
+                                "text": content.get("text", ""),
+                            })
+                        elif msg_type in ("execute_result", "display_data"):
+                            on_output({
+                                "output_type": msg_type,
+                                "data": content.get("data", {}),
+                                "metadata": content.get("metadata", {}),
+                            })
+                        elif msg_type == "error":
+                            on_output({
+                                "output_type": "error",
+                                "ename": content.get("ename"),
+                                "evalue": content.get("evalue"),
+                                "traceback": content.get("traceback", []),
+                            })
+                    except Exception as cb_err:
+                        logger.warning(f"on_output callback raised: {cb_err}")
 
                 if msg_type == "status":
                     if content["execution_state"] == "idle":

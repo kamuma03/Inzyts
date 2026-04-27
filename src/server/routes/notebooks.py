@@ -179,6 +179,107 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str, kernel_id: str):
     await jupyter_service.proxy_websocket(websocket, kernel_id)
 
 
+@router.post("/{job_id}/cells/execute")
+async def execute_cell_in_session(
+    job_id: str,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(verify_token),
+):
+    """Execute one cell in the job's live kernel session.
+
+    Body: ``{"code": "...", "execution_id": "client-generated-uuid"}``
+
+    The actual output streams over Socket.IO as ``cell_status`` /
+    ``cell_output`` / ``cell_complete`` events keyed by ``execution_id``.
+    The HTTP response only carries the aggregate result for callers that
+    don't subscribe — the Live panel uses WS exclusively.
+    """
+    import uuid as _uuid
+
+    code = (body or {}).get("code", "")
+    execution_id = (body or {}).get("execution_id") or _uuid.uuid4().hex
+    if not isinstance(code, str) or not code.strip():
+        raise HTTPException(status_code=400, detail="Empty code payload")
+
+    # Resolve job + ensure it exists & user owns it.
+    result = await db.execute(select(Job).filter(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Initialise the session lazily — first execute creates the kernel.
+    from src.services.kernel_session_manager import kernel_session_manager
+    from src.server.services.cell_stream import stream_execute
+
+    csv_path = job.csv_path or ""
+    try:
+        kernel_session_manager.get_or_create_session(job_id=job_id, csv_path=csv_path)
+    except Exception as e:
+        logger.error(f"Failed to bootstrap kernel session for {job_id}: {e}")
+        raise HTTPException(status_code=500, detail="Could not start kernel session")
+
+    user_id = getattr(current_user, "id", None)
+    res = stream_execute(
+        job_id=job_id, execution_id=execution_id, code=code, user_id=user_id,
+    )
+    return {
+        "execution_id": execution_id,
+        "success": res.success,
+        "error_name": res.error_name,
+        "error_value": res.error_value,
+        "duration_ms": res.duration_ms,
+        "killed_reason": res.killed_reason,
+        "execution_count": res.execution_count,
+    }
+
+
+@router.post("/{job_id}/cells/restart")
+async def restart_cell_session(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+    _token: str = Depends(verify_token),
+):
+    """Restart the kernel for the job's session, preserving the session entry.
+
+    Drops all in-kernel state (variables, imports, dataframes) and re-runs
+    the dataset bootstrap. Returns 404 if no session exists.
+    """
+    result = await db.execute(select(Job).filter(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    from src.services.kernel_session_manager import kernel_session_manager
+    session = kernel_session_manager.restart_session(job_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="No active session for job")
+    return {"job_id": job_id, "status": "restarted"}
+
+
+@router.post("/{job_id}/cells/interrupt")
+async def interrupt_cell_session(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+    _token: str = Depends(verify_token),
+):
+    """Send a soft interrupt to the currently-running cell.
+
+    Best-effort — for hard kills on a runaway cell, the SandboxPolicy
+    wall-clock timeout will SIGKILL the process group regardless.
+    """
+    result = await db.execute(select(Job).filter(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    from src.services.kernel_session_manager import kernel_session_manager
+    ok = kernel_session_manager.interrupt_session(job_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="No active session for job")
+    return {"job_id": job_id, "status": "interrupted"}
+
+
 @router.get("/{job_id}/cells")
 async def get_notebook_cells(
     job_id: str,

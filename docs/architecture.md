@@ -175,6 +175,55 @@ Output: Jupyter Notebook (.ipynb)
 *   **Decision**: Validators must execute generated code in a sandbox (`src/core/sandbox.py`) rather than just reading it.
 *   **Rationale**: Code can look syntactically correct but fail at runtime (e.g., `KeyError: 'column_name'`, empty plot). Static analysis is insufficient for data science code. The Validators run the actual code on the actual data to verify that assets (plots, variables) are created.
 
+#### Threat Model — LLM-Generated Code Execution
+
+LLM-generated code is *fundamentally untrusted input*. It runs against
+user data, can be steered by prompt-injected payloads embedded in that
+data, and can attempt to exfiltrate, escalate, or exhaust resources.
+The sandbox layer (`src/services/sandbox_executor.py::KernelSandbox`)
+enforces a layered policy via `SandboxPolicy`:
+
+| # | Threat | Control | Where it fires |
+|---|---|---|---|
+| 1 | Memory bomb (`bytearray(2**40)` etc.) | `RLIMIT_AS` cap (default 2 GB) | `preexec_fn` in kernel child before `execve` |
+| 2 | CPU loop / CPU drain | `RLIMIT_CPU` (default 300 s) + wall-clock timeout (default 60 s) | child cap + parent `os.killpg(SIGKILL)` on overrun |
+| 3 | Fork bomb | `RLIMIT_NPROC` (default 64) | `preexec_fn` |
+| 4 | FD exhaustion | `RLIMIT_NOFILE` (default 256) | `preexec_fn` |
+| 5 | Disk-fill via giant write | `RLIMIT_FSIZE` (default 100 MB per file) | `preexec_fn` |
+| 6 | Network exfiltration via `requests`, `urllib`, `httpx`, `pip`, ... | `http_proxy` / `HTTPS_PROXY` / `all_proxy` set to `http://127.0.0.1:1` blackhole; `no_proxy=""` so no escape route | env passed to kernel subprocess |
+| 7 | Credential theft from worker env | Strip `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `JUPYTER_TOKEN`, `INZYTS_API_TOKEN`, `JWT_SECRET_KEY`, `POSTGRES_PASSWORD`, `ADMIN_PASSWORD`, and the `INZYTS__LLM__*_API_KEY` variants from the kernel's environment | `_build_kernel_env` |
+| 8 | Privilege escalation via the kernel process | Worker container creates a non-root `inzyts` user (`useradd --no-create-home --shell /bin/false`), and `docker-entrypoint.sh` drops privileges via `gosu inzyts` before starting the celery worker. Kernel children inherit uid 1000. | Dockerfile + `docker-entrypoint.sh` |
+| 9 | Process tree escape (kernel forks subprocesses that survive cancel) | `os.setsid()` in `preexec_fn` puts the kernel in its own process group; cancellation uses `os.killpg(getpgid, SIGKILL)` so the whole tree dies | `_build_preexec_fn` + `KernelSandbox._killpg` |
+| 10 | Path traversal via relative file ops | Kernel `cwd` defaults to a per-job tmpdir (`/tmp/inzyts-kernel-*`) cleaned up on shutdown | `KernelSandbox._start_kernel` |
+
+##### Out of scope (acknowledged residual risk)
+
+* **Raw-socket egress via `ctypes`**: a determined attacker can call
+  `socket()` directly via libc, bypassing the proxy env vars. The
+  production-grade complement is a **network-layer egress block**: run
+  the worker container with `cap_add: [NET_ADMIN]` and an entrypoint
+  that installs `iptables -A OUTPUT -j DROP` rules with an explicit
+  allowlist for the LLM provider's hostnames, or — preferred — route
+  all egress through a dedicated egress-proxy sidecar that holds the
+  only credentials. This is a deploy-time hardening, not enabled by
+  default to avoid breaking dev environments.
+* **Side-channel attacks** (timing, cache, Spectre-class): not in scope.
+  For workloads with classified data, run the worker on dedicated hosts.
+* **Filesystem reads of unprivileged worker code**: the kernel can read
+  `/app/src` (the worker's source) since it's bind-mounted read-write
+  for hot-reload. A privileged deploy should mount source read-only and
+  use a read-only filesystem outside `/data/uploads` and `/output`.
+* **Docker escape**: the container boundary is the outer security
+  perimeter. CVEs in the container runtime are not addressed here.
+
+##### Per-cell audit logging
+
+Every cell execution writes a `CellExecutionAudit` row (job_id, user_id,
+sha256(code), code_length, duration_ms, success, error_name,
+killed_reason, policy_name). Code itself is **not** stored — only the
+hash, for forensics and dedup. See migration
+`alembic/versions/d2e3f4a5b6c7_add_cell_execution_audit_table.py`.
+
 ### ADR 6: Profile Caching & Upgradability
 *   **Decision**: Store successful Phase 1 profiles in `~/.Inzyts_cache` keyed by CSV hash.
 *   **Rationale**: Phase 1 (Profiling) is computationally expensive and deterministic for a given dataset version. By caching the validated profile, we enable a "Chat with Data" experience (Exploratory Mode) that can be instantly upgraded to "Train a Model" (Predictive Mode) without forcing the user to wait for profiling again.

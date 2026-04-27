@@ -127,3 +127,29 @@ class AuditLog(Base):
     status_code = Column(Integer, nullable=True)
     method = Column(String, nullable=True)  # HTTP method
     path = Column(String, nullable=True)  # request path
+
+
+class CellExecutionAudit(Base):
+    """Per-cell execution log for the Live panel sandbox.
+
+    Each row records a single cell run for forensics — sized for both
+    legitimate analyst sessions and incident investigation. ``code_hash``
+    is a sha256 of the submitted code (full code is intentionally NOT
+    stored to keep this table cheap and privacy-respecting). ``killed_reason``
+    is set when the SandboxPolicy enforced a limit (e.g. "timeout",
+    "memory", "kernel_dead").
+    """
+
+    __tablename__ = "cell_execution_audit"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    job_id = Column(String, ForeignKey("jobs.id"), index=True, nullable=False)
+    user_id = Column(String, index=True, nullable=True)
+    code_hash = Column(String(64), nullable=False)
+    code_length = Column(Integer, nullable=False)
+    duration_ms = Column(Integer, nullable=True)
+    success = Column(Boolean, default=True, nullable=False)
+    error_name = Column(String, nullable=True)
+    killed_reason = Column(String, nullable=True)  # set by policy enforcement
+    policy_name = Column(String, nullable=True)  # e.g. "production", "development"
