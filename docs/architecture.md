@@ -200,8 +200,8 @@ Output: Jupyter Notebook (.ipynb)
 *   Extensions enrich the locked profile with mode-specific context without re-profiling.
 *   Extensions only run when needed, keeping other modes lightweight.
 
-### ADR 9: 27-Agent Specialization
-*   **Decision**: Expand to 27 agents with mode-specific strategy, codegen, and validation agents.
+### ADR 9: 22-Agent Specialization
+*   **Decision**: 22 specialised agents organised into a 2-phase pipeline (Phase 1: Data Understanding → Phase 2: Analysis & Modeling) with mode-specific strategy, codegen, and validation agents.
 *   **Rationale**:
     - Each mode has unique requirements (time series vs clustering vs A/B testing vs dimensionality reduction)
     - Generic "one-size-fits-all" agents lead to poor code quality and hallucinations
@@ -259,11 +259,11 @@ Output: Jupyter Notebook (.ipynb)
     *   Normalizes nested JSON into a flat DataFrame via `pd.json_normalize()` and saves as CSV.
 
 #### `src/agents/orchestrator.py`
-*   **What it is**: The Project Manager (Coordinates 27 agents across 7 modes).
+*   **What it is**: The Project Manager (Coordinates 22 agents across 7 modes).
 *   **Key Responsibilities**:
     *   **Mode Detection**: Determines which of 7 modes to use based on input.
     *   **Cache Management**: Checks for collisions/expiry, triggers save/restore.
-    *   **Agent Routing**: Coordinates all 27 agents across phases and extensions.
+    *   **Agent Routing**: Coordinates all 22 agents across phases and extensions.
     *   **Token Tracking**: Aggregates token usage across all agent invocations.
 
 #### `src/server/services/progress_tracker.py`

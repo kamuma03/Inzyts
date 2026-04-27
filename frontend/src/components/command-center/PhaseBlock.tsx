@@ -68,6 +68,7 @@ const SubStepRow: FC<SubStepRowProps> = memo(({ step, inactive }) => {
                 <span
                     className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
                     style={{ backgroundColor: statusVar(inactive ? 'queued' : step.status) }}
+                    aria-hidden="true"
                 />
                 <span className="text-[11px] text-[var(--text-secondary)] flex-1">
                     {step.name}
@@ -104,6 +105,7 @@ const AgentRow: FC<{ agent: AgentSummary }> = memo(({ agent }) => {
             <span
                 className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${isRunning ? 'animate-pulse' : ''}`}
                 style={{ backgroundColor: statusVar(agent.status) }}
+                aria-label={`${agent.name} ${agent.status}`}
             />
             <span
                 className={`font-mono text-[10.5px] truncate ${

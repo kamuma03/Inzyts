@@ -39,6 +39,12 @@ const STEP_PHASE_MAP: Record<string, string> = {
     finalize: 'phase2',
 };
 
+/**
+ * @deprecated Use the Command Center surface instead. This component renders
+ * the legacy 6-step horizontal trace shown on /jobs/:id when
+ * VITE_FEATURE_COMMAND_CENTER is unset/false. Scheduled for removal once the
+ * flag is the default — see docs/plans/ui-refresh-plan.md (§7 Rollback).
+ */
 export const AgentTrace: FC<AgentTraceProps> = ({ status, mode, logs, events, progress }) => {
     // Track when each step became active
     const stepStartTimeRef = useRef<Record<number, number>>({});

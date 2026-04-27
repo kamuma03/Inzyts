@@ -1,4 +1,4 @@
-import { memo, type FC } from 'react';
+import { memo, useMemo, type FC } from 'react';
 import { X, Download } from 'lucide-react';
 import type { JobSummary, RunMetrics } from '../../api';
 import {
@@ -57,25 +57,39 @@ export const TopStrip: FC<TopStripProps> = ({ job, metrics, onCancel, onExport }
     const agentsActive = metrics?.agents_active ?? null;
     const agentsTotal = metrics?.agents_total ?? null;
 
-    const elapsedDelta = previous
-        ? formatDelta(elapsed ?? null, previous.elapsed_seconds ?? null, {
-            lowerIsBetter: true,
-            formatter: (n) => formatDuration(n),
-        })
-        : null;
-    const tokensDelta = previous
-        ? formatDelta(tokens ?? null, previous.tokens_used ?? null, {
-            lowerIsBetter: true,
-            formatter: (n) => formatTokens(n),
-        })
-        : null;
-    const costDelta = previous
-        ? formatDelta(cost ?? null, previous.cost_usd ?? null, {
-            lowerIsBetter: true,
-            formatter: (n) => formatCost(n).replace('$', ''),
-            unit: '',
-        })
-        : null;
+    // Memoise deltas so KpiCell.memo can skip re-renders when only the parent
+    // re-renders without the underlying numbers changing (every 500ms metric tick).
+    const elapsedDelta = useMemo(
+        () =>
+            previous
+                ? formatDelta(elapsed ?? null, previous.elapsed_seconds ?? null, {
+                      lowerIsBetter: true,
+                      formatter: (n) => formatDuration(n),
+                  })
+                : null,
+        [elapsed, previous],
+    );
+    const tokensDelta = useMemo(
+        () =>
+            previous
+                ? formatDelta(tokens ?? null, previous.tokens_used ?? null, {
+                      lowerIsBetter: true,
+                      formatter: (n) => formatTokens(n),
+                  })
+                : null,
+        [tokens, previous],
+    );
+    const costDelta = useMemo(
+        () =>
+            previous
+                ? formatDelta(cost ?? null, previous.cost_usd ?? null, {
+                      lowerIsBetter: true,
+                      formatter: (n) => formatCost(n).replace('$', ''),
+                      unit: '',
+                  })
+                : null,
+        [cost, previous],
+    );
 
     return (
         <div className="border border-[var(--border-color)] rounded-lg bg-[var(--bg-true-cobalt)]">
@@ -87,7 +101,10 @@ export const TopStrip: FC<TopStripProps> = ({ job, metrics, onCancel, onExport }
                 <span className="font-mono text-[10px] text-[var(--text-dim)]">
                     job_id={job.id.slice(0, 8)}
                 </span>
-                <span className="px-1.5 py-0.5 text-[9px] uppercase tracking-[1px] rounded bg-[rgba(76,201,240,0.12)] text-[var(--bg-turquoise-surf)]">
+                <span
+                    className="px-1.5 py-0.5 text-[9px] uppercase tracking-[1px] rounded bg-[rgba(76,201,240,0.12)] text-[var(--bg-turquoise-surf)]"
+                    aria-label={`Analysis mode: ${job.mode}`}
+                >
                     {job.mode}
                 </span>
                 {metrics?.previous_job_id && (

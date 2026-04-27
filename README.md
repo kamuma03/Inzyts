@@ -21,7 +21,7 @@
 
 ## 📖 Overview
 
-**Inzyts** is an **autonomous data analysis system** that transforms raw CSV data into comprehensive Jupyter notebooks with minimal human intervention. Built on LangGraph's stateful orchestration, it employs a **27-agent architecture** with **7-mode execution** to handle exploratory, predictive, diagnostic, comparative, forecasting, segmentation, and dimensionality reduction workflows.
+**Inzyts** is an **autonomous data analysis system** that transforms raw CSV data into comprehensive Jupyter notebooks with minimal human intervention. Built on LangGraph's stateful orchestration, it employs a **22-agent, 2-phase architecture** (Phase 1: Data Understanding → Phase 2: Analysis & Modeling) with **7-mode execution** to handle exploratory, predictive, diagnostic, comparative, forecasting, segmentation, and dimensionality reduction workflows.
 
 ### 💻 Technology Stack
 
@@ -1225,7 +1225,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 **Made with ❤️ by the Inzyts Team**
 
 📊 **Production Stats**:
-- 27-agent architecture with 7 pipeline modes
+- 22-agent, 2-phase architecture with 7 pipeline modes
 - 1100+ tests across 95 test files with 95% coverage
 - Smart mode suggestion with AI-powered confidence scoring
 - Phase-aware progress tracking with real-time ETA

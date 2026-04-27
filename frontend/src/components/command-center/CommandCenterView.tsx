@@ -1,35 +1,95 @@
-import { useState, type FC } from 'react';
+import { useCallback, useState, type FC } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { JobSummary } from '../../api';
 import { useJobContext } from '../../context/JobContext';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
+import { useMetricsHistory } from '../../hooks/useRunMetrics';
 import { TopStrip } from './TopStrip';
 import { PipelineRail } from './PipelineRail';
 import { ColumnInspector } from './ColumnInspector';
 import { CostBreakdown } from './CostBreakdown';
 import { QuestionCard } from './QuestionCard';
-import { LogViewer } from '../LogViewer';
+import { PreviewTabs, type PreviewTabId } from './PreviewTabs';
+import { VisualPanel } from './panels/VisualPanel';
+import { CodePanel } from './panels/CodePanel';
+import { DataPanel } from './panels/DataPanel';
+import { LogsPanel } from './panels/LogsPanel';
+import { TrafficRow } from './TrafficRow';
+import { EventStream } from './EventStream';
+import { StatusBar } from './StatusBar';
 
 interface CommandCenterViewProps {
     job: JobSummary;
 }
 
-/** Top-level orchestrator for the new analyst surface. Wires the live socket
- *  data (metrics, phases, logs) into the three-column main grid: PipelineRail
- *  (left, 270px) / preview center (1fr) / ColumnInspector + Cost (right, 320px). */
+const TAB_DEFS = [
+    { id: 'visual' as const, label: 'Visual' },
+    { id: 'code' as const, label: 'Code' },
+    { id: 'data' as const, label: 'Data' },
+    { id: 'logs' as const, label: 'Logs' },
+];
+
+const TAB_BY_HOTKEY: Record<string, PreviewTabId> = {
+    '1': 'visual',
+    '2': 'code',
+    '3': 'data',
+    '4': 'logs',
+};
+
+/** Top-level orchestrator for the analyst surface. */
 export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
     const navigate = useNavigate();
-    const { logs, metrics, phases, handleCancelJob } = useJobContext();
+    const { logs, events, metrics, phases, isConnected, handleCancelJob } = useJobContext();
+    const history = useMetricsHistory(metrics, job.id);
+
     const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<PreviewTabId>('visual');
+
+    const isCompleted = job.status === 'completed';
+
+    const handleRerun = useCallback(() => {
+        // Re-runs go via the home form so the user can tweak params.
+        // ⌘↵ navigates back; the form pre-fills from initialFormState if wired upstream.
+        navigate('/');
+    }, [navigate]);
 
     useKeyboardShortcuts(
         {
             escape: () => setSelectedColumn(null),
+            '1': () => setActiveTab(TAB_BY_HOTKEY['1']),
+            '2': () => setActiveTab(TAB_BY_HOTKEY['2']),
+            '3': () => setActiveTab(TAB_BY_HOTKEY['3']),
+            '4': () => setActiveTab(TAB_BY_HOTKEY['4']),
+            'cmd+enter': handleRerun,
+            'ctrl+enter': handleRerun,
         },
         { enabled: true },
     );
 
-    const isCompleted = job.status === 'completed';
+    const codeStreaming = !isCompleted;
+    const tabs = TAB_DEFS.map((t) => ({
+        ...t,
+        badge:
+            t.id === 'code' ? (
+                <span
+                    className={`inline-flex items-center gap-1 px-1 py-px text-[9px] uppercase tracking-[1px] rounded ${
+                        codeStreaming
+                            ? 'bg-[rgba(76,201,240,0.12)] text-[var(--bg-turquoise-surf)]'
+                            : 'bg-[rgba(52,211,153,0.12)] text-[var(--status-good)]'
+                    }`}
+                >
+                    <span
+                        className={`inline-block w-1.5 h-1.5 rounded-full ${codeStreaming ? 'animate-pulse' : ''}`}
+                        style={{
+                            backgroundColor: codeStreaming
+                                ? 'var(--bg-turquoise-surf)'
+                                : 'var(--status-good)',
+                        }}
+                    />
+                    {codeStreaming ? 'streaming' : 'ready'}
+                </span>
+            ) : undefined,
+    }));
 
     return (
         <div className="flex-1 flex flex-col gap-3 min-h-0 min-w-0">
@@ -50,12 +110,20 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
                 {/* Center stack */}
                 <main className="flex flex-col gap-3 min-h-0 min-w-0">
                     <div className="flex-1 min-h-0 border border-[var(--border-color)] rounded-lg bg-[var(--bg-true-cobalt)] overflow-hidden flex flex-col">
-                        <div className="px-3 py-2 border-b border-[var(--border-color)] text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)]">
-                            Live Logs
-                        </div>
-                        <div className="flex-1 min-h-0 overflow-hidden">
-                            <LogViewer logs={logs} />
-                        </div>
+                        <PreviewTabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab}>
+                            {{
+                                visual: <VisualPanel job={job} />,
+                                code: <CodePanel job={job} events={events} />,
+                                data: <DataPanel jobId={job.id} />,
+                                logs: <LogsPanel logs={logs} />,
+                            }}
+                        </PreviewTabs>
+                    </div>
+
+                    <TrafficRow history={history} />
+
+                    <div className="flex-1 min-h-0 max-h-72 min-h-32">
+                        <EventStream events={events} />
                     </div>
                 </main>
 
@@ -72,6 +140,8 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
                     <CostBreakdown jobId={job.id} refreshKey={job.status} />
                 </aside>
             </div>
+
+            <StatusBar isConnected={isConnected} phases={phases} />
         </div>
     );
 };
