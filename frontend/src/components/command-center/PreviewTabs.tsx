@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState, type FC, type ReactNode } from 'react';
 
-export type PreviewTabId = 'visual' | 'code' | 'data' | 'logs';
+export type PreviewTabId = 'visual' | 'code' | 'data' | 'logs' | 'events';
 
 export interface PreviewTabDef {
     id: PreviewTabId;

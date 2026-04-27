@@ -27,6 +27,7 @@ const TAB_DEFS = [
     { id: 'code' as const, label: 'Code' },
     { id: 'data' as const, label: 'Data' },
     { id: 'logs' as const, label: 'Logs' },
+    { id: 'events' as const, label: 'Events' },
 ];
 
 const TAB_BY_HOTKEY: Record<string, PreviewTabId> = {
@@ -34,6 +35,7 @@ const TAB_BY_HOTKEY: Record<string, PreviewTabId> = {
     '2': 'code',
     '3': 'data',
     '4': 'logs',
+    '5': 'events',
 };
 
 /** Top-level orchestrator for the analyst surface. */
@@ -60,36 +62,53 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
             '2': () => setActiveTab(TAB_BY_HOTKEY['2']),
             '3': () => setActiveTab(TAB_BY_HOTKEY['3']),
             '4': () => setActiveTab(TAB_BY_HOTKEY['4']),
+            '5': () => setActiveTab(TAB_BY_HOTKEY['5']),
             'cmd+enter': handleRerun,
             'ctrl+enter': handleRerun,
         },
         { enabled: true },
     );
 
+    const isRunning = job.status === 'running' || job.status === 'pending';
+
     const codeStreaming = !isCompleted;
-    const tabs = TAB_DEFS.map((t) => ({
-        ...t,
-        badge:
-            t.id === 'code' ? (
-                <span
-                    className={`inline-flex items-center gap-1 px-1 py-px text-[9px] uppercase tracking-[1px] rounded ${
-                        codeStreaming
-                            ? 'bg-[rgba(76,201,240,0.12)] text-[var(--bg-turquoise-surf)]'
-                            : 'bg-[rgba(52,211,153,0.12)] text-[var(--status-good)]'
-                    }`}
-                >
+    const tabs = TAB_DEFS.map((t) => {
+        if (t.id === 'code') {
+            return {
+                ...t,
+                badge: (
                     <span
-                        className={`inline-block w-1.5 h-1.5 rounded-full ${codeStreaming ? 'animate-pulse' : ''}`}
-                        style={{
-                            backgroundColor: codeStreaming
-                                ? 'var(--bg-turquoise-surf)'
-                                : 'var(--status-good)',
-                        }}
-                    />
-                    {codeStreaming ? 'streaming' : 'ready'}
-                </span>
-            ) : undefined,
-    }));
+                        className={`inline-flex items-center gap-1 px-1 py-px text-[9px] uppercase tracking-[1px] rounded ${
+                            codeStreaming
+                                ? 'bg-[rgba(76,201,240,0.12)] text-[var(--bg-turquoise-surf)]'
+                                : 'bg-[rgba(52,211,153,0.12)] text-[var(--status-good)]'
+                        }`}
+                    >
+                        <span
+                            className={`inline-block w-1.5 h-1.5 rounded-full ${codeStreaming ? 'animate-pulse' : ''}`}
+                            style={{
+                                backgroundColor: codeStreaming
+                                    ? 'var(--bg-turquoise-surf)'
+                                    : 'var(--status-good)',
+                            }}
+                        />
+                        {codeStreaming ? 'streaming' : 'ready'}
+                    </span>
+                ),
+            };
+        }
+        if (t.id === 'events' && events.length > 0) {
+            return {
+                ...t,
+                badge: (
+                    <span className="inline-flex items-center px-1 py-px text-[9px] font-mono rounded bg-[rgba(255,255,255,0.06)] text-[var(--text-secondary)]">
+                        {events.length}
+                    </span>
+                ),
+            };
+        }
+        return t;
+    });
 
     return (
         <div className="flex-1 flex flex-col gap-3 min-h-0 min-w-0">
@@ -107,8 +126,13 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
                 {/* Left rail */}
                 <PipelineRail phases={phases} mode={job.mode} />
 
-                {/* Center stack */}
+                {/* Center stack — PreviewTabs takes full vertical space.
+                    TrafficRow is shown only while the job is actively running
+                    (live signals are stale post-completion); EventStream now
+                    lives inside the tabs as its 5th panel. */}
                 <main className="flex flex-col gap-3 min-h-0 min-w-0">
+                    {isRunning && <TrafficRow history={history} />}
+
                     <div className="flex-1 min-h-0 border border-[var(--border-color)] rounded-lg bg-[var(--bg-true-cobalt)] overflow-hidden flex flex-col">
                         <PreviewTabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab}>
                             {{
@@ -116,14 +140,13 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
                                 code: <CodePanel job={job} events={events} />,
                                 data: <DataPanel jobId={job.id} />,
                                 logs: <LogsPanel logs={logs} />,
+                                events: (
+                                    <div className="h-full p-2">
+                                        <EventStream events={events} />
+                                    </div>
+                                ),
                             }}
                         </PreviewTabs>
-                    </div>
-
-                    <TrafficRow history={history} />
-
-                    <div className="flex-1 min-h-0 max-h-72 min-h-32">
-                        <EventStream events={events} />
                     </div>
                 </main>
 
