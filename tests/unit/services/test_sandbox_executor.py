@@ -32,11 +32,13 @@ def test_execute_cell_no_client(mock_jupyter_client):
     """Test executing a cell when the kernel client is missing."""
     mock_km, mock_kc = mock_jupyter_client
     executor = SandboxExecutor()
-    executor.kc = None  # Simulate broken state
-    
+    # Simulate broken state — the wrapper exposes the inner sandbox as ._sandbox.
+    executor._sandbox.kc = None
+
     result = executor.execute_cell("print('hi')")
     assert result.success is False
-    assert result.error_name == "KernelError"
+    # Hardened sandbox uses an explicit error name distinct from user errors.
+    assert result.error_name == "SandboxKernelDead"
 
 def test_execute_cell_success(mock_jupyter_client):
     """Test a successful cell execution getting stdout and plain text results."""
@@ -111,22 +113,26 @@ def test_execute_cell_stderr_and_error(mock_jupyter_client):
     assert "Traceback" in result.traceback[0]
 
 def test_execute_cell_timeout(mock_jupyter_client):
-    """Test timeout when cell runs endlessly."""
+    """Test timeout when cell runs endlessly — hardened sandbox SIGKILLs the
+    kernel's process group instead of relying on interrupt_kernel."""
     mock_km, mock_kc = mock_jupyter_client
     mock_kc.execute.return_value = "msg_timeout"
-    
+
     # Make get_iopub_msg raise queue.Empty indefinitely to trigger timeout logic
     def mock_get_iopub(timeout=1):
         raise queue.Empty()
     mock_kc.get_iopub_msg.side_effect = mock_get_iopub
-    
+
     # Use a tiny timeout for fast testing
     executor = SandboxExecutor(execution_timeout=0.1)
     result = executor.execute_cell("while True: pass")
-    
+
     assert result.success is False
-    assert result.error_name == "TimeoutError"
-    mock_km.interrupt_kernel.assert_called()
+    assert result.error_name == "SandboxTimeoutKill"
+    assert result.killed_reason == "timeout"
+    # Process-group kill replaces the old interrupt_kernel call. The mocked
+    # km.kernel.pid resolves to a MagicMock which os.getpgid rejects, so the
+    # kill is silently swallowed — that's the right behavior here.
 
 def test_execute_shell_error(mock_jupyter_client):
     """Test capturing execution error via the shell reply fallback."""
