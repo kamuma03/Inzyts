@@ -243,11 +243,6 @@ export const AnalysisAPI = {
         return response.data; // { html: string, job_id: string }
     },
 
-    getJupyterToken: async (): Promise<{ token: string }> => {
-        const response = await api.get('/notebooks/jupyter-token');
-        return response.data;
-    },
-
     getJobMetrics: async (jobId: string) => {
         const response = await api.get(`/metrics/${encodeURIComponent(jobId)}`);
         return response.data;
@@ -292,6 +287,38 @@ export const AnalysisAPI = {
             instruction: instruction,
         });
         return response.data; // { new_code, output, images, success, error }
+    },
+
+    // --- Live cell execution (PR1 sandbox API) ----------------------------
+
+    executeLiveCell: async (jobId: string, code: string, executionId: string) => {
+        const response = await api.post(
+            `/notebooks/${encodeURIComponent(jobId)}/cells/execute`,
+            { code, execution_id: executionId },
+        );
+        return response.data as {
+            execution_id: string;
+            success: boolean;
+            error_name: string | null;
+            error_value: string | null;
+            duration_ms: number;
+            killed_reason: string | null;
+            execution_count: number | null;
+        };
+    },
+
+    restartLiveKernel: async (jobId: string) => {
+        const response = await api.post(
+            `/notebooks/${encodeURIComponent(jobId)}/cells/restart`,
+        );
+        return response.data as { job_id: string; status: string };
+    },
+
+    interruptLiveKernel: async (jobId: string) => {
+        const response = await api.post(
+            `/notebooks/${encodeURIComponent(jobId)}/cells/interrupt`,
+        );
+        return response.data as { job_id: string; status: string };
     },
 
     askFollowUp: async (jobId: string, question: string) => {

@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import type { PhaseStatus, RunMetrics } from '../api';
+import type {
+    CellCompleteEvent,
+    CellOutputEvent,
+    CellStatusEvent,
+} from '../components/command-center/panels/live/types';
 
 export interface LogMessage {
     timestamp: string;
@@ -26,7 +31,16 @@ export interface ProgressUpdate {
     phase_timings: Record<string, { elapsed: number }>;
 }
 
-export const useSocket = (jobId: string | null) => {
+/** Optional callbacks for the per-job cell-execution stream. Passed into
+ *  useSocket so the Live panel can react to streaming output without
+ *  opening a second socket connection for the same job. */
+export interface UseSocketHandlers {
+    onCellStatus?: (event: CellStatusEvent) => void;
+    onCellOutput?: (event: CellOutputEvent) => void;
+    onCellComplete?: (event: CellCompleteEvent) => void;
+}
+
+export const useSocket = (jobId: string | null, handlers?: UseSocketHandlers) => {
     const [logs, setLogs] = useState<LogMessage[]>([]);
     const [events, setEvents] = useState<AgentEvent[]>([]);
     const [progress, setProgress] = useState<ProgressUpdate | null>(null);
@@ -34,6 +48,10 @@ export const useSocket = (jobId: string | null) => {
     const [phases, setPhases] = useState<PhaseStatus[] | null>(null);
     const [isConnected, setIsConnected] = useState(false);
     const socketRef = useRef<Socket | null>(null);
+    // Handlers held in a ref so updating them never forces a socket
+    // reconnect. The socket reconnects only when jobId changes.
+    const handlersRef = useRef<UseSocketHandlers | undefined>(handlers);
+    handlersRef.current = handlers;
 
     useEffect(() => {
         if (!jobId) return;
@@ -125,6 +143,22 @@ export const useSocket = (jobId: string | null) => {
             setPhases(data.phases);
         });
 
+        // Cell-execution stream events — forwarded to optional handler
+        // callbacks. Keeps cell state out of useSocket itself so a 1000-event
+        // run doesn't re-render every consumer of the hook.
+        socket.on('cell_status', (data: CellStatusEvent) => {
+            if (!mounted) return;
+            handlersRef.current?.onCellStatus?.(data);
+        });
+        socket.on('cell_output', (data: CellOutputEvent) => {
+            if (!mounted) return;
+            handlersRef.current?.onCellOutput?.(data);
+        });
+        socket.on('cell_complete', (data: CellCompleteEvent) => {
+            if (!mounted) return;
+            handlersRef.current?.onCellComplete?.(data);
+        });
+
         return () => {
             mounted = false;
             socket.off('connect');
@@ -134,6 +168,9 @@ export const useSocket = (jobId: string | null) => {
             socket.off('progress');
             socket.off('metrics_snapshot');
             socket.off('phase_update');
+            socket.off('cell_status');
+            socket.off('cell_output');
+            socket.off('cell_complete');
             socket.disconnect();
             // Clear the ref so stale socket instances don't linger when jobId changes.
             socketRef.current = null;

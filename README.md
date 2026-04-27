@@ -85,9 +85,9 @@
 - **Interactive Notebooks**: Edit individual code cells with natural language ("Make this a pie chart") — powered by a lightweight CellEditAgent and persistent kernel sessions.
 - **Conversational Follow-Up Analysis**: Ask follow-up questions ("Why is Cluster 2 the largest?") and get new analysis cells generated, executed, and rendered inline. Conversations persist across server restarts.
 - **Inline Chart Rendering**: Base64-encoded matplotlib/seaborn charts displayed directly in the interactive cell viewer.
-- **Live Notebook Execution**: Execute generated Jupyter notebooks directly in the browser via WebSocket integration.
+- **Live Notebook Panel**: Native Inzyts cell-execution UI — kernels run under a hardened ``KernelSandbox`` (resource limits, process-group SIGKILL on timeout, network egress block, secret stripping). Output streams cell-by-cell via WebSocket; same look-and-feel as the rest of the Command Center.
 - **Modern UI**: "Ink Black" theme with real-time agent traces, job monitoring, and token tracking.
-- **Production Architecture**: Docker-based deployment with FastAPI, PostgreSQL, Redis, Celery, and Jupyter Server.
+- **Production Architecture**: Docker-based deployment with FastAPI, PostgreSQL, Redis, and Celery.
 - **Comprehensive API**: RESTful v2 API with WebSocket support for real-time updates.
 - **Smart Mode Suggestion**: AI-powered analysis mode recommendation based on your question and target column — debounced API calls with confidence scoring and one-click apply.
 - **Phase-Aware Progress Tracking**: Real-time progress bar with ETA, elapsed time per phase, and structured event streaming via Redis-backed ProgressTracker and Socket.IO.
@@ -233,7 +233,7 @@ On first run, the setup wizard will launch and guide you through:
 3. **Model Selection** — choose from available models for your provider
 4. **Admin Credentials** — username and password for the web UI
 5. **Database Password** — PostgreSQL password (auto-generated if you press Enter)
-6. **Security Tokens** — JWT secret, API token, and Jupyter token (all auto-generated)
+6. **Security Tokens** — JWT secret and API token (all auto-generated)
 
 The wizard writes a `.env` file and then starts all Docker services automatically.
 
@@ -411,8 +411,7 @@ This starts:
 - **Redis** (127.0.0.1:6379) - Cache & message broker (localhost-only, not exposed externally)
 - **FastAPI Backend** (port 8000) - REST API (runs as non-root `inzyts` user, with healthcheck)
 - **React Frontend** (port 5173) - Web UI (waits for backend health before starting)
-- **Celery Worker** - Background job processing (runs as non-root `inzyts` user)
-- **Jupyter Server** (port 8888) - Live notebook execution
+- **Celery Worker** - Background job processing (runs as non-root `inzyts` user). Hosts in-process kernel sandboxes for the Live Notebook panel — see ``src/services/sandbox_executor.py`` and the threat model in ``docs/architecture.md``.
 - **Flower** (port 5555) - Celery monitoring (optional)
 
 All services have memory limits enforced via Docker resource constraints, and are connected through isolated Docker networks (`backend` and `db`).
@@ -420,7 +419,6 @@ All services have memory limits enforced via Docker resource constraints, and ar
 Access the interfaces:
 - **Web UI**: http://localhost:5173
 - **API Docs**: http://localhost:8000/docs
-- **Jupyter Lab**: http://localhost:8888
 - **Flower Monitor**: http://localhost:5555
 
 ### Manual Backend Startup (Development)
@@ -459,7 +457,7 @@ npm run dev
 - **🎯 Smart Mode Selection**: AI-powered mode suggestion with confidence scoring, detailed descriptions, and one-click apply
 - **📊 Phase-Aware Progress**: Real-time progress with ETA, elapsed time per phase, and structured agent event streaming
 - **🔄 Job Management**: Cancel running jobs, view execution logs, download results
-- **📓 Live Notebook Execution**: Run generated notebooks directly in the browser via Jupyter Server
+- **📓 Live Notebook Panel**: Run cells against a hardened in-process kernel sandbox; output streams via WebSocket; Inzyts dark-theme rendering (no Jupyter Lab iframe).
 - **🚀 One-Click Upgrade**: Convert exploratory to predictive with cached profile
 
 ### API Endpoints

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { AnalysisAPI } from '../api';
 import { Loader, Terminal, Sparkles, Download, FileText, Shield, AlertTriangle, ChevronDown, ChevronUp, Presentation, Clock, FileCode } from 'lucide-react';
-import { LiveNotebook } from './LiveNotebook';
+import { LivePanel } from './command-center/panels/live/LivePanel';
 import { InteractiveCell } from './InteractiveCell';
 import { FollowUpChat } from './FollowUpChat';
 import { CellOutput, NotebookCellData } from '../types/notebook';
@@ -451,7 +451,12 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                         </div>
                     )
                 ) : viewMode === 'live' ? (
-                    <LiveNotebook jobId={jobId} resultPath={resultPath} />
+                    <LivePanel
+                        jobId={jobId}
+                        initialCells={cells
+                            .filter((c) => c.cell_type === 'code')
+                            .map((c) => c.source)}
+                    />
                 ) : (
                     error ? (
                         <div className="p-8 text-center text-red-500">

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, WebSocket
+from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pathlib import Path
@@ -7,7 +7,7 @@ from nbconvert import HTMLExporter
 from src.config import settings
 from src.server.db.database import get_db
 from src.server.db.models import Job, ConversationMessage
-from src.server.middleware.auth import verify_token, verify_token_async
+from src.server.middleware.auth import verify_token
 from src.server.models.schemas import (
     CellEditRequest,
     CellEditResponse,
@@ -17,7 +17,6 @@ from src.server.models.schemas import (
     ConversationHistoryResponse,
     ConversationMessageSchema,
 )
-from src.server.services.jupyter_proxy import jupyter_service
 from src.utils.logger import get_logger
 from src.utils.path_validator import validate_path_within
 
@@ -36,15 +35,6 @@ def _validate_notebook_path(notebook_path: Path) -> None:
         [_OUTPUT_DIR],
         error_label="notebook",
     )
-
-
-@router.get("/jupyter-token")
-async def get_jupyter_token(_token: str = Depends(verify_token)):
-    """Return the Jupyter token for authenticated users to access Live Notebook."""
-    from src.config import settings
-    if not settings.jupyter.token:
-        raise HTTPException(status_code=404, detail="Jupyter token not configured")
-    return {"token": settings.jupyter.token}
 
 
 @router.get("/{job_id}/html")
@@ -133,50 +123,6 @@ async def download_notebook(
 
 
 
-
-
-@router.post("/{job_id}/session")
-async def create_live_session(
-    job_id: str, db: AsyncSession = Depends(get_db), _token: str = Depends(verify_token)
-):
-    """
-    Start a live Jupyter kernel for this notebook.
-    """
-    try:
-        # Check integrity
-        status = await jupyter_service.get_status()
-        if status.get("status") == "unreachable":
-            raise HTTPException(status_code=503, detail="Jupyter Service unavailable")
-
-        # Create kernel
-        kernel_id = await jupyter_service.create_kernel()
-
-        return {"job_id": job_id, "kernel_id": kernel_id, "status": "ready"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to create live session for job {job_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create live session")
-
-
-@router.websocket("/{job_id}/ws/{kernel_id}")
-async def websocket_endpoint(websocket: WebSocket, job_id: str, kernel_id: str):
-    """
-    WebSocket proxy for live kernel communication.
-    Token is required as a query parameter: ?token=<JWT>
-    """
-    from src.server.db.database import async_session_maker
-    token = websocket.query_params.get("token")
-    if not token:
-        await websocket.close(code=4003, reason="No token provided")
-        return
-    async with async_session_maker() as db:
-        user = await verify_token_async(token, db)
-    if not user:
-        await websocket.close(code=4003, reason="Invalid token")
-        return
-    await websocket.accept()
-    await jupyter_service.proxy_websocket(websocket, kernel_id)
 
 
 @router.post("/{job_id}/cells/execute")

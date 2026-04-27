@@ -1,7 +1,5 @@
-# Multi-stage Dockerfile for Inzyts Backend and Jupyter Services
-# Usage:
-#   Backend: docker build --target backend -t inzyts-backend .
-#   Jupyter: docker build --target jupyter -t inzyts-jupyter .
+# Dockerfile for Inzyts Backend
+# Usage: docker build --target backend -t inzyts-backend .
 
 # ==============================================================================
 # Base stage - shared Python dependencies
@@ -58,15 +56,3 @@ EXPOSE 8000
 
 # Run the application
 CMD ["uvicorn", "src.server.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
-# ==============================================================================
-# Jupyter target - Jupyter notebook server
-# ==============================================================================
-FROM jupyter/scipy-notebook:python-3.11 AS jupyter
-
-# Install as jovyan (NB_UID) user to avoid running pip as root
-USER ${NB_UID}
-
-# Copy requirements and install
-COPY --chown=${NB_UID}:${NB_GID} requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
