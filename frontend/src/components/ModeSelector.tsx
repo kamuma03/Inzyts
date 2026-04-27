@@ -13,49 +13,49 @@ export const ANALYSIS_MODES: {
     {
         id: 'exploratory',
         label: 'Exploratory',
-        desc: 'Understand data structure, quality, and initial patterns.',
+        desc: 'Understand what you have',
         detailedDesc: 'Performs comprehensive data profiling including missing values, distributions, correlations, and outlier detection. Best for initial data understanding when you don\'t have a specific hypothesis. Produces a detailed profile notebook without modeling.',
         icon: Sparkles
     },
     {
         id: 'predictive',
         label: 'Predictive',
-        desc: 'Train models to predict a target variable (Regression/Classification).',
+        desc: 'Train a model for a target',
         detailedDesc: 'Builds and evaluates machine learning models to predict a specified target column. Automatically selects between regression and classification based on the target type. Includes feature importance, cross-validation, and model comparison.',
         icon: BarChart2
     },
     {
         id: 'forecasting',
         label: 'Forecasting',
-        desc: 'Predict future values based on time-series data.',
+        desc: 'Project values forward in time',
         detailedDesc: 'Analyzes temporal patterns using time-series models (Prophet, ARIMA, exponential smoothing). Requires data with a datetime column. Generates future predictions with confidence intervals and trend/seasonality decomposition.',
         icon: TrendingUp
     },
     {
         id: 'comparative',
         label: 'Comparative',
-        desc: 'Compare groups (A/B Testing) or analyze variations.',
+        desc: 'Test if groups differ',
         detailedDesc: 'Runs statistical tests to compare two or more groups in your data. Supports A/B testing, hypothesis testing, and effect size estimation. Ideal for experiment analysis, treatment vs control comparisons, or cohort analysis.',
         icon: GitCompare
     },
     {
         id: 'diagnostic',
         label: 'Diagnostic',
-        desc: 'Identify root causes of anomalies or outcomes.',
+        desc: 'Find the root cause',
         detailedDesc: 'Investigates why specific outcomes or anomalies occurred using root cause analysis techniques. Identifies key drivers and contributing factors behind trends, drops, or spikes in your data.',
         icon: Activity
     },
     {
         id: 'segmentation',
         label: 'Segmentation',
-        desc: 'Cluster data into meaningful groups.',
+        desc: 'Group rows into clusters',
         detailedDesc: 'Uses unsupervised clustering algorithms (K-Means, DBSCAN) to discover natural groupings in your data. Generates segment profiles with key characteristics and distributions for each cluster.',
         icon: PieChart
     },
     {
         id: 'dimensionality_reduction',
         label: 'Dimensionality',
-        desc: 'Reduce features using PCA/t-SNE.',
+        desc: 'Reduce feature space',
         detailedDesc: 'Reduces high-dimensional data to fewer components using PCA, t-SNE, or UMAP. Useful for visualization of complex datasets, feature compression, and understanding variance structure across many variables.',
         icon: Layers
     },
@@ -167,6 +167,31 @@ interface ModeSelectorProps {
     suggestionMatchedKeywords?: string[];
 }
 
+/** Highlight tokens in the explanation that look like keywords or column
+ *  names — wraps backtick-quoted strings and double-quoted strings in mono
+ *  styling so the WHY card reads like the design canvas. */
+const renderExplanation = (text: string): React.ReactNode => {
+    const parts: React.ReactNode[] = [];
+    let i = 0;
+    const re = /`([^`]+)`|"([^"]+)"/g;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(text)) !== null) {
+        if (match.index > i) parts.push(text.slice(i, match.index));
+        const token = match[1] ?? match[2] ?? '';
+        parts.push(
+            <code
+                key={match.index}
+                className="font-mono text-[var(--bg-turquoise-surf)] bg-[rgba(76,201,240,0.08)] px-1 py-px rounded text-[11px]"
+            >
+                {token}
+            </code>,
+        );
+        i = match.index + match[0].length;
+    }
+    if (i < text.length) parts.push(text.slice(i));
+    return parts;
+};
+
 const confidenceColor = (c: number | null | undefined): string => {
     if (c == null) return 'var(--text-dim)';
     if (c >= 0.7) return 'var(--status-good)';
@@ -201,10 +226,6 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
         } else if (e.key === 'End') {
             e.preventDefault();
             nextIndex = ANALYSIS_MODES.length - 1;
-        } else if (/^[1-7]$/.test(e.key)) {
-            // Direct selection by number — analyst-friendly hotkey.
-            e.preventDefault();
-            nextIndex = parseInt(e.key, 10) - 1;
         } else {
             return;
         }
@@ -214,48 +235,91 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
         btn?.focus();
     }, [selectedMode, onSelect]);
 
+    const suggestedMeta = suggestedMode
+        ? ANALYSIS_MODES.find((m) => m.id === suggestedMode)
+        : null;
+    const showSuggestion = !!suggestedMode && suggestedMode !== selectedMode;
+    const [dismissedSuggestion, setDismissedSuggestion] = useState<string | null>(null);
+    const dismissed = dismissedSuggestion === suggestedMode;
+
     return (
         <div>
-            {/* Suggestion banner */}
-            {suggestedMode && suggestedMode !== selectedMode && (
-                <div className="flex items-center gap-2 px-3 py-2 mb-3 bg-[rgba(0,255,238,0.08)] border border-[rgba(0,255,238,0.25)] rounded-[6px] text-[0.85rem] text-[var(--text-secondary)]">
-                    <Wand2 size={14} className="text-[var(--bg-turquoise-surf)] shrink-0" />
-                    <span
-                        aria-label={`Suggested mode: ${ANALYSIS_MODES.find(m => m.id === suggestedMode)?.label || suggestedMode}, ${confidenceLabel(suggestionConfidence)}`}
-                        className="inline-block w-2 h-2 rounded-full shrink-0"
-                        style={{ backgroundColor: confidenceColor(suggestionConfidence) }}
-                        title={confidenceLabel(suggestionConfidence)}
-                    />
+            {/* Suggestion pill — appears only when the heuristic finds a confident match. */}
+            {showSuggestion && !dismissed && suggestedMeta && (
+                <div className="mb-3 flex items-center gap-2 px-3 py-1.5 rounded-full border border-[rgba(76,201,240,0.3)] bg-[rgba(76,201,240,0.04)] text-[12px] text-[var(--text-secondary)] w-fit">
+                    <Wand2 size={12} className="text-[var(--bg-turquoise-surf)] shrink-0" />
                     <span>
-                        AI suggests <strong className="text-[var(--bg-turquoise-surf)]">
-                            {ANALYSIS_MODES.find(m => m.id === suggestedMode)?.label || suggestedMode}
+                        Suggested:{' '}
+                        <strong className="text-[var(--bg-turquoise-surf)] font-semibold">
+                            {suggestedMeta.label}
                         </strong>
-                        {suggestionMatchedKeywords && suggestionMatchedKeywords.length > 0 && (
-                            <span> — matched {suggestionMatchedKeywords.map(k => `"${k}"`).join(', ')}</span>
-                        )}
                     </span>
-                    {suggestionExplanation && (
-                        <span className="ml-2 shrink-0">
-                            <InfoTooltip text={suggestionExplanation} />
-                        </span>
+                    {suggestionMatchedKeywords && suggestionMatchedKeywords.length > 0 && (
+                        <>
+                            <span className="text-[var(--text-dim)]">·</span>
+                            <span className="text-[var(--text-dim)]">
+                                matched{' '}
+                                <span className="text-[var(--text-secondary)] font-mono">
+                                    {suggestionMatchedKeywords.map((k) => `"${k}"`).join(', ')}
+                                </span>
+                            </span>
+                        </>
                     )}
+                    <span
+                        aria-label={confidenceLabel(suggestionConfidence)}
+                        title={confidenceLabel(suggestionConfidence)}
+                        className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+                        style={{ backgroundColor: confidenceColor(suggestionConfidence) }}
+                    />
                     <button
                         type="button"
-                        onClick={() => onSelect(suggestedMode)}
-                        className="ml-auto px-[0.6rem] py-1 text-[0.8rem] font-semibold bg-[var(--bg-turquoise-surf)] text-[var(--bg-deep-twilight)] border-none rounded cursor-pointer shrink-0"
+                        onClick={() => onSelect(suggestedMode!)}
+                        className="ml-2 px-2.5 py-0.5 text-[12px] font-semibold bg-[var(--bg-turquoise-surf)] text-[var(--bg-deep-twilight)] border-none rounded cursor-pointer shrink-0"
                     >
-                        Apply
+                        Use {suggestedMeta.label.toLowerCase()}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setDismissedSuggestion(suggestedMode!)}
+                        className="text-[11px] text-[var(--text-dim)] hover:text-[var(--text-secondary)] bg-transparent border-none cursor-pointer"
+                    >
+                        Dismiss
                     </button>
                 </div>
             )}
+
+            {/* WHY card — inline expanded explanation when a suggestion is active. */}
+            {showSuggestion && !dismissed && suggestedMeta && suggestionExplanation && (
+                <div className="mb-3 p-3 rounded-md border border-[var(--border-color)] bg-[var(--bg-surface-hi)]">
+                    <div className="text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)] mb-1.5">
+                        Why {suggestedMeta.label}?
+                    </div>
+                    <p className="m-0 text-[12px] leading-[1.5] text-[var(--text-secondary)]">
+                        {renderExplanation(suggestionExplanation)}
+                    </p>
+                </div>
+            )}
+
+            {/* Section header for the grid */}
+            <div className="flex items-center gap-2 mb-2">
+                <span className="text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)]">
+                    All modes · click to override
+                </span>
+                <span
+                    className="ml-auto font-mono text-[10px] text-[var(--text-dim)]"
+                    aria-hidden="true"
+                >
+                    ↑ ↓ ← → to navigate
+                </span>
+            </div>
 
             <div
                 role="radiogroup"
                 aria-label="Analysis mode selection"
                 onKeyDown={handleKeyDown}
-                className="grid grid-cols-[repeat(auto-fit,minmax(168px,1fr))] gap-2 mt-2"
+                className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-2"
             >
-                {ANALYSIS_MODES.map((mode, idx) => {
+                {ANALYSIS_MODES.map((mode) => {
                     const isSelected = selectedMode === mode.id;
                     const isSuggested = suggestedMode === mode.id && !isSelected;
                     const Icon = mode.icon;
@@ -267,59 +331,64 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
                             type="button"
                             role="radio"
                             aria-checked={isSelected}
-                            aria-label={`${mode.label} mode: ${mode.desc}. Press ${idx + 1} to select.`}
+                            aria-label={`${mode.label} mode: ${mode.desc}`}
                             tabIndex={isSelected ? 0 : -1}
-                            className={`group relative px-3 py-2.5 cursor-pointer flex flex-col gap-1.5 transition-all duration-150 w-full text-left appearance-none text-inherit rounded-md border ${
+                            className={`group relative px-3 py-3 cursor-pointer flex flex-col gap-2 transition-all duration-150 w-full text-left appearance-none text-inherit rounded-md border ${
                                 isSelected
-                                    ? 'border-[var(--bg-turquoise-surf)] bg-[rgba(76,201,240,0.08)] shadow-[inset_0_0_0_1px_rgba(76,201,240,0.4)]'
+                                    ? 'border-[var(--bg-turquoise-surf)] bg-[rgba(76,201,240,0.06)]'
                                     : isSuggested
-                                        ? 'border-[rgba(76,201,240,0.4)] bg-[var(--bg-surface-hi)]'
-                                        : 'border-[var(--border-color)] bg-[var(--bg-surface-hi)] hover:border-[var(--text-dim)] hover:bg-[rgba(255,255,255,0.02)]'
+                                        ? 'border-[rgba(76,201,240,0.45)] bg-[var(--bg-surface-hi)]'
+                                        : 'border-[var(--border-color)] bg-[var(--bg-surface-hi)] hover:border-[var(--text-dim)]'
                             }`}
                         >
-                            {/* Top row: number prefix + icon + label + suggested chip + info */}
-                            <div className="flex items-center gap-2">
+                            {/* Top row: icon-in-box on the left, suggested marker on the right. */}
+                            <div className="flex items-start justify-between">
                                 <span
-                                    className={`font-mono text-[10px] tabular-nums leading-none ${
-                                        isSelected ? 'text-[var(--bg-turquoise-surf)]' : 'text-[var(--text-dim)]'
-                                    }`}
-                                    aria-hidden="true"
-                                >
-                                    {idx + 1}
-                                </span>
-                                <Icon
-                                    size={14}
-                                    className={isSelected ? 'text-[var(--bg-turquoise-surf)]' : 'text-[var(--text-secondary)]'}
-                                />
-                                <span
-                                    className={`text-[13px] font-semibold tracking-tight truncate ${
-                                        isSelected ? 'text-[var(--bg-turquoise-surf)]' : 'text-[var(--text-primary)]'
+                                    className={`flex items-center justify-center w-7 h-7 rounded-md ${
+                                        isSelected
+                                            ? 'bg-[rgba(76,201,240,0.16)]'
+                                            : 'bg-[rgba(0,0,0,0.25)]'
                                     }`}
                                 >
-                                    {mode.label}
+                                    <Icon
+                                        size={14}
+                                        className={
+                                            isSelected
+                                                ? 'text-[var(--bg-turquoise-surf)]'
+                                                : 'text-[var(--text-secondary)]'
+                                        }
+                                    />
                                 </span>
                                 {isSuggested && (
-                                    <span className="ml-auto text-[9px] font-bold px-1 py-px rounded bg-[rgba(76,201,240,0.15)] text-[var(--bg-turquoise-surf)] uppercase tracking-[1px] shrink-0">
+                                    <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-[1px] text-[var(--bg-turquoise-surf)]">
+                                        <span
+                                            className="inline-block w-1.5 h-1.5 rounded-full"
+                                            style={{ backgroundColor: 'var(--bg-turquoise-surf)' }}
+                                            aria-hidden="true"
+                                        />
                                         Suggested
                                     </span>
                                 )}
-                                <span className={isSuggested ? 'shrink-0' : 'ml-auto shrink-0'}>
-                                    <InfoTooltip text={mode.detailedDesc} />
-                                </span>
+                                {!isSuggested && (
+                                    <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <InfoTooltip text={mode.detailedDesc} />
+                                    </span>
+                                )}
                             </div>
 
-                            {/* Description — denser, dimmer */}
-                            <p className="m-0 text-[11px] text-[var(--text-dim)] leading-[1.4] line-clamp-2">
+                            {/* Label */}
+                            <div
+                                className={`text-[13px] font-semibold tracking-tight ${
+                                    isSelected ? 'text-[var(--bg-turquoise-surf)]' : 'text-[var(--text-primary)]'
+                                }`}
+                            >
+                                {mode.label}
+                            </div>
+
+                            {/* One-line action description */}
+                            <p className="m-0 text-[11px] text-[var(--text-dim)] leading-[1.4]">
                                 {mode.desc}
                             </p>
-
-                            {/* Selected indicator — bottom-left bar */}
-                            {isSelected && (
-                                <span
-                                    aria-hidden="true"
-                                    className="absolute bottom-0 left-0 right-0 h-px bg-[var(--bg-turquoise-surf)]"
-                                />
-                            )}
                         </button>
                     );
                 })}

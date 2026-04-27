@@ -57,7 +57,7 @@ describe('ModeSelector', () => {
         expect(screen.queryByText('Suggested')).not.toBeInTheDocument()
     })
 
-    it('shows AI suggestion banner with matched keywords and Apply button', () => {
+    it('shows suggestion pill with matched keywords and Use button', () => {
         render(
             <ModeSelector
                 {...defaultProps}
@@ -69,15 +69,18 @@ describe('ModeSelector', () => {
             />
         )
 
-        expect(screen.getByText(/ai suggests/i)).toBeInTheDocument()
-        // 'Diagnostic' appears in both the banner and the card label
+        expect(screen.getByText(/^suggested:/i)).toBeInTheDocument()
+        // 'Diagnostic' appears in both the pill and the card label
         expect(screen.getAllByText('Diagnostic').length).toBeGreaterThanOrEqual(1)
-        // Matched keywords are visible in the banner
-        expect(screen.getByText(/matched "why did", "caused"/)).toBeInTheDocument()
-        expect(screen.getByText('Apply')).toBeInTheDocument()
+        // Matched keywords visible in the pill
+        expect(screen.getByText(/"why did", "caused"/)).toBeInTheDocument()
+        // Use button labelled with the suggested mode
+        expect(screen.getByText(/use diagnostic/i)).toBeInTheDocument()
+        // Dismiss link visible
+        expect(screen.getByText(/dismiss/i)).toBeInTheDocument()
     })
 
-    it('Apply button calls onSelect with suggested mode', () => {
+    it('Use button calls onSelect with suggested mode', () => {
         const onSelect = vi.fn()
         render(
             <ModeSelector
@@ -88,8 +91,45 @@ describe('ModeSelector', () => {
             />
         )
 
-        fireEvent.click(screen.getByText('Apply'))
+        fireEvent.click(screen.getByText(/use segmentation/i))
         expect(onSelect).toHaveBeenCalledWith('segmentation')
+    })
+
+    it('Dismiss hides the suggestion pill until the suggestion changes', () => {
+        const { rerender } = render(
+            <ModeSelector
+                {...defaultProps}
+                selectedMode="exploratory"
+                suggestedMode="forecasting"
+                suggestionMatchedKeywords={['forecast']}
+            />
+        )
+        expect(screen.getByText(/use forecasting/i)).toBeInTheDocument()
+
+        fireEvent.click(screen.getByText(/dismiss/i))
+        expect(screen.queryByText(/use forecasting/i)).not.toBeInTheDocument()
+
+        // Same suggestion stays dismissed after a re-render.
+        rerender(
+            <ModeSelector
+                {...defaultProps}
+                selectedMode="exploratory"
+                suggestedMode="forecasting"
+                suggestionMatchedKeywords={['forecast']}
+            />
+        )
+        expect(screen.queryByText(/use forecasting/i)).not.toBeInTheDocument()
+
+        // A different suggestion comes back through.
+        rerender(
+            <ModeSelector
+                {...defaultProps}
+                selectedMode="exploratory"
+                suggestedMode="predictive"
+                suggestionMatchedKeywords={['predict']}
+            />
+        )
+        expect(screen.getByText(/use predictive/i)).toBeInTheDocument()
     })
 
     it('does not show suggestion banner when no suggestedMode', () => {
