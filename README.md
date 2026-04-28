@@ -1086,7 +1086,12 @@ python -m src.main --csv data.csv --target y --verbose 2> debug.log
 
 ### Test Suite Overview
 
-The system includes **108 Python test files** (~1,100 assertions) plus **9 frontend `vitest` files**, exercised in CI on every push to `main` via [`.github/workflows/test.yml`](.github/workflows/test.yml). Coverage is not currently measured automatically — run `./tests/run_tests.sh --html` locally to generate a coverage report.
+The system includes **120+ Python test files** (~1,250 assertions) across unit / integration / security / safety / contract / e2e layers, plus **9 frontend Vitest files** and **2 Playwright e2e/a11y specs**. CI runs:
+
+- [`.github/workflows/test.yml`](.github/workflows/test.yml) — backend unit + frontend Vitest, every push/PR
+- [`.github/workflows/e2e.yml`](.github/workflows/e2e.yml) — Playwright critical-journey + axe-core a11y scan, every push/PR (with full app stack)
+
+Coverage is not measured automatically — run `pytest --cov=src --cov-report=html` locally to generate a coverage report. Mutation testing on security-critical helpers via `mutmut run` (configured in [`setup.cfg`](setup.cfg)).
 
 ```bash
 # Run the default unit suite (fast, no external deps).

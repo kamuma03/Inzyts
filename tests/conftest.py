@@ -64,3 +64,49 @@ def _ensure_redis() -> None:
 # The rate_limiter module reads REDIS_URL at import time.
 _ensure_redis()
 os.environ.setdefault("REDIS_URL", _REDIS_URL)
+
+
+# ---------------------------------------------------------------------------
+# Test-isolation safety net for FastAPI ``dependency_overrides``.
+# ---------------------------------------------------------------------------
+#
+# Many test files set per-test overrides via ``app.dependency_overrides[...]``
+# and reset them in teardown via ``app.dependency_overrides.clear()``. The
+# ``clear()`` pattern wipes EVERYTHING, including overrides set by
+# session-scoped fixtures or other concurrently-active test fixtures —
+# producing flaky cross-suite failures when running ``pytest tests/``.
+#
+# The fixture below snapshots the baseline state at session start and
+# restores it after each test, so a misbehaving ``clear()`` only affects
+# the current test rather than leaking into the rest of the suite.
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _snapshot_dependency_overrides():
+    """Snapshot fastapi_app.dependency_overrides before each test and
+    restore the snapshot on teardown.
+
+    Runs autouse so individual test files don't need to opt in. Imports
+    inside the fixture so we don't pay the FastAPI app-load cost during
+    pytest collection (only during fixture setup of tests that touch
+    HTTP routes — others see a no-op).
+    """
+    try:
+        from src.server.main import fastapi_app
+    except Exception:
+        # Pure-Python tests that don't import the FastAPI app should
+        # still work — the safety net is a no-op for them.
+        yield
+        return
+
+    saved = dict(fastapi_app.dependency_overrides)
+    try:
+        yield
+    finally:
+        # Whatever the test (or its fixture's teardown) did to overrides,
+        # snap back to the pre-test state. This is a belt-and-braces
+        # complement to per-file fixtures that already clear().
+        fastapi_app.dependency_overrides.clear()
+        fastapi_app.dependency_overrides.update(saved)

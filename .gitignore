@@ -1,3 +1,14 @@
+# Test artifacts
+.mutmut-cache
+mutants/
+coverage.json
+coverage_after.json
+htmlcov/
+.coverage
+.pytest_cache/
+playwright-report/
+test-results/
+
 # Python
 __pycache__/
 *.py[cod]

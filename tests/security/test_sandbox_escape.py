@@ -74,7 +74,17 @@ class TestPreexecFnSetsidGuard:
         """If ``os.setsid()`` fails in the child, the preexec_fn MUST
         call ``os._exit(127)`` instead of swallowing the OSError. A
         silently-failing setsid leaves the kernel in the parent's pgid —
-        the bug that caused the original PC log-off."""
+        the bug that caused the original PC log-off.
+
+        IMPORTANT: we mock ``resource`` too so that, when ``os._exit`` is
+        mocked (and therefore returns instead of exiting), the function's
+        fall-through into the ``setrlimit`` loop doesn't actually apply
+        real RLIMIT_NPROC=64 to the test runner process. Without this
+        guard the test runner becomes unable to spawn new threads, and
+        every subsequent test that uses ``threading.Thread.start()``
+        (notably the SSRF http.server fixture) crashes with
+        ``RuntimeError: can't start new thread``.
+        """
         preexec = _build_preexec_fn(PRODUCTION_POLICY)
 
         with patch(
@@ -84,7 +94,17 @@ class TestPreexecFnSetsidGuard:
             "src.services.sandbox_executor.os._exit"
         ) as mock_exit, patch(
             "src.services.sandbox_executor.os.write"
-        ):
+        ), patch(
+            "src.services.sandbox_executor.resource"
+        ) as mock_resource:
+            # Provide real rlimit constants so the closure's getattr() calls
+            # resolve to truthy values; setrlimit itself is the mock attr,
+            # so no real limit is applied.
+            mock_resource.RLIMIT_AS = resource.RLIMIT_AS
+            mock_resource.RLIMIT_CPU = resource.RLIMIT_CPU
+            mock_resource.RLIMIT_NPROC = resource.RLIMIT_NPROC
+            mock_resource.RLIMIT_NOFILE = resource.RLIMIT_NOFILE
+            mock_resource.RLIMIT_FSIZE = resource.RLIMIT_FSIZE
             preexec()
 
         mock_exit.assert_called_once_with(127)

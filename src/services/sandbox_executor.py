@@ -129,11 +129,20 @@ def _build_preexec_fn(policy: SandboxPolicy) -> Callable[[], None]:
         # child in the parent's process group means a later _killpg can
         # SIGKILL the parent (test runner, worker, shell, desktop session).
         # Print a marker before _exit so the parent can diagnose afterwards.
+        #
+        # The explicit ``return`` after ``os._exit`` is defensive: if a test
+        # mocks ``os._exit`` (which would otherwise terminate the process),
+        # we still skip the rlimit application below. Without the return,
+        # mocked _exit + setsid-failure path would silently apply
+        # RLIMIT_NPROC / RLIMIT_AS to the test runner — historically this
+        # caused ``RuntimeError: can't start new thread`` in subsequent
+        # tests because the test runner inherited a 64-process cap.
         try:
             os.setsid()
         except OSError as e:
             os.write(2, f"FATAL: kernel preexec setsid failed: {e}\n".encode())
             os._exit(127)
+            return  # unreachable in production; safety net for mocked _exit
 
         for rlimit_name, rlimit_const, value in (
             ("RLIMIT_AS", getattr(resource, "RLIMIT_AS", None), memory_bytes),

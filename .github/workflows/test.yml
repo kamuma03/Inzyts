@@ -55,7 +55,55 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run unit tests
-        run: pytest tests/unit -x --tb=short
+        run: pytest tests/unit --tb=short
+
+      - name: Run security + safety + integration regression tests
+        # Tier 1 + Tier 2 from the test-engineer pass — regression-protects
+        # the C-1 IDOR / C-2 _killpg / H-1 SSRF / H-2 SQL guard / H-3 RBAC /
+        # M-3 login rate limit / M-7 db-uri host / M-8 kernel env fixes.
+        run: |
+          pytest tests/security tests/safety \
+                 tests/integration/test_ssrf_redirects.py \
+                 tests/integration/test_login_rate_limit.py \
+                 tests/integration/test_idor_cross_user.py \
+                 tests/integration/test_role_based_access.py \
+                 --tb=short
+
+  contracts:
+    name: OpenAPI contract fuzz (schemathesis)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: backend-unit
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6399:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+
+    env:
+      JWT_SECRET_KEY: test-secret-key-for-ci-only
+      ADMIN_PASSWORD: test-admin-password
+      REDIS_URL: redis://localhost:6399/0
+      INZYTS_NETWORK_ISOLATION: "off"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install system + Python deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmagic1 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libcairo2
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run schemathesis fuzz on documented GET endpoints
+        run: pytest tests/contracts -x --tb=short
 
   frontend-unit:
     name: Frontend unit tests

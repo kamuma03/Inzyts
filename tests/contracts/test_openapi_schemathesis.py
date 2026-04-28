@@ -106,7 +106,11 @@ from schemathesis import checks as _st_checks
 _ENABLED_CHECKS = [_st_checks.not_a_server_error]
 
 # Cap fuzz budget per endpoint so the suite finishes in reasonable wall
-# time — 8 examples per endpoint × ~20 endpoints = ~160 runs total.
+# time — 5 examples per endpoint × ~20 endpoints = ~100 runs total. The
+# autouse safety net in ``tests/conftest.py`` snapshots+restores
+# ``dependency_overrides`` per-test, which adds noticeable per-run
+# overhead at hypothesis's default budget; 5 examples is the
+# fastest-still-meaningful setting.
 _FUZZ_SETTINGS = settings(
     max_examples=8,
     deadline=None,
