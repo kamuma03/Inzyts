@@ -10,8 +10,8 @@
 [![License](https://img.shields.io/badge/license-Apache_2.0-orange.svg)](LICENSE)
 [![LangGraph](https://img.shields.io/badge/powered_by-LangGraph-purple.svg)](https://langchain-ai.github.io/langgraph/)
 [![Status](https://img.shields.io/badge/status-Beta-yellow.svg)](https://github.com/kamuma03/Inzyts)
-[![Tests](https://img.shields.io/badge/tests-1100+_passing-brightgreen.svg)](tests/)
-[![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-108_files-brightgreen.svg)](tests/)
+[![CI](https://img.shields.io/github/actions/workflow/status/kamuma03/Inzyts/test.yml?branch=main&label=CI)](.github/workflows/test.yml)
 
 [Features](#-key-features) • [Installation](#-installation) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [Examples](#-examples)
 
@@ -21,7 +21,7 @@
 
 ## 📖 Overview
 
-**Inzyts** is an **autonomous data analysis system** that transforms raw CSV data into comprehensive Jupyter notebooks with minimal human intervention. Built on LangGraph's stateful orchestration, it employs a **22-agent, 2-phase architecture** (Phase 1: Data Understanding → Phase 2: Analysis & Modeling) with **7-mode execution** to handle exploratory, predictive, diagnostic, comparative, forecasting, segmentation, and dimensionality reduction workflows.
+**Inzyts** is an **autonomous data analysis system** that transforms raw CSV data into comprehensive Jupyter notebooks with minimal human intervention. Built on LangGraph's stateful orchestration, it employs a **27-agent, 2-phase architecture** (Phase 1: Data Understanding → Phase 2: Analysis & Modeling) with **7-mode execution** to handle exploratory, predictive, diagnostic, comparative, forecasting, segmentation, and dimensionality reduction workflows.
 
 ### 💻 Technology Stack
 
@@ -466,44 +466,51 @@ npm run dev
 
 All endpoints require a `Authorization: Bearer <token>` header. Rate limits are enforced per client IP:
 - `POST /api/v2/analyze` — 10 requests/minute
+- `POST /api/v2/auth/login` — 10 requests/minute (per source IP)
 - `GET /api/v2/jobs/{job_id}` — 30 requests/minute
+
+**Auth column legend**: `Public` = no auth, `Any` = any authenticated user (viewer/analyst/admin), `Owner` = the user who created the job (admins bypass), `Analyst+` = analyst or admin role required, `Admin` = admin role required.
 
 | Endpoint | Method | Description | Auth |
 |----------|--------|-------------|------|
 | `/api/v2/auth/login` | POST | Authenticate and obtain JWT token | Public |
 | `/api/v2/auth/me` | GET | Get current user profile (id, username, role) | Any |
 | `/api/v2/analyze` | POST | Start new analysis job | Analyst+ |
-| `/api/v2/jobs/{job_id}` | GET | Get job status, progress, and logs | Any |
-| `/api/v2/jobs/{job_id}/cancel` | POST | Cancel running job | Any |
-| `/api/v2/notebooks/{job_id}` | GET | Download completed notebook | Any |
-| `/api/v2/notebooks/{job_id}/html` | GET | Get rendered HTML notebook | Any |
-| `/api/v2/notebooks/{job_id}/session` | POST | Start live Jupyter session | Any |
-| `/api/v2/notebooks/{job_id}/ws/{kernel_id}` | WebSocket | Live kernel communication | Any |
-| `/api/v2/files/upload` | POST | Upload CSV file (multipart) | Analyst+ |
-| `/api/v2/files/upload_batch` | POST | Upload multiple CSV files | Analyst+ |
+| `/api/v2/suggest-mode` | POST | AI-powered analysis mode suggestion | Any |
+| `/api/v2/jobs` | GET | List jobs (admins see all; non-admins see their own) | Any |
+| `/api/v2/jobs/{job_id}` | GET | Get job status, progress, and logs | Owner |
+| `/api/v2/jobs/{job_id}/cancel` | POST | Cancel running job | Owner |
+| `/api/v2/jobs/{job_id}/columns` | GET | Per-column profile rows (Command Center) | Owner |
+| `/api/v2/jobs/{job_id}/cost` | GET | Per-phase cost breakdown | Owner |
+| `/api/v2/notebooks/{job_id}/download` | GET | Download completed notebook (.ipynb) | Owner |
+| `/api/v2/notebooks/{job_id}/html` | GET | Get rendered HTML notebook | Owner |
+| `/api/v2/notebooks/{job_id}/cells` | GET | Get notebook as structured JSON cells | Owner |
+| `/api/v2/notebooks/{job_id}/cells/edit` | POST | Edit cell with natural language instruction | Owner |
+| `/api/v2/notebooks/{job_id}/cells/execute` | POST | Execute cell in live kernel session | Owner |
+| `/api/v2/notebooks/{job_id}/cells/restart` | POST | Restart kernel session for the job | Owner |
+| `/api/v2/notebooks/{job_id}/cells/interrupt` | POST | Interrupt the currently-running cell | Owner |
+| `/api/v2/notebooks/{job_id}/ask` | POST | Ask follow-up question against notebook | Owner |
+| `/api/v2/notebooks/{job_id}/conversation` | GET | Load conversation history | Owner |
+| `/api/v2/files/upload` | POST | Upload CSV/Parquet/Excel/JSON file | Analyst+ |
+| `/api/v2/files/upload_batch` | POST | Upload multiple files | Analyst+ |
 | `/api/v2/files/preview` | GET | Preview file content (first 5 rows) | Any |
-| `/api/v2/cache/check` | POST | Check cache status for CSV | Any |
-| `/api/v2/cache/{csv_hash}` | DELETE | Clear specific cache | Any |
-| `/api/v2/cache/all` | DELETE | Clear all caches | Any |
+| `/api/v2/files/db-test` | POST | Test database connection (lists tables) | Any |
+| `/api/v2/files/sql-preview` | POST | Preview a SELECT query result | Any |
+| `/api/v2/files/api-preview` | POST | Preview a REST API response | Any |
 | `/api/v2/templates` | GET | List all domain templates | Any |
 | `/api/v2/templates` | POST | Upload new domain template | Any |
 | `/api/v2/templates/{domain}` | DELETE | Delete domain template | Any |
 | `/api/v2/metrics` | GET | System health metrics | Any |
-| `/api/v2/notebooks/{job_id}/cells` | GET | Get notebook as structured JSON cells | Any |
-| `/api/v2/notebooks/{job_id}/cells/edit` | POST | Edit cell with natural language instruction | Any |
+| `/api/v2/reports/{job_id}/export` | GET, POST | Export report (html / pdf / pptx / markdown) | Owner |
+| `/api/v2/reports/{job_id}/executive-summary` | GET | Get LLM-generated executive summary | Owner |
+| `/api/v2/reports/{job_id}/pii-scan` | GET | Scan notebook for PII findings | Owner |
 | `/api/v2/admin/users` | GET | List all users | Admin |
 | `/api/v2/admin/users` | POST | Create new user with role | Admin |
 | `/api/v2/admin/users/{user_id}` | PUT | Update user (role, email, active, password) | Admin |
 | `/api/v2/admin/users/{user_id}` | DELETE | Delete user | Admin |
-| `/api/v2/reports/{job_id}/export` | GET | Export report (query: format=html\|pdf\|pptx\|markdown) | Any |
-| `/api/v2/reports/{job_id}/export` | POST | Export report with options body | Any |
-| `/api/v2/reports/{job_id}/executive-summary` | GET | Get LLM-generated executive summary | Any |
-| `/api/v2/reports/{job_id}/pii-scan` | GET | Scan notebook for PII findings | Any |
 | `/api/v2/admin/audit-logs` | GET | Query audit logs (filter by user, action, date) | Admin |
 | `/api/v2/admin/audit-logs/summary` | GET | Audit log action counts | Admin |
-| `/api/v2/health` | GET | Health check endpoint | Public |
-| `/health/ready` | GET | Readiness check (dependencies) | Public |
-| `/api/v2/suggest-mode` | POST | AI-powered analysis mode suggestion | Any |
+| `/health` | GET | Liveness check | Public |
 
 **WebSocket Events** (Socket.IO on `/socket.io`)
 - `job_started`, `job_progress`, `job_completed`, `job_failed`, `agent_event`, `progress` (phase-aware with ETA)
@@ -1079,66 +1086,51 @@ python -m src.main --csv data.csv --target y --verbose 2> debug.log
 
 ### Test Suite Overview
 
-The system includes **1100+ tests** across **95 test files** with ~95% coverage:
+The system includes **108 Python test files** (~1,100 assertions) plus **9 frontend `vitest` files**, exercised in CI on every push to `main` via [`.github/workflows/test.yml`](.github/workflows/test.yml). Coverage is not currently measured automatically — run `./tests/run_tests.sh --html` locally to generate a coverage report.
 
 ```bash
-# Run all tests
+# Run the default unit suite (fast, no external deps).
+# `slow`-marked tests are excluded by default — see warning below.
+JWT_SECRET_KEY=test-secret ADMIN_PASSWORD=test-admin pytest tests/unit
+
+# Run integration tests (requires Redis; conftest auto-starts a container).
+JWT_SECRET_KEY=test-secret ADMIN_PASSWORD=test-admin pytest tests/integration
+
+# Run frontend tests
+(cd frontend && npm run test)
+
+# Helper script (legacy — invokes pytest with the same defaults)
 ./tests/run_tests.sh
-
-# Run specific test categories
-./tests/run_tests.sh -s unit          # Unit tests (300+ tests)
-./tests/run_tests.sh -s integration   # Integration tests (90+ tests)
-./tests/run_tests.sh -s workflow      # Workflow tests (60+ tests)
-./tests/run_tests.sh -s performance   # Performance benchmarks
-./tests/run_tests.sh -s services      # JupyterService tests
-./tests/run_tests.sh -s notebooks     # Notebook API tests
-
-# Generate HTML coverage report
-./tests/run_tests.sh --html
-# Open htmlcov/index.html to view detailed coverage
-
-# Run UI tests (requires app running)
-./start_app.sh                        # Terminal 1
-./tests/run_ui_tests.sh               # Terminal 2
-
-# Run with verbose output
-./tests/run_tests.sh -v
-
-# Quick mode (skip slow tests)
-./tests/run_tests.sh --quick
 ```
 
-### Test Coverage Breakdown
+> **⚠️ The `slow` marker — read before running.** The single test file
+> `tests/unit/services/test_sandbox_security.py` spawns *real* Jupyter
+> kernels to exercise the `setrlimit` / `setsid` / `killpg` machinery in
+> [src/services/sandbox_executor.py](src/services/sandbox_executor.py).
+> A bug in any of those primitives can SIGKILL the parent process group —
+> which on a desktop session may include the test runner, the shell, the
+> terminal, **and the desktop session itself**. The `_killpg` helper now
+> enforces three invariants that prevent this, but as defence-in-depth the
+> `slow` marker is **excluded by default**. Opt in explicitly with
+> `pytest -m slow` only after reviewing the safety guarantees in
+> [SECURITY.md](SECURITY.md#sandbox-_killpg-safety-invariants).
 
-| Component | Coverage | Test Files | Description |
-|-----------|----------|------------|-------------|
-| **Unit Tests** | 92%+ | 28 files | Agent process methods, validators, state management |
-| - Base Agent | 95% | `test_base_agent.py` | LLM providers, CrewAI config |
-| - Profile CodeGen | 95% | `test_profile_codegen.py` | Template generation, caching |
-| - Analysis CodeGen | 92% | `test_analysis_codegen_methods.py` | Mode-specific templates |
-| - Analysis Validator | 90% | `test_analysis_validator_full.py` | Full validation pipeline |
-| - State Management | 95% | `test_state.py` | AnalysisState, Issue tracking |
-| - Profile Lock | 95% | `test_profile_lock.py` | Lock mechanism, integrity |
-| - Handoffs | 95% | `test_handoffs.py` | All handoff models |
-| - Graph Workflow | 95% | `test_graph_workflow.py` | LangGraph workflow tests |
-| - Routing | 90% | `test_routing.py` | Phase routing, rollback |
-| - JupyterService | 95% | `test_jupyter_proxy.py` | Kernel management, proxy |
-| - Orchestrator | 92% | `test_orchestrator.py` | 7-mode detection, coordination |
-| **Integration Tests** | 85%+ | 10 files | End-to-end pipeline validation |
-| - API Tests | 85% | Various | File upload, jobs, analysis endpoints |
-| - E2E Workflow | 90% | `test_e2e_workflow.py` | Full pipeline tests |
-| - Cache Manager | 95% | `test_cache_manager.py` | All cache operations |
-| - Mode Inference | 90% | `test_mode_inference.py` | 7-mode detection logic |
-| - Multi-File | 90% | `test_multifile.py` | Join detection, merging |
-| - Templates | 90% | `test_templates.py` | Domain template system |
-| **Server/API Layer** | 80%+ | 8 files | FastAPI endpoints, WebSockets |
-| **Performance Tests** | N/A | 1 file | Benchmarks |
-| **UI Tests** | N/A | 1 file | Smoke tests |
-| **Report Export** | 90%+ | 4 files | PII detection, executive summary, report export, API routes |
-| **Progress Tracking** | 95%+ | 1 file | ProgressTracker timing, ETA, event mapping, DB persistence |
-| **Mode Suggestion** | 90%+ | 1 file | Suggest-mode endpoint, ModeDetector integration |
-| **Frontend Components** | 90%+ | 2 files | ModeSelector suggestions, AgentTrace progress bar |
-| **Overall** | **~95%** | **95 files** | **1100+ tests** |
+### Test Layout
+
+| Layer | Test files | What it covers |
+|---|---|---|
+| **Unit** (`tests/unit/`) | ~70 files | Agent `process()` methods, validators, state machine, prompt builders, route handlers (with mocked DB), `_killpg` invariants, kernel env isolation, db_uri host blocklist, SQL DML guard |
+| **Integration** (`tests/integration/`) | 21 files | End-to-end pipeline runs, API endpoints with TestClient + real Redis container, mode-specific workflows. **Includes**: SSRF redirect/pagination guard (`test_ssrf_redirects.py`), login rate limit (`test_login_rate_limit.py`), cross-user IDOR (`test_idor_cross_user.py`), role-based access (`test_role_based_access.py`) |
+| **Security** (`tests/security/`) | 2 files | Adversarial inputs: path traversal, JWT tampering, malicious uploads, sandbox-escape primitives (rlimit / setsid / proxy / credential-stripping invariants) |
+| **Safety** (`tests/safety/`) | 1 file | Prompt injection in SQL agent, credential-name echo prevention in LLM prompts, mode-detector adversarial input |
+| **Contracts** (`tests/contracts/`) | 1 file | OpenAPI fuzz via `schemathesis` — every documented GET endpoint must never 5xx under conforming inputs |
+| **Agents** (`tests/agents/`) | 4 files | API/SQL extraction agents, profile multi-file merging, parameter tuning codegen |
+| **Services** (`tests/services/`) | 2 files | Join detector, template manager |
+| **Performance** (`tests/performance/`) | 1 file | Throughput benchmarks |
+| **End-to-end** (`tests/e2e/`) | 1 file | Multi-file workflow |
+| **UI** (`tests/ui/`) | 1 file | Smoke test |
+| **Frontend Vitest** (`frontend/src/**/*.test.{ts,tsx}`) | 9 files | Component + utility unit tests |
+| **Playwright e2e + a11y** (`frontend/tests/`) | 2 files | Login → Dashboard critical journey, WCAG-AA scan via `@axe-core/playwright`. Run with `npx playwright test` after `./start_app.sh`. |
 
 ### Test Fixtures
 
@@ -1223,8 +1215,8 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 **Made with ❤️ by the Inzyts Team**
 
 📊 **Production Stats**:
-- 22-agent, 2-phase architecture with 7 pipeline modes
-- 1100+ tests across 95 test files with 95% coverage
+- 27-agent, 2-phase architecture with 7 pipeline modes
+- 108 backend test files (~1,100 assertions) + 9 frontend Vitest files; CI on every push to main
 - Smart mode suggestion with AI-powered confidence scoring
 - Phase-aware progress tracking with real-time ETA
 - Multi-format report export (HTML, PDF, PPTX, Markdown) with executive summaries and PII detection

@@ -6,6 +6,7 @@ using regex-based pattern matching. Returns findings with type, location,
 and severity. Optionally masks detected PII with redacted placeholders.
 """
 
+import ipaddress
 import re
 import time
 from pathlib import Path
@@ -73,8 +74,37 @@ _PII_PATTERNS: Dict[str, Tuple[re.Pattern, str, str]] = {
     ),
 }
 
-# Common false-positive IPs to ignore (localhost, broadcast, etc.)
-_IGNORE_IPS = {"0.0.0.0", "127.0.0.1", "255.255.255.255", "192.168.0.1", "10.0.0.1"}
+# Special non-routable IPs that always count as false positives even though
+# ipaddress would not classify them as private (broadcast, "any" address).
+_ALWAYS_IGNORE_LITERALS = {"0.0.0.0", "255.255.255.255"}
+
+
+def _is_low_signal_ip(value: str) -> bool:
+    """True if ``value`` is an IP that's almost never PII.
+
+    Filters out:
+      * the entire RFC1918 private space (10/8, 172.16/12, 192.168/16)
+      * loopback (127/8)
+      * link-local / cloud metadata (169.254/16)
+      * multicast / reserved
+      * the ``0.0.0.0`` and ``255.255.255.255`` literals (broadcast / any)
+
+    A real PII IP is a public address that geolocates to a person or
+    institution; the categories above are infrastructure noise.
+    """
+    if value in _ALWAYS_IGNORE_LITERALS:
+        return True
+    try:
+        ip = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+    )
 
 
 class PIIDetector:
@@ -96,8 +126,9 @@ class PIIDetector:
             for match in pattern.finditer(text):
                 value = match.group()
 
-                # Filter false positives
-                if pii_type == "ip_address" and value in _IGNORE_IPS:
+                # Filter false positives — private/loopback/reserved/multicast
+                # IPs are infrastructure noise, not PII.
+                if pii_type == "ip_address" and _is_low_signal_ip(value):
                     continue
 
                 # Partially mask the value for safe display
@@ -208,9 +239,10 @@ class PIIDetector:
         masked = text
         for pii_type, (pattern, _, placeholder) in _PII_PATTERNS.items():
             if pii_type == "ip_address":
-                # Only mask non-common IPs
+                # Only mask public IPs — leave private/loopback/reserved
+                # addresses in place so they stay readable in masked exports.
                 def _ip_replacer(m: re.Match) -> str:
-                    return m.group() if m.group() in _IGNORE_IPS else "[IP_ADDRESS]"
+                    return m.group() if _is_low_signal_ip(m.group()) else "[IP_ADDRESS]"
 
                 masked = pattern.sub(_ip_replacer, masked)
             else:

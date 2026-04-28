@@ -10,20 +10,31 @@ from fastapi.testclient import TestClient
 from src.server.main import fastapi_app
 from src.server.middleware.auth import verify_token
 from src.server.db.database import get_db
-from src.server.db.models import User, Job
+from src.server.db.models import User, UserRole, Job
 
 mock_db_session = AsyncMock()
 
+_TEST_USER_ID = "test-user-id"
+
 
 def _fake_user():
-    return User(id="test-user-id", username="testuser", is_active=True)
+    return User(
+        id=_TEST_USER_ID,
+        username="testuser",
+        is_active=True,
+        role=UserRole.ANALYST,
+    )
 
 
 @pytest.fixture(autouse=True)
-def apply_dependency_overrides():
+def apply_dependency_overrides(tmp_path):
+    """Stub auth+db for every test, and point ``_OUTPUT_DIR`` at ``tmp_path``
+    so the path-traversal guard in ``_get_job_notebook`` accepts notebooks
+    written under the test's tmp dir."""
     fastapi_app.dependency_overrides[verify_token] = _fake_user
     fastapi_app.dependency_overrides[get_db] = lambda: mock_db_session
-    yield
+    with patch("src.server.routes.reports._OUTPUT_DIR", tmp_path):
+        yield
     fastapi_app.dependency_overrides.clear()
 
 
@@ -47,6 +58,7 @@ def _mock_job_with_notebook(tmp_path):
 
     mock_job = MagicMock(spec=Job)
     mock_job.id = "job-123"
+    mock_job.user_id = _TEST_USER_ID  # owned by the fake test user
     mock_job.result_path = str(path)
     mock_job.mode = "exploratory"
     mock_job.title = "Test Analysis"
@@ -111,6 +123,7 @@ class TestExportReportGet:
     def test_export_no_notebook(self):
         mock_job = MagicMock(spec=Job)
         mock_job.id = "job-no-nb"
+        mock_job.user_id = _TEST_USER_ID
         mock_job.result_path = None
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_job
@@ -218,6 +231,7 @@ class TestPIIScanEndpoint:
 
         mock_job = MagicMock(spec=Job)
         mock_job.id = "job-pii"
+        mock_job.user_id = _TEST_USER_ID
         mock_job.result_path = str(path)
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_job

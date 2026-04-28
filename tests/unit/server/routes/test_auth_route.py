@@ -4,9 +4,11 @@ Tests for the auth login endpoint (src/server/routes/auth.py).
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 from fastapi import status
+from starlette.requests import Request
 
 from src.server.routes.auth import router, login_for_access_token
 from src.server.db.models import User
+from src.server.rate_limiter import limiter
 
 
 @pytest.fixture
@@ -17,11 +19,28 @@ def mock_db():
 
 @pytest.fixture
 def mock_request():
-    req = MagicMock()
-    req.headers = {}
-    req.client = MagicMock()
-    req.client.host = "127.0.0.1"
-    return req
+    """Build a real Starlette Request — the slowapi rate-limit decorator on
+    /auth/login does an ``isinstance(request, Request)`` check and rejects
+    pure MagicMocks."""
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/v2/auth/login",
+        "headers": [],
+        "client": ("127.0.0.1", 1234),
+        "query_string": b"",
+    }
+    request = Request(scope)
+    # The route also reads request.state.limiter and request.app.state.limiter
+    # via slowapi when it tries to apply the limit. Wire those up minimally.
+    app_state = MagicMock()
+    app_state.limiter = limiter
+    app_state.key_func = limiter._key_func
+    app_state.http_exception_handler = None
+    request.scope["app"] = MagicMock()
+    request.scope["app"].state = app_state
+    request.scope["app"].dependency_overrides_provider = None
+    return request
 
 
 @pytest.fixture

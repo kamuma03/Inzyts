@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import List
 from werkzeug.utils import secure_filename as werkzeug_secure_filename
 from src.config import settings
-from src.server.middleware.auth import verify_token
+from src.server.db.models import User, UserRole
+from src.server.middleware.auth import require_role, verify_token
 from src.utils.logger import get_logger
 from src.utils.path_validator import validate_path_within, ensure_dir
 from src.server.models.schemas import FilePreview, DBTestRequest, DBTestResponse, SQLPreviewRequest, APIPreviewRequest
@@ -79,7 +80,8 @@ def _validate_upload(file_size: int, header: bytes, filename: str) -> None:
 
 @router.post("/upload")
 async def upload_file(
-    file: UploadFile = File(...), _token: str = Depends(verify_token)
+    file: UploadFile = File(...),
+    _user: User = Depends(require_role(UserRole.ANALYST)),
 ):
     """
     Upload a CSV/Parquet file to the server with MIME type validation.
@@ -130,7 +132,8 @@ async def upload_file(
 
 @router.post("/upload_batch")
 async def upload_batch(
-    files: List[UploadFile] = File(...), _token: str = Depends(verify_token)
+    files: List[UploadFile] = File(...),
+    _user: User = Depends(require_role(UserRole.ANALYST)),
 ):
     """
     Upload multiple CSV/Parquet files with MIME type validation.
@@ -183,7 +186,7 @@ async def upload_batch(
 
 
 @router.get("/preview", response_model=FilePreview)
-async def preview_file(path: str, _token: str = Depends(verify_token)):
+async def preview_file(path: str, _user: User = Depends(verify_token)):
     """
     Get a preview of the file content.
 
@@ -282,7 +285,7 @@ async def preview_file(path: str, _token: str = Depends(verify_token)):
 
 @router.post("/db-test", response_model=DBTestResponse)
 async def test_db_connection(
-    req: DBTestRequest, _token: str = Depends(verify_token)
+    req: DBTestRequest, _user: User = Depends(verify_token)
 ):
     """
     Test a database connection and return basic info (dialect, host, table list).
@@ -324,7 +327,7 @@ async def test_db_connection(
 
 @router.post("/sql-preview", response_model=FilePreview)
 async def preview_sql_query(
-    req: SQLPreviewRequest, _token: str = Depends(verify_token)
+    req: SQLPreviewRequest, _user: User = Depends(verify_token)
 ):
     """
     Execute a SQL query and return the first 5 rows as a preview.
@@ -368,14 +371,19 @@ async def preview_sql_query(
 
 @router.post("/api-preview", response_model=FilePreview)
 async def preview_api_endpoint(
-    req: APIPreviewRequest, _token: str = Depends(verify_token)
+    req: APIPreviewRequest, _user: User = Depends(verify_token)
 ):
     """
     Fetch a single page from a REST API and return the first 5 rows as a preview.
     """
     import requests as http_requests
     import pandas as pd
-    from src.agents.api_agent import _build_auth_headers, _extract_data_with_jmespath, _is_private_ip
+    from src.agents.api_agent import (
+        _build_auth_headers,
+        _extract_data_with_jmespath,
+        _is_private_ip,
+        _safe_get,
+    )
 
     if _is_private_ip(req.api_url):
         raise HTTPException(status_code=400, detail="API URL resolves to a private/reserved IP.")
@@ -385,7 +393,10 @@ async def preview_api_endpoint(
     headers.setdefault("Accept", "application/json")
 
     try:
-        response = http_requests.get(req.api_url, headers=headers, timeout=10)
+        # Use _safe_get so HTTP redirects are validated against the SSRF
+        # allowlist on every hop — preventing 302 -> private-IP pivots.
+        session = http_requests.Session()
+        response = _safe_get(session, req.api_url, headers=headers, timeout=10)
         response.raise_for_status()
         data = response.json()
         records = _extract_data_with_jmespath(data, req.json_path)

@@ -52,10 +52,22 @@ class TestPIIDetectorScanText:
         assert "1111" in cards[0].value  # last 4 visible
 
     def test_detect_ip_address(self):
-        findings = PIIDetector.scan_text("Server at 192.168.1.100", "test")
+        # Public IPs are PII; private/loopback/reserved are infrastructure noise.
+        # 8.8.8.8 (Google DNS) is unambiguously public/global.
+        findings = PIIDetector.scan_text("Server at 8.8.8.8", "test")
         ips = [f for f in findings if f.pii_type == "ip_address"]
         assert len(ips) == 1
         assert ips[0].severity == "low"
+
+    def test_ignore_private_ips(self):
+        """RFC1918 private + loopback + broadcast are filtered as low-signal."""
+        findings = PIIDetector.scan_text(
+            "localhost 127.0.0.1 broadcast 255.255.255.255 "
+            "rfc1918 192.168.1.100 10.0.5.100 172.16.0.1",
+            "test",
+        )
+        ips = [f for f in findings if f.pii_type == "ip_address"]
+        assert len(ips) == 0
 
     def test_ignore_common_ips(self):
         findings = PIIDetector.scan_text("localhost 127.0.0.1 and 0.0.0.0", "test")
@@ -175,11 +187,22 @@ class TestPIIDetectorMasking:
 
     def test_mask_ip_preserves_common(self):
         masked = PIIDetector.mask_text("localhost is 127.0.0.1")
-        assert "127.0.0.1" in masked  # common IP preserved
+        assert "127.0.0.1" in masked  # loopback preserved
 
-    def test_mask_ip_masks_private(self):
+    def test_mask_ip_preserves_private(self):
+        # Private/RFC1918 IPs are infrastructure noise — preserved by the mask
+        # so masked exports still show internal topology unchanged.
         masked = PIIDetector.mask_text("server at 10.0.5.100")
+        assert "10.0.5.100" in masked
+        assert "[IP_ADDRESS]" not in masked
+
+    def test_mask_ip_masks_public(self):
+        # Public (routable) IPs are PII and ARE masked. Use 8.8.8.8 since
+        # python's ipaddress flags TEST-NET ranges (203.0.113.0/24) as
+        # is_private even though RFC5737 calls them documentation IPs.
+        masked = PIIDetector.mask_text("user from 8.8.8.8 logged in")
         assert "[IP_ADDRESS]" in masked
+        assert "8.8.8.8" not in masked
 
     def test_mask_clean_text_unchanged(self):
         text = "Sales were $1.2M in Q3 2025"

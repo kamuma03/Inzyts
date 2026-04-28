@@ -122,8 +122,10 @@ class SocketIOHandler(logging.Handler):
                             "eta_seconds": progress_data.get("eta_seconds"),
                             "phase_timings": progress_data.get("phase_timings"),
                         }, room=self.job_id)
-                    except Exception:
-                        pass  # Progress tracking must not break job execution
+                    except Exception as e:
+                        # Progress tracking must not break job execution.
+                        # Log at debug so silent regressions are still grep-able.
+                        logger.debug(f"Progress tracker update failed for {self.job_id}: {e}")
 
                 # Update phase-state tracker and emit phase_update on change
                 if self._phase_tracker:
@@ -138,8 +140,9 @@ class SocketIOHandler(logging.Handler):
                                 "job_id": self.job_id,
                                 "phases": snapshot,
                             }, room=self.job_id)
-                    except Exception:
-                        pass  # phase tracking must never break job execution
+                    except Exception as e:
+                        # Phase tracking must never break job execution.
+                        logger.debug(f"Phase tracker update failed for {self.job_id}: {e}")
 
             self.mgr.emit("log", payload, room=self.job_id)
         except Exception as e:
@@ -236,8 +239,8 @@ def setup_job_logging(
     try:
         from src.server.services.phase_state import PhaseStateTracker
         PhaseStateTracker().clear(job_id)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"PhaseStateTracker clear failed for {job_id}: {e}")
 
     try:
         yield
@@ -245,8 +248,8 @@ def setup_job_logging(
         if aggregator is not None:
             try:
                 aggregator.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"MetricsAggregator stop failed for {job_id}: {e}")
         root_logger.removeHandler(socket_handler)
         root_logger.removeHandler(file_handler)
         file_handler.close()
@@ -409,6 +412,6 @@ def execution_task(self, job_id: str, csv_path: Optional[str] = None, mode: str 
                         job_id,
                         success=(job.status == JobStatus.COMPLETED),
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"ProgressTracker.mark_complete failed for {job_id}: {e}")
                 session.commit()

@@ -19,7 +19,7 @@ def get_template_manager():
 @router.get("/templates", response_model=List[DomainTemplate])
 async def list_templates(
     manager: TemplateManager = Depends(get_template_manager),
-    _token: str = Depends(verify_token),
+    _user=Depends(verify_token),
 ):
     """List all available domain templates."""
     return manager.get_all_templates()
@@ -29,7 +29,7 @@ async def list_templates(
 async def upload_template(
     file: UploadFile = File(...),
     manager: TemplateManager = Depends(get_template_manager),
-    _token: str = Depends(verify_token),
+    _user=Depends(verify_token),
 ):
     """Upload a new domain template (JSON file)."""
     try:
@@ -59,7 +59,7 @@ async def upload_template(
 async def delete_template(
     domain_name: str,
     manager: TemplateManager = Depends(get_template_manager),
-    _token: str = Depends(verify_token),
+    _user=Depends(verify_token),
 ):
     """Delete a domain template by name."""
     if manager.delete_template(domain_name):

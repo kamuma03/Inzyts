@@ -125,10 +125,15 @@ def _build_preexec_fn(policy: SandboxPolicy) -> Callable[[], None]:
 
     def _apply() -> None:
         # New session/process group so the parent owns it for SIGKILL.
+        # If setsid() fails we MUST exit the child immediately — leaving the
+        # child in the parent's process group means a later _killpg can
+        # SIGKILL the parent (test runner, worker, shell, desktop session).
+        # Print a marker before _exit so the parent can diagnose afterwards.
         try:
             os.setsid()
-        except OSError:
-            pass
+        except OSError as e:
+            os.write(2, f"FATAL: kernel preexec setsid failed: {e}\n".encode())
+            os._exit(127)
 
         for rlimit_name, rlimit_const, value in (
             ("RLIMIT_AS", getattr(resource, "RLIMIT_AS", None), memory_bytes),
@@ -201,9 +206,21 @@ class KernelSandbox:
         self,
         policy: SandboxPolicy = PRODUCTION_POLICY,
         kernel_name: str = "python3",
+        extra_env: Optional[Dict[str, str]] = None,
     ):
+        """Initialise a kernel sandbox.
+
+        Args:
+            policy: Resource and isolation limits applied to the child kernel.
+            kernel_name: jupyter_client kernel spec name (e.g. ``python3``).
+            extra_env: Optional per-instance env vars passed to the kernel
+                subprocess only (NOT to the parent process). Use this to
+                pass per-job state like the dataset path without polluting
+                the worker's own ``os.environ``.
+        """
         self.policy = policy
         self.kernel_name = kernel_name
+        self._extra_env: Dict[str, str] = dict(extra_env or {})
         self.km: Optional[Any] = None
         self.kc: Optional[Any] = None
         self._working_dir: Optional[str] = policy.working_dir
@@ -251,6 +268,10 @@ class KernelSandbox:
             env["ALL_PROXY"] = blackhole
             env["no_proxy"] = ""
             env["NO_PROXY"] = ""
+
+        # Layer per-instance overrides last so callers can pass dataset paths
+        # etc. without mutating the worker's own os.environ.
+        env.update(self._extra_env)
         return env
 
     def _start_kernel(self) -> None:
@@ -322,7 +343,27 @@ class KernelSandbox:
     # -- execution -----------------------------------------------------------
 
     def _killpg(self) -> None:
-        """SIGKILL the kernel's process group — used on timeout."""
+        """SIGKILL the kernel's process group — used on timeout.
+
+        Three safety guards layered to prevent two real disasters:
+
+        1. **PID reuse race**: between checking ``has_kernel`` and reading
+           ``getpgid(pid)``, the kernel can exit and Linux can reuse the
+           PID for an unrelated user process (e.g. a notification daemon).
+           ``killpg(reused_pgid, SIGKILL)`` would then nuke that unrelated
+           process group.
+        2. **setsid failure**: ``_build_preexec_fn`` calls ``os.setsid()``
+           but silently catches OSError. If setsid fails, the kernel
+           inherits the parent's (worker / pytest / shell) process group
+           and ``killpg`` would SIGKILL the *parent's* group — taking down
+           the worker, the test runner, the user's terminal, and possibly
+           the desktop session. We refuse to kill any pgid that matches
+           the parent's own pgid.
+        3. **pgid == kernel pid invariant**: a successful ``setsid()`` makes
+           the child the leader of a new session; the new pgid equals the
+           child PID. If pgid != pid we know setsid failed (or PID was
+           reused) and refuse to kill.
+        """
         if not self.km or not getattr(self.km, "has_kernel", False):
             return
         kernel = getattr(self.km, "kernel", None)
@@ -331,6 +372,41 @@ class KernelSandbox:
             return
         try:
             pgid = os.getpgid(pid)
+        except (ProcessLookupError, PermissionError, OSError):
+            return  # Kernel already gone — nothing to do.
+
+        # Safety: refuse to kill our own process group. setsid is supposed to
+        # have moved the child into a new session group with pgid == pid, so
+        # if the resolved pgid matches ours something is badly wrong.
+        own_pgid = os.getpgrp()
+        if pgid == own_pgid or pgid == pid == 0:
+            logger.error(
+                f"Refusing _killpg: resolved pgid ({pgid}) matches the parent's "
+                f"own pgid ({own_pgid}). setsid likely failed in the kernel child. "
+                f"Falling back to SIGKILL on the kernel pid only."
+            )
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+            return
+
+        # Safety: a successful setsid() guarantees pgid == pid. If they differ
+        # the PID was reused after our liveness check and the resolved pgid
+        # belongs to an unrelated process — DO NOT kill it.
+        if pgid != pid:
+            logger.warning(
+                f"Refusing _killpg: pgid ({pgid}) != kernel pid ({pid}). "
+                f"Kernel was likely reaped and PID reused. "
+                f"SIGKILL kernel pid only."
+            )
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+            return
+
+        try:
             os.killpg(pgid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError, OSError):
             pass
@@ -537,7 +613,12 @@ class SandboxExecutor:
     against this class. New code should use :class:`KernelSandbox` directly.
     """
 
-    def __init__(self, kernel_name: str = "python3", execution_timeout: int = 60):
+    def __init__(
+        self,
+        kernel_name: str = "python3",
+        execution_timeout: int = 60,
+        extra_env: Optional[Dict[str, str]] = None,
+    ):
         # Honour the legacy timeout parameter while keeping the rest of the
         # production policy.
         policy = SandboxPolicy(
@@ -549,7 +630,11 @@ class SandboxExecutor:
             max_file_size_mb=PRODUCTION_POLICY.max_file_size_mb,
             name="legacy_compat",
         )
-        self._sandbox = KernelSandbox(policy=policy, kernel_name=kernel_name)
+        self._sandbox = KernelSandbox(
+            policy=policy,
+            kernel_name=kernel_name,
+            extra_env=extra_env,
+        )
 
     @property
     def km(self) -> Any:

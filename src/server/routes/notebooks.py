@@ -6,7 +6,8 @@ import nbformat
 from nbconvert import HTMLExporter
 from src.config import settings
 from src.server.db.database import get_db
-from src.server.db.models import Job, ConversationMessage
+from src.server.db.models import ConversationMessage, User
+from src.server.db.queries import resolve_owned_job
 from src.server.middleware.auth import verify_token
 from src.server.models.schemas import (
     CellEditRequest,
@@ -39,17 +40,16 @@ def _validate_notebook_path(notebook_path: Path) -> None:
 
 @router.get("/{job_id}/html")
 async def get_notebook_html(
-    job_id: str, db: AsyncSession = Depends(get_db), _token: str = Depends(verify_token)
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(verify_token),
 ):
     """
     Retrieve the generated Jupyter Notebook for a job and convert it to HTML.
     """
     try:
-        # 1. Get Job
-        result = await db.execute(select(Job).filter(Job.id == job_id))
-        job = result.scalar_one_or_none()
-        if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
+        # 1. Get Job (with ownership check)
+        job = await resolve_owned_job(job_id, db, current_user)
 
         if not job.result_path:
             raise HTTPException(
@@ -95,15 +95,12 @@ async def get_notebook_html(
 async def download_notebook(
     job_id: str,
     db: AsyncSession = Depends(get_db),
-    _token: str = Depends(verify_token),
+    current_user: User = Depends(verify_token),
 ):
     """Download the generated Jupyter Notebook (.ipynb) file."""
     from fastapi.responses import FileResponse
 
-    result = await db.execute(select(Job).filter(Job.id == job_id))
-    job = result.scalar_one_or_none()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    job = await resolve_owned_job(job_id, db, current_user)
 
     if not job.result_path:
         raise HTTPException(
@@ -130,7 +127,7 @@ async def execute_cell_in_session(
     job_id: str,
     body: dict,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(verify_token),
+    current_user: User = Depends(verify_token),
 ):
     """Execute one cell in the job's live kernel session.
 
@@ -148,11 +145,8 @@ async def execute_cell_in_session(
     if not isinstance(code, str) or not code.strip():
         raise HTTPException(status_code=400, detail="Empty code payload")
 
-    # Resolve job + ensure it exists & user owns it.
-    result = await db.execute(select(Job).filter(Job.id == job_id))
-    job = result.scalar_one_or_none()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    # Resolve job + ensure user owns it.
+    job = await resolve_owned_job(job_id, db, current_user)
 
     # Initialise the session lazily — first execute creates the kernel.
     from src.services.kernel_session_manager import kernel_session_manager
@@ -184,17 +178,14 @@ async def execute_cell_in_session(
 async def restart_cell_session(
     job_id: str,
     db: AsyncSession = Depends(get_db),
-    _token: str = Depends(verify_token),
+    current_user: User = Depends(verify_token),
 ):
     """Restart the kernel for the job's session, preserving the session entry.
 
     Drops all in-kernel state (variables, imports, dataframes) and re-runs
     the dataset bootstrap. Returns 404 if no session exists.
     """
-    result = await db.execute(select(Job).filter(Job.id == job_id))
-    job = result.scalar_one_or_none()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    await resolve_owned_job(job_id, db, current_user)
 
     from src.services.kernel_session_manager import kernel_session_manager
     session = kernel_session_manager.restart_session(job_id)
@@ -207,17 +198,14 @@ async def restart_cell_session(
 async def interrupt_cell_session(
     job_id: str,
     db: AsyncSession = Depends(get_db),
-    _token: str = Depends(verify_token),
+    current_user: User = Depends(verify_token),
 ):
     """Send a soft interrupt to the currently-running cell.
 
     Best-effort — for hard kills on a runaway cell, the SandboxPolicy
     wall-clock timeout will SIGKILL the process group regardless.
     """
-    result = await db.execute(select(Job).filter(Job.id == job_id))
-    job = result.scalar_one_or_none()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    await resolve_owned_job(job_id, db, current_user)
 
     from src.services.kernel_session_manager import kernel_session_manager
     ok = kernel_session_manager.interrupt_session(job_id)
@@ -230,15 +218,12 @@ async def interrupt_cell_session(
 async def get_notebook_cells(
     job_id: str,
     db: AsyncSession = Depends(get_db),
-    _token: str = Depends(verify_token),
+    current_user: User = Depends(verify_token),
 ):
     """
     Retrieve the notebook as structured JSON cells (for interactive mode).
     """
-    result = await db.execute(select(Job).filter(Job.id == job_id))
-    job = result.scalar_one_or_none()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    job = await resolve_owned_job(job_id, db, current_user)
 
     if not job.result_path:
         raise HTTPException(status_code=404, detail="No notebook generated for this job")
@@ -287,7 +272,7 @@ async def edit_cell(
     job_id: str,
     request: CellEditRequest,
     db: AsyncSession = Depends(get_db),
-    _token: str = Depends(verify_token),
+    current_user: User = Depends(verify_token),
 ):
     """
     Edit a notebook cell using natural language instruction.
@@ -297,11 +282,8 @@ async def edit_cell(
     from src.services.kernel_session_manager import kernel_session_manager
     from src.workflow.agent_factory import AgentFactory
 
-    # 1. Verify job exists
-    result = await db.execute(select(Job).filter(Job.id == job_id))
-    job = result.scalar_one_or_none()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    # 1. Verify job exists + ownership
+    job = await resolve_owned_job(job_id, db, current_user)
 
     csv_path = job.csv_path or ""
 
@@ -355,7 +337,7 @@ async def ask_followup(
     job_id: str,
     request: FollowUpRequest,
     db: AsyncSession = Depends(get_db),
-    _token: str = Depends(verify_token),
+    current_user: User = Depends(verify_token),
 ):
     """
     Ask a follow-up question about a completed analysis.
@@ -366,11 +348,8 @@ async def ask_followup(
     from src.services.kernel_session_manager import kernel_session_manager
     from src.workflow.agent_factory import AgentFactory
 
-    # 1. Verify job exists
-    result = await db.execute(select(Job).filter(Job.id == job_id))
-    job = result.scalar_one_or_none()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    # 1. Verify job exists + ownership
+    job = await resolve_owned_job(job_id, db, current_user)
 
     csv_path = job.csv_path or ""
 
@@ -487,7 +466,7 @@ async def ask_followup(
 async def get_conversation_history(
     job_id: str,
     db: AsyncSession = Depends(get_db),
-    _token: str = Depends(verify_token),
+    current_user: User = Depends(verify_token),
 ):
     """
     Load the full conversation history for a job.
@@ -495,11 +474,8 @@ async def get_conversation_history(
     Returns all follow-up Q&A exchanges in chronological order,
     enabling the frontend to restore conversations on page load.
     """
-    # Verify job exists
-    result = await db.execute(select(Job).filter(Job.id == job_id))
-    job = result.scalar_one_or_none()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    # Verify job exists + ownership
+    await resolve_owned_job(job_id, db, current_user)
 
     # Load messages
     history_result = await db.execute(

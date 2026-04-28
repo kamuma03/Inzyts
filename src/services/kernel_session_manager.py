@@ -32,13 +32,15 @@ class KernelSession:
 
     def start(self) -> None:
         """Start the kernel and load the dataset."""
-        self.executor = SandboxExecutor(execution_timeout=120)
-
-        # Bootstrap the kernel with imports and data loading.
-        # The CSV path is passed via environment variable to avoid code injection
-        # risks from crafted filenames (e.g. paths containing quote characters).
-        import os as _os
-        _os.environ["_INZYTS_KERNEL_CSV_PATH"] = self.csv_path
+        # Pass the CSV path to the kernel via subprocess env (NOT by mutating
+        # the worker's own os.environ — that would leak the most-recent job's
+        # path into every subsequent request handler in the same process).
+        # Using env still avoids the code-injection risk of interpolating a
+        # crafted filename into the bootstrap source.
+        self.executor = SandboxExecutor(
+            execution_timeout=120,
+            extra_env={"_INZYTS_KERNEL_CSV_PATH": self.csv_path},
+        )
 
         bootstrap_code = """
 import pandas as pd

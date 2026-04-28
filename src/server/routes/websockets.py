@@ -61,8 +61,14 @@ async def connect(sid, environ):
         logger.warning(f"Unauthorized WebSocket connection attempt: {sid} (Invalid token)")
         return False
 
-    # Persist the authenticated username so join_job can enforce ownership.
-    await sio.save_session(sid, {"username": user.username})
+    # Persist the authenticated user identity so join_job can enforce ownership.
+    # We need user_id (for ownership comparison) and role (admins bypass owner check).
+    user_role_value = user.role.value if user.role else "viewer"
+    await sio.save_session(sid, {
+        "user_id": user.id,
+        "username": user.username,
+        "role": user_role_value,
+    })
     logger.info(f"Client connected and authenticated: {sid} (user={user.username})")
 
 
@@ -73,22 +79,54 @@ async def disconnect(sid):
 
 @sio.event
 async def join_job(sid, data):
-    """Join a job's log-stream room after verifying the job exists."""
+    """Join a job's log-stream room after verifying the user owns the job.
+
+    Admins bypass the ownership check and can subscribe to any job's log
+    stream (mirrors REST RBAC). Non-admins can only join their own jobs.
+    Legacy jobs with NULL user_id are admin-only (matches the REST behaviour
+    in src.server.db.queries.resolve_owned_job).
+    """
     job_id = data.get("job_id") if isinstance(data, dict) else data
 
     if not job_id:
         logger.warning(f"Client {sid} sent join_job without a job_id")
         return
 
-    # Verify the job exists in the database before allowing the client to subscribe.
+    # Pull the authenticated identity stashed by ``connect``.
+    session = await sio.get_session(sid)
+    user_id = session.get("user_id") if isinstance(session, dict) else None
+    role = session.get("role") if isinstance(session, dict) else None
+    if not user_id:
+        # Connect handler should have rejected this — defensive 401.
+        logger.warning(f"Client {sid} sent join_job without an authenticated session")
+        await sio.emit("error", {"message": "Unauthenticated"}, to=sid)
+        return
+
+    # Look up the job and check ownership (admin bypass).
     from src.server.db.database import async_session_maker
     from src.server.db.models import Job
     from sqlalchemy import select
 
     async with async_session_maker() as db:
-        result = await db.execute(select(Job.id).where(Job.id == job_id))
-        if result.scalar_one_or_none() is None:
+        result = await db.execute(
+            select(Job.id, Job.user_id).where(Job.id == job_id)
+        )
+        row = result.first()
+        if row is None:
             logger.warning(f"Client {sid} tried to join non-existent job room: {job_id}")
+            await sio.emit("error", {"message": "Job not found"}, to=sid)
+            return
+        job_owner_id = row[1]
+
+    if role != "admin":
+        # Non-admins can only join their own jobs. Legacy NULL user_id is
+        # treated as admin-only — surface as "Job not found" to avoid
+        # enumeration of which job ids exist.
+        if not job_owner_id or job_owner_id != user_id:
+            logger.warning(
+                f"Client {sid} (user={user_id}) tried to join job {job_id} "
+                f"owned by {job_owner_id}"
+            )
             await sio.emit("error", {"message": "Job not found"}, to=sid)
             return
 

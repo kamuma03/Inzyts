@@ -25,6 +25,27 @@ def mock_sio_save_session():
     with patch("src.server.routes.websockets.sio.save_session", new_callable=AsyncMock) as mock_save:
         yield mock_save
 
+
+@pytest.fixture
+def mock_sio_get_session():
+    """``join_job`` calls ``sio.get_session`` to read the authenticated user.
+
+    Default to an analyst-role session owned by ``test-user-id`` so the
+    ownership check passes when the test mocks the job's ``user_id`` to match.
+    Tests can override the return value to model unauthenticated /
+    cross-user / admin scenarios.
+    """
+    with patch(
+        "src.server.routes.websockets.sio.get_session",
+        new_callable=AsyncMock,
+    ) as mock_get:
+        mock_get.return_value = {
+            "user_id": "test-user-id",
+            "username": "testuser",
+            "role": "analyst",
+        }
+        yield mock_get
+
 @pytest.fixture
 def mock_verify_token_async():
     with patch("src.server.routes.websockets.verify_token_async", new_callable=AsyncMock) as mock_verify:
@@ -107,10 +128,16 @@ async def test_disconnect():
     await disconnect("sid-123")
 
 @pytest.mark.asyncio
-async def test_join_job_dict_data(mock_sio_enter_room, mock_sio_emit, mock_async_session_maker):
+async def test_join_job_dict_data(
+    mock_sio_enter_room,
+    mock_sio_emit,
+    mock_async_session_maker,
+    mock_sio_get_session,
+):
     _, mock_db = mock_async_session_maker
+    # join_job now selects (Job.id, Job.user_id) — return a 2-tuple row.
     mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = "job-123"  # job exists
+    mock_result.first.return_value = ("job-123", "test-user-id")
     mock_db.execute = AsyncMock(return_value=mock_result)
 
     data = {"job_id": "job-123"}
@@ -120,10 +147,15 @@ async def test_join_job_dict_data(mock_sio_enter_room, mock_sio_emit, mock_async
     mock_sio_emit.assert_called_once_with("log", "Connected to log stream for job-123", room="job-123")
 
 @pytest.mark.asyncio
-async def test_join_job_string_data(mock_sio_enter_room, mock_sio_emit, mock_async_session_maker):
+async def test_join_job_string_data(
+    mock_sio_enter_room,
+    mock_sio_emit,
+    mock_async_session_maker,
+    mock_sio_get_session,
+):
     _, mock_db = mock_async_session_maker
     mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = "job-456"
+    mock_result.first.return_value = ("job-456", "test-user-id")
     mock_db.execute = AsyncMock(return_value=mock_result)
 
     data = "job-456"
@@ -131,6 +163,67 @@ async def test_join_job_string_data(mock_sio_enter_room, mock_sio_emit, mock_asy
 
     mock_sio_enter_room.assert_called_once_with("sid-456", "job-456")
     mock_sio_emit.assert_called_once_with("log", "Connected to log stream for job-456", room="job-456")
+
+
+@pytest.mark.asyncio
+async def test_join_job_rejects_cross_user(
+    mock_sio_enter_room,
+    mock_sio_emit,
+    mock_async_session_maker,
+    mock_sio_get_session,
+):
+    """A non-admin user cannot join a job they don't own."""
+    _, mock_db = mock_async_session_maker
+    mock_result = MagicMock()
+    # Job exists, but is owned by a different user.
+    mock_result.first.return_value = ("job-789", "other-user-id")
+    mock_db.execute = AsyncMock(return_value=mock_result)
+
+    await join_job("sid-789", {"job_id": "job-789"})
+
+    mock_sio_enter_room.assert_not_called()
+    mock_sio_emit.assert_called_once_with(
+        "error", {"message": "Job not found"}, to="sid-789"
+    )
+
+
+@pytest.mark.asyncio
+async def test_join_job_admin_can_join_any(
+    mock_sio_enter_room,
+    mock_sio_emit,
+    mock_async_session_maker,
+    mock_sio_get_session,
+):
+    """Admins bypass the ownership check."""
+    mock_sio_get_session.return_value = {
+        "user_id": "admin-id",
+        "username": "admin",
+        "role": "admin",
+    }
+    _, mock_db = mock_async_session_maker
+    mock_result = MagicMock()
+    mock_result.first.return_value = ("job-999", "some-other-user")
+    mock_db.execute = AsyncMock(return_value=mock_result)
+
+    await join_job("sid-admin", "job-999")
+    mock_sio_enter_room.assert_called_once_with("sid-admin", "job-999")
+
+
+@pytest.mark.asyncio
+async def test_join_job_unauthenticated_session(
+    mock_sio_enter_room,
+    mock_sio_emit,
+    mock_async_session_maker,
+    mock_sio_get_session,
+):
+    """A connection without a stored ``user_id`` (defensive — connect should
+    have rejected it) gets a structured error, never enters the room."""
+    mock_sio_get_session.return_value = {}
+    await join_job("sid-anon", {"job_id": "job-x"})
+    mock_sio_enter_room.assert_not_called()
+    mock_sio_emit.assert_called_once_with(
+        "error", {"message": "Unauthenticated"}, to="sid-anon"
+    )
 
 @pytest.mark.asyncio
 async def test_notify_job_update(mock_sio_emit):

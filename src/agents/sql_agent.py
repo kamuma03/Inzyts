@@ -31,42 +31,14 @@ User Question: {question}
 
 
 def _validate_select_only(sql_query: str) -> str | None:
-    """Return an error message if sql_query is not a plain SELECT, else None.
+    """Backwards-compatible wrapper around src.utils.db_utils.validate_select_only.
 
-    Uses sqlglot to parse the AST so that CTEs with embedded DML
-    (e.g. WITH x AS (DELETE ...) SELECT ...) are also rejected.
+    Kept so existing imports (notably ``src.server.routes.files`` and tests)
+    continue to work; new code should call ``validate_select_only`` directly.
     """
-    try:
-        import sqlglot
-        import sqlglot.expressions as exp
-    except ImportError as e:
-        raise RuntimeError(
-            "sqlglot is required for SQL query validation. "
-            "Install it with: pip install sqlglot"
-        ) from e
+    from src.utils.db_utils import validate_select_only
 
-    try:
-        statement = sqlglot.parse_one(sql_query)
-        if not isinstance(statement, exp.Select):
-            return "Generated query is not a SELECT statement."
-
-        # Reject any DML nodes anywhere in the AST (covers CTE abuse).
-        # sqlglot renamed Truncate -> TruncateTable in v26+; support both.
-        _truncate = getattr(exp, "TruncateTable", None) or getattr(exp, "Truncate", None)
-        dml_types = tuple(
-            t for t in (exp.Insert, exp.Update, exp.Delete, exp.Drop, exp.Create, _truncate)
-            if t is not None
-        )
-        for node in statement.walk():
-            if isinstance(node, dml_types):
-                return (
-                    f"Generated query contains a disallowed DML operation "
-                    f"({type(node).__name__}). Only read-only SELECT statements are permitted."
-                )
-        return None
-    except Exception as parse_err:
-        # If sqlglot cannot parse the query, reject it conservatively.
-        return f"Query could not be parsed as valid SQL: {parse_err}"
+    return validate_select_only(sql_query)
 
 
 class SQLExtractionAgent(BaseAgent):

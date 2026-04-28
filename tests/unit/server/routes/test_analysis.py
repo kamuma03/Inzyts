@@ -5,12 +5,18 @@ from fastapi.testclient import TestClient
 from src.server.main import fastapi_app
 from src.server.middleware.auth import verify_token
 from src.server.db.database import get_db
-from src.server.db.models import User
+from src.server.db.models import User, UserRole
 
 mock_db_session = AsyncMock()
 
 def _fake_user():
-    return User(id="test-user-id", username="testuser", is_active=True)
+    # /analyze now requires Analyst+. Tests model the post-RBAC contract.
+    return User(
+        id="test-user-id",
+        username="testuser",
+        is_active=True,
+        role=UserRole.ANALYST,
+    )
 
 @pytest.fixture(autouse=True)
 def apply_dependency_overrides():

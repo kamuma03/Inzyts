@@ -5,11 +5,23 @@ from fastapi.testclient import TestClient
 
 from src.server.main import fastapi_app
 from src.server.middleware.auth import verify_token
+from src.server.db.models import User, UserRole
+
+
+def _fake_analyst():
+    """Upload routes now require Analyst+ — give the fake user that role."""
+    return User(
+        id="test-user-id",
+        username="testuser",
+        is_active=True,
+        role=UserRole.ANALYST,
+    )
+
 
 # Override auth
 @pytest.fixture(autouse=True)
 def apply_dependency_overrides():
-    fastapi_app.dependency_overrides[verify_token] = lambda: "test-token"
+    fastapi_app.dependency_overrides[verify_token] = _fake_analyst
     yield
     fastapi_app.dependency_overrides.clear()
 
@@ -299,12 +311,16 @@ def test_sql_preview_rejects_invalid_scheme():
 # --- API preview endpoint ---
 
 def test_api_preview_success():
+    """The route uses ``_safe_get(session, url, ...)`` (per H-1 SSRF fix)
+    so we mock the helper directly rather than ``requests.get``."""
     mock_resp = MagicMock()
     mock_resp.status_code = 200
+    mock_resp.raise_for_status = MagicMock()
     mock_resp.json.return_value = [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
 
     with patch("src.agents.api_agent._is_private_ip", return_value=False), \
-         patch("requests.get", return_value=mock_resp):
+         patch("src.agents.api_agent._safe_get", return_value=mock_resp), \
+         patch("src.agents.api_agent._is_private_ip", return_value=False):
         response = client.post("/api/v2/files/api-preview", json={
             "api_url": "https://api.example.com/users"
         })
@@ -324,9 +340,12 @@ def test_api_preview_private_ip():
 
 
 def test_api_preview_timeout():
+    """Timeout from ``_safe_get`` should surface as a 400 with the timeout
+    message preserved (not swallowed)."""
     import requests as req_lib
     with patch("src.agents.api_agent._is_private_ip", return_value=False), \
-         patch("requests.get", side_effect=req_lib.exceptions.Timeout):
+         patch("src.agents.api_agent._safe_get",
+               side_effect=req_lib.exceptions.Timeout):
         response = client.post("/api/v2/files/api-preview", json={
             "api_url": "https://api.example.com/slow"
         })

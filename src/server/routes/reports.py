@@ -10,12 +10,13 @@ import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse
-from sqlalchemy import select
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.config import settings
 from src.server.db.database import get_db
-from src.server.db.models import Job
+from src.server.db.models import Job, User
+from src.server.db.queries import resolve_owned_job
 from src.server.middleware.auth import verify_token
 from src.server.models.schemas import (
     ExecutiveSummaryResponse,
@@ -27,10 +28,15 @@ from src.services.executive_summary import ExecutiveSummaryGenerator
 from src.services.pii_detector import PIIDetector
 from src.services.report_exporter import ReportExporter, ReportFormat
 from src.utils.logger import get_logger
+from src.utils.path_validator import validate_path_within
 
 logger = get_logger()
 
 router = APIRouter(prefix="/reports", tags=["reports"])
+
+# Allowed base directory for notebook output files.
+# Resolve once at module load so the path is stable regardless of CWD at request time.
+_OUTPUT_DIR = settings.output_dir_resolved
 
 # Lazy-initialized singletons
 _exporter: ReportExporter | None = None
@@ -74,20 +80,25 @@ _FORMAT_EXTENSIONS = {
 
 
 async def _get_job_notebook(
-    job_id: str, db: AsyncSession
+    job_id: str, db: AsyncSession, user: User
 ) -> tuple[Job, Path]:
-    """Load a job and validate its notebook exists."""
-    result = await db.execute(select(Job).filter(Job.id == job_id))
-    job = result.scalar_one_or_none()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    """Load a job (with ownership check) and validate its notebook exists.
+
+    Validates that the on-disk path lives inside the allowed output directory
+    so a tampered DB row cannot make the report exporter read arbitrary files.
+    """
+    job = await resolve_owned_job(job_id, db, user)
     if not job.result_path:
         raise HTTPException(
             status_code=404, detail="No notebook generated for this job yet"
         )
-    notebook_path = Path(job.result_path)
-    if not notebook_path.exists():
-        raise HTTPException(status_code=404, detail="Notebook file not found")
+    # Validate the on-disk path is inside the configured output directory.
+    notebook_path = validate_path_within(
+        job.result_path,
+        [_OUTPUT_DIR],
+        must_exist=True,
+        error_label="notebook",
+    )
     return job, notebook_path
 
 
@@ -132,11 +143,11 @@ async def export_report_get(
     job_id: str,
     format: str = Query(default="html", description="Export format: html, pdf, pptx, markdown"),
     db: AsyncSession = Depends(get_db),
-    _token: str = Depends(verify_token),
+    current_user: User = Depends(verify_token),
 ):
     """Generate and download a report in the specified format."""
     report_format = _parse_format(format)
-    job, notebook_path = await _get_job_notebook(job_id, db)
+    job, notebook_path = await _get_job_notebook(job_id, db, current_user)
     metadata = _build_job_metadata(job)
 
     stored_summary = job.executive_summary
@@ -179,11 +190,11 @@ async def export_report_post(
     job_id: str,
     request: ReportExportRequest,
     db: AsyncSession = Depends(get_db),
-    _token: str = Depends(verify_token),
+    current_user: User = Depends(verify_token),
 ):
     """Generate and download a report with custom options."""
     report_format = _parse_format(request.format)
-    job, notebook_path = await _get_job_notebook(job_id, db)
+    job, notebook_path = await _get_job_notebook(job_id, db, current_user)
     metadata = _build_job_metadata(job)
 
     stored_summary = job.executive_summary if request.include_executive_summary else None
@@ -226,7 +237,7 @@ async def export_report_post(
 async def get_executive_summary(
     job_id: str,
     db: AsyncSession = Depends(get_db),
-    _token: str = Depends(verify_token),
+    current_user: User = Depends(verify_token),
 ):
     """Return the executive summary for a completed analysis.
 
@@ -234,7 +245,7 @@ async def get_executive_summary(
     For jobs created before this feature, generates on-demand and persists
     the result so subsequent requests are free.
     """
-    job, notebook_path = await _get_job_notebook(job_id, db)
+    job, notebook_path = await _get_job_notebook(job_id, db, current_user)
 
     # Return stored summary if available
     if job.executive_summary:
@@ -279,10 +290,10 @@ async def get_executive_summary(
 async def get_pii_scan(
     job_id: str,
     db: AsyncSession = Depends(get_db),
-    _token: str = Depends(verify_token),
+    current_user: User = Depends(verify_token),
 ):
     """Run a PII scan on a completed analysis notebook."""
-    job, notebook_path = await _get_job_notebook(job_id, db)
+    job, notebook_path = await _get_job_notebook(job_id, db, current_user)
 
     try:
         loop = asyncio.get_running_loop()

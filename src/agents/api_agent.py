@@ -83,7 +83,11 @@ def _build_auth_headers(api_auth: Optional[Dict[str, str]]) -> Dict[str, str]:
 def _is_private_ip(url: str) -> bool:
     """Check if URL resolves to a private/reserved IP range (SSRF protection).
 
+    Also rejects non-http(s) schemes so attackers cannot use ``file://`` or
+    ``gopher://`` to read local files / pivot to internal services.
+
     Returns True (block) when:
+    - The scheme is not http or https.
     - The hostname is empty or cannot be resolved.
     - The resolved IP is private, loopback, reserved, or link-local.
     - DNS resolution fails (conservative — prevents DNS-rebinding attacks).
@@ -93,6 +97,11 @@ def _is_private_ip(url: str) -> bool:
     import socket
 
     parsed = urlparse(url)
+
+    # Only http / https are allowed. Blocks file://, gopher://, ftp://, etc.
+    if parsed.scheme not in ("http", "https"):
+        return True
+
     hostname = parsed.hostname
     if not hostname:
         return True
@@ -110,6 +119,50 @@ def _is_private_ip(url: str) -> bool:
         # DNS-rebinding attacks where the first lookup fails but a
         # subsequent one resolves to an internal IP.
         return True
+
+
+# Cap on follow-redirect depth per request to bound work and prevent loops.
+_MAX_REDIRECT_HOPS = 5
+
+
+def _safe_get(
+    session: requests.Session,
+    url: str,
+    *,
+    headers: Dict[str, str],
+    timeout: int,
+) -> requests.Response:
+    """GET ``url`` with redirects validated against ``_is_private_ip`` per hop.
+
+    The default ``requests.get(allow_redirects=True)`` will silently follow a
+    302 to ``http://169.254.169.254/...`` (cloud metadata) or to an internal
+    DB/Redis/Jupyter host. This wrapper disables redirects and follows them
+    manually, calling ``_is_private_ip`` on each ``Location`` header so the
+    SSRF guard is enforced on every hop, not just the user-supplied URL.
+
+    Raises ``requests.exceptions.HTTPError`` on too many redirects or a
+    redirect target that fails the SSRF check.
+    """
+    current = url
+    for _ in range(_MAX_REDIRECT_HOPS + 1):
+        if _is_private_ip(current):
+            raise requests.exceptions.HTTPError(
+                f"Refusing request: '{current}' resolves to a private/reserved IP."
+            )
+        response = session.get(
+            current, headers=headers, timeout=timeout, allow_redirects=False
+        )
+        if response.status_code not in (301, 302, 303, 307, 308):
+            return response
+        next_url = response.headers.get("Location")
+        if not next_url:
+            return response
+        # Resolve relative redirect URLs against the current URL.
+        from urllib.parse import urljoin
+        current = urljoin(current, next_url)
+    raise requests.exceptions.HTTPError(
+        f"Too many redirects (>{_MAX_REDIRECT_HOPS}) starting from '{url}'."
+    )
 
 
 def _extract_data_with_jmespath(data: Any, path: Optional[str]) -> List[Dict]:
@@ -192,11 +245,25 @@ class APIExtractionAgent(BaseAgent):
             all_records: List[Dict] = []
             current_url = api_url
             total_size = 0
+            http_session = requests.Session()
 
             for page in range(_API_MAX_PAGES):
                 logger.info(f"Fetching page {page + 1}: {current_url[:100]}...")
 
-                response = requests.get(
+                # Re-validate every URL (initial + each pagination hop) — an
+                # attacker-controlled ``next_url`` could otherwise pivot to a
+                # private IP after the first hop. ``_safe_get`` also enforces
+                # SSRF checks on every redirect Location.
+                if _is_private_ip(current_url):
+                    return {
+                        "errors": [
+                            "API URL resolves to a private/reserved IP "
+                            "address (pagination follow-up blocked)."
+                        ]
+                    }
+
+                response = _safe_get(
+                    http_session,
                     current_url,
                     headers=headers,
                     timeout=_API_REQUEST_TIMEOUT,

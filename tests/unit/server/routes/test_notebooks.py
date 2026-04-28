@@ -7,13 +7,23 @@ from fastapi.testclient import TestClient
 from src.server.main import fastapi_app
 from src.server.middleware.auth import verify_token
 from src.server.db.database import get_db
-from src.server.db.models import User
+from src.server.db.models import User, UserRole
 
 # Override auth & db
 mock_db_session = AsyncMock()
 
+# The test user owns "job-nb" — used by the per-job ownership guard
+# (src.server.db.queries.resolve_owned_job).
+_TEST_USER_ID = "test-user-id"
+
+
 def _fake_user():
-    return User(id="test-user-id", username="testuser", is_active=True)
+    return User(
+        id=_TEST_USER_ID,
+        username="testuser",
+        is_active=True,
+        role=UserRole.ANALYST,
+    )
 
 @pytest.fixture(autouse=True)
 def apply_dependency_overrides():
@@ -36,6 +46,7 @@ def sample_notebook(tmp_path):
 def sample_job(sample_notebook):
     job = MagicMock()
     job.id = "job-nb"
+    job.user_id = _TEST_USER_ID  # owned by the fake test user
     job.result_path = sample_notebook
     return job
 
@@ -80,56 +91,11 @@ def test_get_notebook_html_file_missing(sample_job, tmp_path):
     assert response.status_code == 404
     assert "Notebook file not found" in response.json()["detail"]
 
-def test_create_live_session_success():
-    with patch("src.server.routes.notebooks.jupyter_service") as mock_jupyter:
-        mock_jupyter.get_status = AsyncMock(return_value={"status": "online"})
-        mock_jupyter.create_kernel = AsyncMock(return_value="kernel-123")
-
-        # The endpoint also takes a db session and does not query it for session creation
-        mock_db_session.execute = AsyncMock()
-
-        response = client.post("/api/v2/notebooks/job-nb/session")
-        assert response.status_code == 200
-        assert response.json() == {"job_id": "job-nb", "kernel_id": "kernel-123", "status": "ready"}
-
-def test_create_live_session_unreachable():
-    with patch("src.server.routes.notebooks.jupyter_service") as mock_jupyter:
-        mock_jupyter.get_status = AsyncMock(return_value={"status": "unreachable"})
-
-        response = client.post("/api/v2/notebooks/job-nb/session")
-        assert response.status_code == 503
-
-def test_websocket_endpoint():
-    """Test websocket proxy endpoint.
-
-    The source uses verify_token_async (async, requires DB) for websocket auth.
-    We mock both verify_token_async and async_session_maker to bypass real DB.
-    """
-    async def mock_proxy_func(websocket, kernel_id):
-        await websocket.close()
-
-    mock_user = MagicMock()
-    mock_user.username = "testuser"
-
-    with patch("src.server.routes.notebooks.jupyter_service") as mock_jupyter, \
-         patch("src.server.routes.notebooks.verify_token_async", new_callable=AsyncMock, return_value=mock_user), \
-         patch("src.server.db.database.async_session_maker") as mock_session_maker:
-
-        mock_jupyter.proxy_websocket = AsyncMock(side_effect=mock_proxy_func)
-
-        # Mock the async context manager for async_session_maker
-        mock_db = AsyncMock()
-        mock_ctx = AsyncMock()
-        mock_ctx.__aenter__ = AsyncMock(return_value=mock_db)
-        mock_ctx.__aexit__ = AsyncMock(return_value=False)
-        mock_session_maker.return_value = mock_ctx
-
-        with client.websocket_connect("/api/v2/notebooks/job-nb/ws/kernel-123?token=test-token") as websocket:
-            pass
-
-        mock_jupyter.proxy_websocket.assert_called_once()
-        args, _ = mock_jupyter.proxy_websocket.call_args
-        assert args[1] == "kernel-123"
+# NOTE: tests for the legacy `/notebooks/{job_id}/session` and
+# `/notebooks/{job_id}/ws/{kernel_id}` endpoints were removed in
+# commit de9ca08 ("PR2: drop Jupyter Server container"). The Live
+# panel uses an in-process KernelSandbox per job now — see
+# tests/unit/services/test_kernel_session_manager.py for coverage.
 
 
 # ════════════════════════════════════════════════════════

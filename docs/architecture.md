@@ -193,8 +193,9 @@ enforces a layered policy via `SandboxPolicy`:
 | 6 | Network exfiltration via `requests`, `urllib`, `httpx`, `pip`, ... | `http_proxy` / `HTTPS_PROXY` / `all_proxy` set to `http://127.0.0.1:1` blackhole; `no_proxy=""` so no escape route | env passed to kernel subprocess |
 | 7 | Credential theft from worker env | Strip `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `JUPYTER_TOKEN`, `INZYTS_API_TOKEN`, `JWT_SECRET_KEY`, `POSTGRES_PASSWORD`, `ADMIN_PASSWORD`, and the `INZYTS__LLM__*_API_KEY` variants from the kernel's environment | `_build_kernel_env` |
 | 8 | Privilege escalation via the kernel process | Worker container creates a non-root `inzyts` user (`useradd --no-create-home --shell /bin/false`), and `docker-entrypoint.sh` drops privileges via `gosu inzyts` before starting the celery worker. Kernel children inherit uid 1000. | Dockerfile + `docker-entrypoint.sh` |
-| 9 | Process tree escape (kernel forks subprocesses that survive cancel) | `os.setsid()` in `preexec_fn` puts the kernel in its own process group; cancellation uses `os.killpg(getpgid, SIGKILL)` so the whole tree dies | `_build_preexec_fn` + `KernelSandbox._killpg` |
+| 9 | Process tree escape (kernel forks subprocesses that survive cancel) | `os.setsid()` in `preexec_fn` puts the kernel in its own process group; cancellation uses `os.killpg(getpgid, SIGKILL)` so the whole tree dies. **Critical defence**: ``_killpg`` enforces three invariants before sending SIGKILL — ``pgid != own_pgid`` (refuse to kill the parent's group), ``pgid == kernel_pid`` (a successful ``setsid()`` makes the child the leader of a new session, so this must hold), and ``setsid()`` failure in the child is fatal (``os._exit(127)`` instead of silently leaving the child in the parent's group). Without these guards, a failed ``setsid`` in the child would result in ``killpg`` SIGKILLing the worker / test runner / shell / desktop session. | `_build_preexec_fn` + `KernelSandbox._killpg` |
 | 10 | Path traversal via relative file ops | Kernel `cwd` defaults to a per-job tmpdir (`/tmp/inzyts-kernel-*`) cleaned up on shutdown | `KernelSandbox._start_kernel` |
+| 11 | PID-reuse race in `_killpg` (kernel exits, Linux reuses pid for an unrelated process, killpg nukes the wrong group) | After resolving ``pgid = os.getpgid(pid)``, ``_killpg`` requires ``pgid == pid`` — true iff the kernel is still alive AND owns its own session group. Mismatch → fall back to ``os.kill(pid, SIGKILL)`` on the original PID only, never on the resolved pgid. | `KernelSandbox._killpg` |
 
 ##### Network-layer egress block (DEFAULT ON)
 
@@ -281,8 +282,8 @@ hash, for forensics and dedup. See migration
 *   Extensions enrich the locked profile with mode-specific context without re-profiling.
 *   Extensions only run when needed, keeping other modes lightweight.
 
-### ADR 9: 22-Agent Specialization
-*   **Decision**: 22 specialised agents organised into a 2-phase pipeline (Phase 1: Data Understanding → Phase 2: Analysis & Modeling) with mode-specific strategy, codegen, and validation agents.
+### ADR 9: 27-Agent Specialization
+*   **Decision**: 27 specialised agents organised into a 2-phase pipeline (Phase 1: Data Understanding → Phase 2: Analysis & Modeling) with mode-specific strategy, codegen, and validation agents, plus dedicated data-ingestion agents (SQL, API).
 *   **Rationale**:
     - Each mode has unique requirements (time series vs clustering vs A/B testing vs dimensionality reduction)
     - Generic "one-size-fits-all" agents lead to poor code quality and hallucinations
@@ -340,11 +341,11 @@ hash, for forensics and dedup. See migration
     *   Normalizes nested JSON into a flat DataFrame via `pd.json_normalize()` and saves as CSV.
 
 #### `src/agents/orchestrator.py`
-*   **What it is**: The Project Manager (Coordinates 22 agents across 7 modes).
+*   **What it is**: The Project Manager (Coordinates 27 agents across 7 modes).
 *   **Key Responsibilities**:
     *   **Mode Detection**: Determines which of 7 modes to use based on input.
     *   **Cache Management**: Checks for collisions/expiry, triggers save/restore.
-    *   **Agent Routing**: Coordinates all 22 agents across phases and extensions.
+    *   **Agent Routing**: Coordinates all 27 agents across phases and extensions.
     *   **Token Tracking**: Aggregates token usage across all agent invocations.
 
 #### `src/server/services/progress_tracker.py`

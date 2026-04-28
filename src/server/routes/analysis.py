@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.server.db.database import get_db
-from src.server.db.models import Job, JobStatus
+from src.server.db.models import Job, JobStatus, UserRole
 from src.server.db.models import User
-from src.server.middleware.auth import verify_token
+from src.server.middleware.auth import require_role, verify_token
 from src.server.models.schemas import (
     AnalysisMode,
     AnalysisRequest,
@@ -56,7 +56,7 @@ _EXPLANATION_MAP: dict[str, str] = {
 async def suggest_mode(
     request: Request,
     body: ModeSuggestionRequest,
-    _token: str = Depends(verify_token),
+    _user: User = Depends(verify_token),
 ):
     """Suggest an analysis mode based on the user's question and/or target column."""
     from src.services.mode_detector import ModeDetector
@@ -89,7 +89,7 @@ async def analyze(
     request: Request,
     analysis_request: AnalysisRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(verify_token),
+    current_user: User = Depends(require_role(UserRole.ANALYST)),
 ):
     """
     Initiate a new data analysis job.
@@ -124,6 +124,8 @@ async def analyze(
     # --- Path A: db_uri + db_query -> extract CSV immediately (Approach 1) ---
     if db_uri and analysis_request.db_query:
         from src.server.services.data_ingestion import ingest_from_sql
+        from src.utils.errors import DataValidationError
+
         try:
             csv_path = await asyncio.to_thread(
                 ingest_from_sql,
@@ -131,6 +133,10 @@ async def analyze(
                 analysis_request.db_query,
                 str(_UPLOAD_DIR),
             )
+        except DataValidationError as e:
+            # Pass through the user-actionable validation message
+            # (e.g. "Query contains a disallowed DML operation").
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             logger.error(f"Database extraction failed: {e}")
             raise HTTPException(status_code=400, detail="Database extraction failed. Check your URI and query.")

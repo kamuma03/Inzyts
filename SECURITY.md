@@ -43,8 +43,24 @@ Inzyts executes LLM-generated code in a sandboxed environment with:
 - `require_role()` FastAPI dependency factory enforces role checks with hierarchy awareness — admins automatically pass analyst-level checks
 - First-boot admin auto-creation assigns the `admin` role automatically
 - System API tokens receive `admin` role for full access
-- Admin-only endpoints: user management (`/api/v2/admin/users`), audit log queries (`/api/v2/admin/audit-logs`)
+- **Analyst+ endpoints** (mutations / spend): `/api/v2/analyze`, `/api/v2/files/upload`, `/api/v2/files/upload_batch`
+- **Admin-only endpoints**: user management (`/api/v2/admin/users`), audit log queries (`/api/v2/admin/audit-logs`)
 - Frontend routes guarded by role-based route components; admin navigation only visible to admin users
+
+### Per-Job Ownership (Object-Level Authorization)
+
+In addition to role gates, every per-job endpoint enforces **owner-or-admin** access via the shared `src.server.db.queries.resolve_owned_job` helper:
+
+- Non-admin users can only read, mutate, or stream jobs where `Job.user_id == user.id`. Cross-user access returns `404 Job not found` (not `403`) to avoid id enumeration.
+- Legacy jobs with `user_id IS NULL` (created before the `user_id` column was added) are admin-only.
+- The check is applied uniformly to every `/notebooks/*`, `/reports/*`, `/jobs/*` route handler and the Socket.IO `join_job` subscription.
+- WebSocket sessions stash `user_id` and `role` at handshake time; subsequent `join_job` calls reject rooms the user does not own.
+
+### Login Brute-Force Protection
+
+- `/api/v2/auth/login` is rate-limited to **10 requests/minute per source IP** (via `slowapi`) on top of the bcrypt cost.
+- All failed attempts are written to the audit log with the supplied username and source IP for forensic review.
+- Constant-time comparison against a dummy hash is used when the user does not exist, so response time does not leak username validity.
 
 ### Audit Logging
 
@@ -61,10 +77,14 @@ Inzyts executes LLM-generated code in a sandboxed environment with:
 
 ### SQL Database Security
 
-- All LLM-generated SQL is validated via `sqlglot` AST parsing — only `SELECT` statements permitted
-- Database connections enforce read-only transactions (`SET TRANSACTION READ ONLY`) as defense-in-depth
-- URI scheme allowlist: `postgresql`, `mysql`, `mssql`, `bigquery`, `snowflake`, `redshift+redshift_connector`, `databricks+connector` — `sqlite://` is blocked
-- Results capped at `SQL_MAX_ROWS` (default 200,000) and `SQL_MAX_COLS` (default 500)
+- **All** SQL paths validate the query via `sqlglot` AST parsing — only `SELECT` statements permitted (CTE-embedded DML is also rejected). The validator lives in `src.utils.db_utils.validate_select_only` and is shared by:
+  - The autonomous SQL extraction agent (`src.agents.sql_agent`)
+  - The explicit `db_query` ingestion path (`src.server.services.data_ingestion.ingest_from_sql`)
+  - The `/api/v2/files/sql-preview` endpoint
+- Database connections enforce read-only transactions (`SET TRANSACTION READ ONLY`) on every backend that supports it (PostgreSQL, MySQL) as defense-in-depth.
+- URI scheme allowlist: `postgresql`, `mysql`, `mssql`, `bigquery`, `snowflake`, `redshift`, `databricks+connector` — `sqlite://` is blocked.
+- URI **host** allowlist: loopback (`127.0.0.0/8`, `::1`, `localhost`), link-local (`169.254.0.0/16`, including AWS metadata), and platform-internal docker hostnames (`db`, `redis`, plus `INZYTS_INTERNAL_HOSTS`) are blocked. Override with `INZYTS_DB_URI_ALLOW_LOOPBACK=1` for local dev.
+- Results capped at `SQL_MAX_ROWS` (default 200,000) and `SQL_MAX_COLS` (default 500).
 
 ### Cloud Storage Security
 
@@ -75,11 +95,14 @@ Inzyts executes LLM-generated code in a sandboxed environment with:
 
 ### REST API Data Extraction Security
 
-- **SSRF Protection**: All API URLs are resolved to IP addresses and checked against private/reserved ranges (RFC 1918, link-local, multicast); requests to internal networks are blocked
-- `localhost`, `127.0.0.1`, and all loopback/private addresses are blocked — no exemptions, even for development
-- Response size capped at `API_MAX_RESPONSE_SIZE` (default 100 MB)
-- Request timeout enforced (`API_TIMEOUT`, default 30 seconds) to prevent hanging connections
-- Authentication credentials (Bearer tokens, API keys, Basic auth) are passed via headers only — never logged or persisted
+- **SSRF Protection**: All API URLs are resolved to IP addresses and checked against private/reserved ranges (RFC 1918, link-local, multicast); requests to internal networks are blocked.
+- **Per-hop validation** — `requests` redirect-following is disabled and replaced with a manual loop (`_safe_get`) that re-runs the SSRF check on every `Location` header, capped at 5 redirects. This blocks the classic 302-to-internal-IP pivot.
+- **Pagination guarded** — every paginated `next_url` (whether from JSON body or `Link` header) is re-validated before the next request, so an attacker-controlled response cannot pivot to a private IP after the first hop.
+- **Scheme allowlist** — only `http://` and `https://` URLs are accepted; `file://`, `gopher://`, `ftp://` are rejected at validation time.
+- `localhost`, `127.0.0.1`, and all loopback/private addresses are blocked — no exemptions, even for development.
+- Response size capped at `API_MAX_RESPONSE_SIZE` (default 100 MB).
+- Request timeout enforced (`API_TIMEOUT`, default 30 seconds) to prevent hanging connections.
+- Authentication credentials (Bearer tokens, API keys, Basic auth) are passed via headers only — never logged or persisted.
 
 ### PII Detection & Report Security
 
@@ -115,8 +138,20 @@ Inzyts executes LLM-generated code in a sandboxed environment with:
 
 ### Kernel Bootstrap Security
 
-- Dataset paths are passed to Jupyter kernels via environment variables (not string interpolation) to prevent code injection
-- Kernel sessions use LRU eviction when the session limit is reached (graceful degradation instead of hard errors)
+- Dataset paths are passed to Jupyter kernels via the kernel-subprocess `env` (using the `extra_env` argument on `KernelSandbox`/`SandboxExecutor`), **not** by mutating the worker process's own `os.environ` and **not** by string interpolation. This avoids:
+  - Code injection from crafted filenames containing quote characters.
+  - Cross-job env leakage where Job B sees Job A's most-recent dataset path in `os.environ`.
+- Kernel sessions use LRU eviction when the session limit is reached (graceful degradation instead of hard errors).
+
+### Sandbox `_killpg` Safety Invariants
+
+`KernelSandbox._killpg()` is called when a cell exceeds its wall-clock timeout. Sending `SIGKILL` to a process group is high-risk: a misresolved `pgid` can take down the worker, the user's shell, or the entire desktop session. Three invariants are checked before any signal is sent:
+
+1. **`pgid != own_pgid`** — refuse to kill the parent's process group. If `setsid()` somehow failed in the kernel child, the resolved pgid will match the parent's. We log an error and fall back to `os.kill(pid, SIGKILL)` on the original PID only.
+2. **`pgid == pid`** — a successful `os.setsid()` makes the child the leader of a new session, so its pgid equals its pid. Any mismatch means either `setsid` failed or the PID was reused after the liveness check (kernel exited and Linux reassigned the PID to an unrelated process). Either way, refuse the killpg and SIGKILL the original PID instead.
+3. **`setsid()` failure is fatal in the child** — `_build_preexec_fn` no longer swallows `OSError` from `setsid()`. If it fails, the child writes a marker to stderr and calls `os._exit(127)` immediately. Leaving the child in the parent's process group is not safe under any condition.
+
+Without these guards, a single failed `setsid()` followed by a wall-clock timeout could SIGKILL the entire user session. Real-kernel tests (`tests/unit/services/test_sandbox_security.py`) are gated behind a `slow` pytest marker and skipped by default for the same reason — opt in with `pytest -m slow` only after reading `src/services/sandbox_executor.py`.
 
 ## Supported Versions
 

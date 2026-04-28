@@ -6,6 +6,8 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 
 from src.config import settings
+from src.utils.db_utils import validate_select_only
+from src.utils.errors import DataValidationError
 from src.utils.logger import get_logger
 from src.utils.path_validator import ensure_dir
 
@@ -19,6 +21,10 @@ def ingest_from_sql(db_uri: str, query: str, output_dir: str = "data/uploads") -
     """
     Connect to a SQL database, execute a query, and save the result as a CSV.
 
+    The query is validated via sqlglot AST as a SELECT-only statement before
+    execution (CTE-embedded DML is rejected too). The connection is set to a
+    read-only transaction where the dialect supports it (PostgreSQL, MySQL).
+
     Args:
         db_uri: SQLAlchemy connection string (scheme must be in the allowed list).
         query: SQL SELECT query to execute.
@@ -28,10 +34,19 @@ def ingest_from_sql(db_uri: str, query: str, output_dir: str = "data/uploads") -
         Absolute path to the generated CSV file.
 
     Raises:
-        ValueError: If the URI scheme is not permitted.
+        DataValidationError: If the query is not a plain SELECT.
         Exception: On connection or query failure.
     """
     # URI scheme already validated by Pydantic model (AnalysisRequest / SQLPreviewRequest).
+
+    # Validate that the query is a plain SELECT — refuse DML (INSERT/UPDATE/
+    # DELETE/DROP/etc.) including CTE-embedded DML. The README explicitly
+    # promises this for ALL SQL paths; without this check the explicit
+    # ingestion bridge bypassed it.
+    validation_error = validate_select_only(query)
+    if validation_error:
+        logger.warning(f"SQL validation blocked query: {validation_error}")
+        raise DataValidationError(validation_error)
 
     # Log only the host portion of the URI to avoid leaking credentials.
     parsed = urlparse(db_uri)
@@ -51,6 +66,16 @@ def ingest_from_sql(db_uri: str, query: str, output_dir: str = "data/uploads") -
         # applying the row limit. Take only the first chunk (_SQL_MAX_ROWS rows),
         # then explicitly close the iterator to release the cursor immediately.
         with engine.connect() as conn:
+            # Set the session to read-only where the backend supports it.
+            # Validation above is the primary guard — this is defence in depth
+            # against any future bypass.
+            try:
+                conn.execute(text("SET TRANSACTION READ ONLY"))
+            except Exception:
+                # SQLite, BigQuery, some warehouses don't support this — fine,
+                # validation already rejected non-SELECT queries.
+                pass
+
             chunk_iter = pd.read_sql(text(query), conn, chunksize=_SQL_MAX_ROWS)
             try:
                 df = next(iter(chunk_iter))
@@ -69,6 +94,8 @@ def ingest_from_sql(db_uri: str, query: str, output_dir: str = "data/uploads") -
         logger.info(f"Successfully extracted {len(df)} rows to {output_path}")
         return output_path
 
+    except DataValidationError:
+        raise
     except Exception as e:
         logger.error(f"Error extracting data from SQL Database: {str(e)}")
         raise

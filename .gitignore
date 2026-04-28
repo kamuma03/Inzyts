@@ -85,7 +85,11 @@ libs/
 
 # Testing
 .coverage
+coverage.json
+coverage_*.json
 htmlcov/
+.hypothesis/
+MagicMock/
 tests_datasets
 
 # Cache directory

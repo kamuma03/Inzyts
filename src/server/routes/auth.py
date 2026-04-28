@@ -11,13 +11,19 @@ from src.server.db.database import get_db
 from src.server.db.models import User, UserRole
 from src.server.middleware.auth import verify_password, create_access_token, get_password_hash, verify_token
 from src.server.middleware.audit import record_audit
+from src.server.rate_limiter import limiter
 from src.config import settings
 from src.utils.logger import get_logger
 
 logger = get_logger()
 router = APIRouter(tags=["Authentication"])
 
+# Per-route limit on /auth/login. The global default is 200/min — too generous
+# for a credential endpoint. 10/minute per source IP keeps interactive logins
+# comfortable while making credential stuffing impractical (bcrypt cost adds
+# the rest of the protection).
 @router.post("/auth/login")
+@limiter.limit("10/minute")
 async def login_for_access_token(
     request: Request,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],

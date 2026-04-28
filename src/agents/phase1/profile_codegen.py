@@ -295,18 +295,26 @@ class ProfileCodeGeneratorAgent(BaseAgent):
                            # Retry with this separator
                            df = pd.read_csv(filename, sep=sep)
                            break
-           except Exception:
-               # Fallback to python engine which can auto-detect
+           except Exception as primary_err:
+               # Fallback to python engine which can auto-detect.
+               # Catch only Exception (not BaseException) so KeyboardInterrupt
+               # and SystemExit still propagate. Surface the original error
+               # via chaining so the user can see the underlying cause.
                try:
                    df = pd.read_csv(filename, sep=None, engine='python')
-               except:
+               except Exception:
                    # Last resort: try encodings
+                   last_err = primary_err
+                   df = None
                    for encoding in ['utf-8', 'latin-1', 'cp1252']:
                        try:
                            df = pd.read_csv(filename, sep=None, engine='python', encoding=encoding)
                            break
-                       except:
+                       except Exception as enc_err:
+                           last_err = enc_err
                            continue
+                   if df is None:
+                       raise RuntimeError(f"Could not read CSV after trying all encodings: {{last_err}}") from last_err
            ```
 
 Return as JSON with the specified format."""
