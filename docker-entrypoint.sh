@@ -9,10 +9,10 @@ for dir in /app/logs /app/logs/jobs /app/output /app/data/uploads; do
     chown -R inzyts:inzyts "$dir"
 done
 
-# ── Network isolation (opt-in) ───────────────────────────────────────────
+# ── Network isolation (default ON) ───────────────────────────────────────
 #
-# When INZYTS_NETWORK_ISOLATION=strict, install an iptables OUTPUT chain
-# that drops everything except an allowlist:
+# Strict mode is the default — installs an iptables OUTPUT chain that
+# drops egress to anything not on the allowlist:
 #   * loopback
 #   * established/related connections
 #   * DNS (so allowlist hostnames stay resolvable at runtime)
@@ -20,33 +20,41 @@ done
 #     INZYTS_INTERNAL_HOSTS)
 #   * LLM provider API hostnames (default Anthropic / OpenAI / Gemini,
 #     overridable via INZYTS_EGRESS_ALLOWLIST)
-#   * (optional) host.docker.internal when INZYTS_ALLOW_HOST_DOCKER_INTERNAL
-#     is set — needed for Ollama running on the host
+#   * host.docker.internal when INZYTS__LLM__DEFAULT_PROVIDER=ollama OR
+#     INZYTS_ALLOW_HOST_DOCKER_INTERNAL=1
 #
 # This is the production-grade complement to the proxy-blackhole layer
 # applied per-kernel by SandboxPolicy. The proxy block stops casual
-# `urllib`/`requests` egress; iptables stops raw-socket egress that
-# bypasses Python's proxy env vars.
+# urllib/requests egress; iptables stops raw-socket egress that bypasses
+# Python's proxy env vars.
 #
-# Requirements:
-#   * Container started with `cap_add: [NET_ADMIN]`
+# Opt out: set INZYTS_NETWORK_ISOLATION=off in .env.
+#
+# Requirements (already met by docker-compose.yml):
+#   * Container started with cap_add: [NET_ADMIN]
 #   * iptables binary in the image (Dockerfile installs it)
+#
+# Graceful degradation: if iptables is missing or NET_ADMIN isn't granted,
+# logs a warning and continues without isolation rather than failing
+# startup. The proxy-blackhole layer in SandboxPolicy still applies.
 #
 # Caveat: kernel subprocesses run in the same network namespace as the
 # worker, so the kernel inherits the same allowlist. An attacker could
-# still send data to allowlisted hosts (e.g. attempt to hide payload
-# inside an Anthropic-API-bound request) — without a valid API key
+# still attempt to send data to allowlisted hosts (e.g. craft a POST to
+# api.anthropic.com with payload in the body) — without a valid API key
 # (stripped from kernel env), the bound is meaningful but not absolute.
-# True per-uid scoping is a follow-up that requires running the kernel
-# as a separate user.
-if [ "${INZYTS_NETWORK_ISOLATION}" = "strict" ]; then
+# True per-uid scoping is a future enhancement that runs the kernel as
+# a separate user.
+if [ "${INZYTS_NETWORK_ISOLATION:-strict}" != "off" ]; then
     if ! command -v iptables >/dev/null 2>&1; then
-        echo "[entrypoint] WARN: INZYTS_NETWORK_ISOLATION=strict but iptables binary not found"
+        echo "[entrypoint] WARN: network isolation requested but iptables binary not found"
+        echo "[entrypoint]       proxy-blackhole still applies; raw-socket egress NOT blocked"
     elif ! iptables -L OUTPUT >/dev/null 2>&1; then
-        echo "[entrypoint] WARN: INZYTS_NETWORK_ISOLATION=strict but iptables not usable"
-        echo "[entrypoint]       (start container with cap_add: [NET_ADMIN])"
+        echo "[entrypoint] WARN: network isolation requested but iptables not usable"
+        echo "[entrypoint]       (container needs cap_add: [NET_ADMIN])"
+        echo "[entrypoint]       proxy-blackhole still applies; raw-socket egress NOT blocked"
     else
-        echo "[entrypoint] Applying network egress allowlist..."
+        echo "[entrypoint] Applying network egress allowlist (default ON; set INZYTS_NETWORK_ISOLATION=off to disable)..."
 
         iptables -P OUTPUT ACCEPT
         iptables -F OUTPUT
@@ -76,8 +84,12 @@ if [ "${INZYTS_NETWORK_ISOLATION}" = "strict" ]; then
             done
         done
 
-        # Optional: allow Ollama on the host (host.docker.internal).
-        if [ -n "${INZYTS_ALLOW_HOST_DOCKER_INTERNAL}" ]; then
+        # Auto-allow host.docker.internal when Ollama is the configured
+        # default provider, OR when explicitly requested via env. Skips
+        # silently if the host isn't resolvable (e.g. on Linux without
+        # extra_hosts: host-gateway).
+        OLLAMA_PROVIDER="${INZYTS__LLM__DEFAULT_PROVIDER}"
+        if [ "$OLLAMA_PROVIDER" = "ollama" ] || [ -n "${INZYTS_ALLOW_HOST_DOCKER_INTERNAL}" ]; then
             ip=$(getent hosts host.docker.internal 2>/dev/null | awk '{print $1}' | head -1)
             if [ -n "$ip" ]; then
                 iptables -A OUTPUT -d "$ip" -j ACCEPT
@@ -89,6 +101,8 @@ if [ "${INZYTS_NETWORK_ISOLATION}" = "strict" ]; then
         iptables -A OUTPUT -j DROP
         echo "[entrypoint] Network egress allowlist active."
     fi
+else
+    echo "[entrypoint] Network isolation explicitly disabled (INZYTS_NETWORK_ISOLATION=off)"
 fi
 
 # Auto-apply Alembic migrations when launching the API. Runs before uvicorn

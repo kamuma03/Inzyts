@@ -196,16 +196,15 @@ enforces a layered policy via `SandboxPolicy`:
 | 9 | Process tree escape (kernel forks subprocesses that survive cancel) | `os.setsid()` in `preexec_fn` puts the kernel in its own process group; cancellation uses `os.killpg(getpgid, SIGKILL)` so the whole tree dies | `_build_preexec_fn` + `KernelSandbox._killpg` |
 | 10 | Path traversal via relative file ops | Kernel `cwd` defaults to a per-job tmpdir (`/tmp/inzyts-kernel-*`) cleaned up on shutdown | `KernelSandbox._start_kernel` |
 
-##### Network-layer egress block (production hardening — opt-in)
+##### Network-layer egress block (DEFAULT ON)
 
 The proxy-blackhole layer (#6) defeats `urllib`/`requests`/`httpx`/`pip`
 because they all honor `http_proxy`/`https_proxy` env vars. A
 determined attacker can still call `socket()` directly via `ctypes`
 and bypass the env-based block.
 
-The **production complement** is now shipped as opt-in: set
-`INZYTS_NETWORK_ISOLATION=strict` in `.env` and the worker container's
-entrypoint will install an `iptables` OUTPUT chain that drops
+The **production complement is on by default**: the worker container's
+entrypoint installs an `iptables` OUTPUT chain at boot that drops
 everything except an allowlist:
 
 * loopback
@@ -216,24 +215,28 @@ everything except an allowlist:
 * LLM provider hostnames: default `api.anthropic.com api.openai.com
   generativelanguage.googleapis.com`, overridable via
   `INZYTS_EGRESS_ALLOWLIST`
-* (optional) `host.docker.internal` for Ollama on the host, gated on
-  `INZYTS_ALLOW_HOST_DOCKER_INTERNAL`
+* `host.docker.internal` — auto-allowed when
+  `INZYTS__LLM__DEFAULT_PROVIDER=ollama`, or force-allow via
+  `INZYTS_ALLOW_HOST_DOCKER_INTERNAL=1`
 
-The worker service in `docker-compose.yml` is granted `NET_ADMIN`
-unconditionally — the cap is harmless without the env var. With the
-env var set and the cap available, raw-socket egress from
-LLM-generated code is dropped at the kernel-network layer before
-leaving the container.
+The worker service in `docker-compose.yml` is granted `NET_ADMIN` so
+this works out of the box. Opt out with `INZYTS_NETWORK_ISOLATION=off`
+in `.env` (returns to proxy-blackhole-only mode).
 
-**Residual risk after enabling strict mode:** kernel subprocesses run
-in the same network namespace as the worker, so they inherit the
-allowlist. An attacker could still attempt to send data to
-allowlisted hosts (e.g. craft a POST to api.anthropic.com with the
-payload in the body) — but without a valid API key (we strip them
-from the kernel env in #7), the bound is meaningful: requests fail
-auth before any server-side handler reads the payload. True per-uid
-scoping (kernel as a separate uid + iptables `-m owner --uid-owner`
-rules) is a follow-up that would close this fully.
+If iptables is missing or the cap isn't granted, the entrypoint logs
+a warning and continues — it never fails startup. The proxy-blackhole
+layer remains active in either case, so casual `urllib`/`requests`
+egress is always blocked.
+
+**Residual risk:** kernel subprocesses run in the same network
+namespace as the worker, so they inherit the allowlist. An attacker
+could still attempt to send data to allowlisted hosts (e.g. craft a
+POST to api.anthropic.com with the payload in the body) — but
+without a valid API key (we strip them from the kernel env in #7),
+the bound is meaningful: requests fail auth before any server-side
+handler reads the payload. True per-uid scoping (kernel as a separate
+uid + iptables `-m owner --uid-owner` rules) is a follow-up that
+would close this fully.
 
 ##### Out of scope (acknowledged residual risk)
 * **Side-channel attacks** (timing, cache, Spectre-class): not in scope.
