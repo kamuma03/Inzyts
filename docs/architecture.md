@@ -196,17 +196,46 @@ enforces a layered policy via `SandboxPolicy`:
 | 9 | Process tree escape (kernel forks subprocesses that survive cancel) | `os.setsid()` in `preexec_fn` puts the kernel in its own process group; cancellation uses `os.killpg(getpgid, SIGKILL)` so the whole tree dies | `_build_preexec_fn` + `KernelSandbox._killpg` |
 | 10 | Path traversal via relative file ops | Kernel `cwd` defaults to a per-job tmpdir (`/tmp/inzyts-kernel-*`) cleaned up on shutdown | `KernelSandbox._start_kernel` |
 
-##### Out of scope (acknowledged residual risk)
+##### Network-layer egress block (production hardening — opt-in)
 
-* **Raw-socket egress via `ctypes`**: a determined attacker can call
-  `socket()` directly via libc, bypassing the proxy env vars. The
-  production-grade complement is a **network-layer egress block**: run
-  the worker container with `cap_add: [NET_ADMIN]` and an entrypoint
-  that installs `iptables -A OUTPUT -j DROP` rules with an explicit
-  allowlist for the LLM provider's hostnames, or — preferred — route
-  all egress through a dedicated egress-proxy sidecar that holds the
-  only credentials. This is a deploy-time hardening, not enabled by
-  default to avoid breaking dev environments.
+The proxy-blackhole layer (#6) defeats `urllib`/`requests`/`httpx`/`pip`
+because they all honor `http_proxy`/`https_proxy` env vars. A
+determined attacker can still call `socket()` directly via `ctypes`
+and bypass the env-based block.
+
+The **production complement** is now shipped as opt-in: set
+`INZYTS_NETWORK_ISOLATION=strict` in `.env` and the worker container's
+entrypoint will install an `iptables` OUTPUT chain that drops
+everything except an allowlist:
+
+* loopback
+* established/related connections
+* DNS (UDP+TCP port 53)
+* docker-internal services: `db`, `redis`, plus anything in
+  `INZYTS_INTERNAL_HOSTS`
+* LLM provider hostnames: default `api.anthropic.com api.openai.com
+  generativelanguage.googleapis.com`, overridable via
+  `INZYTS_EGRESS_ALLOWLIST`
+* (optional) `host.docker.internal` for Ollama on the host, gated on
+  `INZYTS_ALLOW_HOST_DOCKER_INTERNAL`
+
+The worker service in `docker-compose.yml` is granted `NET_ADMIN`
+unconditionally — the cap is harmless without the env var. With the
+env var set and the cap available, raw-socket egress from
+LLM-generated code is dropped at the kernel-network layer before
+leaving the container.
+
+**Residual risk after enabling strict mode:** kernel subprocesses run
+in the same network namespace as the worker, so they inherit the
+allowlist. An attacker could still attempt to send data to
+allowlisted hosts (e.g. craft a POST to api.anthropic.com with the
+payload in the body) — but without a valid API key (we strip them
+from the kernel env in #7), the bound is meaningful: requests fail
+auth before any server-side handler reads the payload. True per-uid
+scoping (kernel as a separate uid + iptables `-m owner --uid-owner`
+rules) is a follow-up that would close this fully.
+
+##### Out of scope (acknowledged residual risk)
 * **Side-channel attacks** (timing, cache, Spectre-class): not in scope.
   For workloads with classified data, run the worker on dedicated hosts.
 * **Filesystem reads of unprivileged worker code**: the kernel can read

@@ -115,6 +115,13 @@ services:
     # --pool=prefork is the default on Linux (inside the container).
     # If running natively on Windows (outside Docker), use --pool=solo.
     command: celery -A src.server.celery_app worker --loglevel=info --pool=prefork
+    # NET_ADMIN required ONLY when INZYTS_NETWORK_ISOLATION=strict is set
+    # in the .env file. With it, docker-entrypoint.sh installs an iptables
+    # OUTPUT allowlist that blocks egress to non-LLM-provider hosts —
+    # prevents raw-socket exfiltration from kernel-sandboxed user code.
+    # Cap is harmless when the env var is unset.
+    cap_add:
+      - NET_ADMIN
     depends_on:
       db:
         condition: service_healthy

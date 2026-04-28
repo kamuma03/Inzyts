@@ -10,6 +10,8 @@ WORKDIR /app
 
 # Install system dependencies
 # WeasyPrint requires libpango, libgdk-pixbuf, and libffi for PDF generation.
+# iptables is used by docker-entrypoint.sh when INZYTS_NETWORK_ISOLATION=strict
+# is set; binary is harmless when the feature is off.
 RUN apt-get update && apt-get install -y \
     gcc \
     python3-dev \
@@ -17,6 +19,8 @@ RUN apt-get update && apt-get install -y \
     libmagic1 \
     curl \
     gosu \
+    iptables \
+    dnsutils \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
     libgdk-pixbuf2.0-0 \
