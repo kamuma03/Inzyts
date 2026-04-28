@@ -48,15 +48,19 @@ ${BOLD}Test Suites:${NC}
   db            - Real database tests (testcontainers, requires Docker)
   performance   - Performance tests only (tests/performance/)
   ui            - UI smoke tests (tests/ui/)
+  security      - Security tests (input validation, sandbox escape)
+  safety        - Safety tests (prompt injection)
+  contracts     - API contract tests (Schemathesis)
+  accessibility - Accessibility tests (WCAG)
   priority1     - Priority 1 tests (core infrastructure)
   priority2     - Priority 2 tests (server/API layer)
   workflow      - Workflow tests (graph orchestration)
   models        - Model tests (state, handoffs, cells)
   agents        - Agent tests (base, phase1, phase2)
-  services      - Service tests (jupyter_proxy, etc.)
+  services      - Service tests (sandbox executor, kernel manager, etc.)
   notebooks     - Notebook API tests
-  notebook-execution - Live notebook execution tests
-  multi-file    - Multi-file tests (previously v180)
+  notebook-execution - Live cell execution tests
+  multi-file    - Multi-file tests
   templates     - Template management tests
   e2e           - End-to-end workflow tests
   advanced-features - Advanced features (dimensionality, remediation)
@@ -273,20 +277,19 @@ case $TEST_SUITE in
         ;;
     multi-file)
         echo -e "${BLUE}📋 Running: Multi-File Tests${NC}"
-        TEST_PATH="tests/services/ \
-                   tests/agents/test_profiler_multifile.py \
-                   tests/agents/test_tuning_codegen.py \
-                   tests/server/routes/test_templates.py \
-                   tests/e2e/test_multifile_workflow.py \
-                   tests/services/test_data_loader.py \
-                   tests/services/test_join_detector.py"
+        TEST_PATH="tests/unit/services/test_data_loader.py \
+                   tests/unit/services/test_join_detector.py \
+                   tests/unit/agents/test_profiler_multifile.py \
+                   tests/unit/agents/test_tuning_codegen.py \
+                   tests/unit/server/routes/test_templates.py \
+                   tests/e2e/test_multifile_workflow.py"
         COVERAGE_FLAGS="--cov=src/services/data_loader --cov=src/services/join_detector --cov=src/services/template_manager --cov=src/server/routes/templates --cov-report=term-missing"
         ;;
     templates)
         echo -e "${BLUE}📋 Running: Template Management Tests${NC}"
-        TEST_PATH="tests/services/test_template_manager.py \
-                   tests/services/test_dictionary_manager.py \
-                   tests/server/routes/test_templates.py"
+        TEST_PATH="tests/unit/services/test_template_manager.py \
+                   tests/unit/services/test_dictionary_manager.py \
+                   tests/unit/server/routes/test_templates.py"
         COVERAGE_FLAGS="--cov=src/services/template_manager --cov=src/server/routes/templates --cov-report=term-missing"
         ;;
     e2e)
@@ -294,10 +297,30 @@ case $TEST_SUITE in
         TEST_PATH="tests/e2e/"
         COVERAGE_FLAGS="--cov=src --cov-report=term-missing"
         ;;
+    security)
+        echo -e "${BLUE}📋 Running: Security Tests${NC}"
+        TEST_PATH="tests/security/"
+        COVERAGE_FLAGS="--cov=src --cov-report=term-missing"
+        ;;
+    safety)
+        echo -e "${BLUE}📋 Running: Safety Tests (Prompt Injection)${NC}"
+        TEST_PATH="tests/safety/"
+        COVERAGE_FLAGS="--cov=src --cov-report=term-missing"
+        ;;
+    contracts)
+        echo -e "${BLUE}📋 Running: API Contract Tests${NC}"
+        TEST_PATH="tests/contracts/"
+        COVERAGE_FLAGS="--cov=src --cov-report=term-missing"
+        ;;
+    accessibility)
+        echo -e "${BLUE}📋 Running: Accessibility Tests${NC}"
+        TEST_PATH="tests/accessibility/"
+        COVERAGE_FLAGS=""
+        ;;
     advanced-features)
         echo -e "${BLUE}📋 Running: Advanced Features Tests (Dimensionality, Quality)${NC}"
         TEST_PATH="tests/unit/test_quality_and_dimensionality.py \
-                   tests/verify_quality_and_dimensionality.py"
+                   tests/scripts/verify_quality_and_dimensionality.py"
         COVERAGE_FLAGS="--cov=src/agents/phase1/data_profiler --cov=src/agents/phase2/dimensionality_strategy --cov=src/models/handoffs --cov-report=term-missing"
         ;;
     *)
@@ -376,7 +399,7 @@ echo ""
 echo -e "${BLUE}💡 Next Steps:${NC}"
 echo "  • Run specific suite: ./run_tests.sh -s unit"
 echo "  • Generate HTML report: ./run_tests.sh --html"
-echo "  • View coverage docs: cat tests/TEST_COVERAGE_SUMMARY.md"
+echo "  • Suite reference: see tests/README.md"
 echo ""
 
 exit $EXIT_CODE

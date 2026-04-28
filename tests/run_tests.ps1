@@ -52,6 +52,7 @@ Examples:
 
 Test Suites:
   all, unit, integration, db, performance, ui,
+  security, safety, contracts, accessibility,
   priority1, priority2, workflow, models, agents,
   services, notebooks, notebook-execution, multi-file,
   templates, e2e, advanced-features
@@ -168,6 +169,51 @@ switch ($Suite) {
         Write-Info "Running: End-to-End Workflow Tests"
         $TestPath = "tests/e2e/"
         $CoverageFlags = "--cov=src --cov-report=term-missing"
+    }
+    "security" {
+        Write-Info "Running: Security Tests"
+        $TestPath = "tests/security/"
+        $CoverageFlags = "--cov=src --cov-report=term-missing"
+    }
+    "safety" {
+        Write-Info "Running: Safety Tests (Prompt Injection)"
+        $TestPath = "tests/safety/"
+        $CoverageFlags = "--cov=src --cov-report=term-missing"
+    }
+    "contracts" {
+        Write-Info "Running: API Contract Tests"
+        $TestPath = "tests/contracts/"
+        $CoverageFlags = "--cov=src --cov-report=term-missing"
+    }
+    "accessibility" {
+        Write-Info "Running: Accessibility Tests"
+        $TestPath = "tests/accessibility/"
+        $CoverageFlags = ""
+    }
+    "notebooks" {
+        Write-Info "Running: Notebook API Tests"
+        $TestPath = "tests/integration/test_api_notebooks.py"
+        $CoverageFlags = "--cov=src/server/routes/notebooks --cov-report=term-missing"
+    }
+    "notebook-execution" {
+        Write-Info "Running: Live Cell Execution Tests"
+        $TestPath = "tests/unit/services/ tests/integration/test_api_notebooks.py"
+        $CoverageFlags = "--cov=src/services --cov=src/server/routes/notebooks --cov-report=term-missing"
+    }
+    "multi-file" {
+        Write-Info "Running: Multi-File Tests"
+        $TestPath = "tests/unit/services/test_data_loader.py tests/unit/services/test_join_detector.py tests/unit/agents/test_profiler_multifile.py tests/unit/agents/test_tuning_codegen.py tests/unit/server/routes/test_templates.py tests/e2e/test_multifile_workflow.py"
+        $CoverageFlags = "--cov=src/services/data_loader --cov=src/services/join_detector --cov=src/services/template_manager --cov=src/server/routes/templates --cov-report=term-missing"
+    }
+    "templates" {
+        Write-Info "Running: Template Management Tests"
+        $TestPath = "tests/unit/services/test_template_manager.py tests/unit/services/test_dictionary_manager.py tests/unit/server/routes/test_templates.py"
+        $CoverageFlags = "--cov=src/services/template_manager --cov=src/server/routes/templates --cov-report=term-missing"
+    }
+    "advanced-features" {
+        Write-Info "Running: Advanced Features Tests (Dimensionality, Quality)"
+        $TestPath = "tests/unit/test_quality_and_dimensionality.py tests/scripts/verify_quality_and_dimensionality.py"
+        $CoverageFlags = "--cov=src/agents/phase1/data_profiler --cov=src/agents/phase2/dimensionality_strategy --cov=src/models/handoffs --cov-report=term-missing"
     }
     default {
         Write-Error "Unknown test suite: $Suite"
