@@ -47,16 +47,16 @@ It employs a **Seven-Mode Pipeline** with **27 Specialized Agents** orchestrated
 *   **Parameter Tuning Codegen**: Generate hyperparameter tuning code with GridSearchCV and custom parameter grids.
 *   **Auto Model Selection**: Intelligent algorithm selection based on target column and data characteristics.
 
-#### Live Notebook Execution
-*   **Browser-Based Execution**: Execute generated notebooks directly in the browser with live Jupyter kernel integration.
-*   **JupyterService Proxy**: Seamless communication with Jupyter Server for kernel management and cell execution.
-*   **Real-time Output**: WebSocket-based streaming of cell outputs, plots, and errors.
+#### Live Cell Execution
+*   **Native In-Process Sandbox**: `KernelSandbox` runs each cell in a subprocess with `setsid`/`setrlimit` isolation, no external Jupyter Server.
+*   **Streaming Output**: Socket.IO bridges stdout, stderr, and `display_data` callbacks to the browser in real time.
+*   **Per-Cell Audit**: Every execution writes a `cell_execution_audit` row (code SHA-256 only — full code never stored).
 
 #### Interactive Notebooks (Cell-Level Editing)
 *   **CellEditAgent**: Lightweight micro-agent for modifying individual notebook cells via natural language instructions.
-*   **KernelSessionManager**: Persistent Jupyter kernel sessions with 30-minute idle TTL and automatic cleanup.
+*   **KernelSessionManager**: Persistent in-process kernel sessions with TTL-based eviction and automatic cleanup.
 *   **Inline Chart Rendering**: Base64-encoded matplotlib/seaborn charts rendered directly in the interactive cell viewer.
-*   **Three View Modes**: Static HTML, Interactive (cell-level editing), and Live JupyterLab.
+*   **Two View Modes**: Static HTML and Interactive (cell-level edit + run).
 
 #### Conversational Follow-Up Analysis
 *   **FollowUpAgent**: Generates new notebook cells (code + markdown) from follow-up questions, leveraging existing kernel state.
@@ -692,7 +692,7 @@ GET /api/v2/notebooks/{job_id} → Download .ipynb
     OR
 GET /api/v2/notebooks/{job_id}/html → View rendered HTML
     OR
-POST /api/v2/notebooks/{job_id}/session → Start live Jupyter execution
+POST /api/v2/notebooks/{job_id}/cells/execute → Run a cell in the live in-process kernel
 ```
 
 **Key API Endpoints (v2)**:
@@ -702,7 +702,9 @@ POST /api/v2/notebooks/{job_id}/session → Start live Jupyter execution
 - `POST /api/v2/jobs/{job_id}/cancel` - Cancel running job
 - `GET /api/v2/notebooks/{job_id}` - Download completed notebook
 - `GET /api/v2/notebooks/{job_id}/html` - Get rendered HTML notebook
-- `POST /api/v2/notebooks/{job_id}/session` - Start live Jupyter session
+- `POST /api/v2/notebooks/{job_id}/cells/execute` - Run a cell in the live in-process kernel
+- `POST /api/v2/notebooks/{job_id}/cells/edit` - Apply a `CellEditAgent` patch to a cell
+- `POST /api/v2/notebooks/{job_id}/ask` - Conversational follow-up via `FollowUpAgent`
 - `POST /api/v2/files/upload` - Upload CSV file (multipart)
 - `GET /api/v2/files/preview` - Preview file content (first 5 rows) with robust delimiter detection
 - `GET /api/v2/templates` - List domain templates
@@ -1235,238 +1237,121 @@ quality_score = (
 
 ### 8.1 Architecture Overview
 
-The system provides **Live Notebook Execution**, allowing users to execute generated Jupyter notebooks directly in the browser without leaving the Inzyts interface.
+Live cell execution runs entirely **in-process** inside the worker container — there is no separate Jupyter Server, Kernel Gateway, or proxy. Generated notebooks are turned into a per-job kernel session managed by `KernelSessionManager`, and individual cells are executed by `KernelSandbox` (a policy-aware subprocess sandbox in `src/services/sandbox_executor.py`). Every execution is recorded in the `cell_execution_audit` table.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                     Live Notebook Execution Flow                     │
+│                     Live Cell Execution Flow                        │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                      │
 │  Browser (React Frontend)                                            │
 │  ┌──────────────────────────────────────────────────────────────┐   │
-│  │ Notebook Viewer Component                                     │   │
+│  │ LivePanel Component                                           │   │
 │  │  ├── Cell Renderer (Markdown + Code)                          │   │
-│  │  ├── Execution Controls (Run Cell, Run All, Stop)             │   │
-│  │  └── Output Display (stdout, plots, errors)                   │   │
+│  │  ├── Execution Controls (Run Cell, Run All, Restart, Stop)    │   │
+│  │  └── Streaming Output Display (stdout, plots, errors)         │   │
 │  └──────────────────────┬───────────────────────────────────────┘   │
-│                         │ WebSocket                                  │
+│                         │ HTTP (control) + Socket.IO (output)        │
 │                         ↓                                            │
-│  FastAPI Backend (Port 8000)                                        │
+│  FastAPI Backend (port 8000)                                        │
 │  ┌──────────────────────────────────────────────────────────────┐   │
-│  │ /api/v2/notebooks/{job_id}/ws/{kernel_id}                     │   │
-│  │  └── WebSocket Proxy Handler                                  │   │
+│  │ /api/v2/notebooks/{job_id}/cells/{execute,restart,interrupt} │   │
+│  │ /api/v2/notebooks/{job_id}/cells/edit, /ask, /conversation   │   │
+│  └──────────────────────┬───────────────────────────────────────┘   │
+│                         │ in-process call                            │
+│                         ↓                                            │
+│  KernelSessionManager (src/services/kernel_session_manager.py)      │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │ • One KernelSession per (user, job_id)                        │   │
+│  │ • TTL-based eviction; restart/interrupt operations            │   │
+│  │ • Reuses CSV path + working dir across cells                  │   │
 │  └──────────────────────┬───────────────────────────────────────┘   │
 │                         │                                            │
 │                         ↓                                            │
-│  JupyterService (src/server/services/jupyter_proxy.py)              │
+│  KernelSandbox (src/services/sandbox_executor.py)                   │
 │  ┌──────────────────────────────────────────────────────────────┐   │
-│  │ • Kernel Management (create, destroy, list)                   │   │
-│  │ • Request Proxying (GET/POST to Jupyter Server)               │   │
-│  │ • WebSocket Relay (bidirectional message forwarding)          │   │
-│  │ • Health Monitoring (status checks, connection state)         │   │
+│  │ • subprocess + setsid → own process group                     │   │
+│  │ • setrlimit for CPU, memory, file size, fd count              │   │
+│  │ • Network egress blocked at iptables (default-on allowlist)   │   │
+│  │ • Streaming stdout / stderr / display_data callbacks          │   │
+│  │ • SIGKILL via killpg on timeout (with PID-reuse guard)        │   │
 │  └──────────────────────┬───────────────────────────────────────┘   │
-│                         │ HTTP/WebSocket                             │
+│                         │                                            │
 │                         ↓                                            │
-│  Jupyter Server (Docker Container, Port 8888)                       │
-│  ┌──────────────────────────────────────────────────────────────┐   │
-│  │ • Kernel Gateway (Python 3 kernels)                           │   │
-│  │ • Cell Execution Engine                                       │   │
-│  │ • Output Capture (stdout, stderr, display_data)               │   │
-│  │ • Token Authentication (inzyts-token)                         │   │
-│  └──────────────────────────────────────────────────────────────┘   │
+│  cell_stream.py + CellExecutionAudit row (Postgres)                 │
 │                                                                      │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 8.2 JupyterService Implementation
+### 8.2 KernelSandbox + SandboxPolicy
 
-**Location**: `src/server/services/jupyter_proxy.py`
+**Location**: `src/services/sandbox_executor.py`
 
-**Purpose**: Acts as a proxy between the FastAPI backend and the Jupyter Server, managing kernel lifecycle and relaying WebSocket messages.
+`KernelSandbox` is the policy-aware execution primitive for every cell run. It spawns a Python subprocess in its own session/process group and applies a `SandboxPolicy` (frozen dataclass) before `exec()`:
 
-**Key Methods**:
+| Limit | Default | Mechanism |
+|-------|---------|-----------|
+| CPU time | per-policy | `setrlimit(RLIMIT_CPU)` |
+| Address space | per-policy | `setrlimit(RLIMIT_AS)` |
+| File size | per-policy | `setrlimit(RLIMIT_FSIZE)` |
+| Open file descriptors | per-policy | `setrlimit(RLIMIT_NOFILE)` |
+| Wall-clock timeout | per-call | `killpg(SIGKILL)` after the deadline |
+| Egress | iptables allowlist | enforced at the worker container, not in-process |
 
-```python
-class JupyterService:
-    def __init__(self, base_url="http://jupyter:8888", token="inzyts-token"):
-        """Initialize with Jupyter Server URL and authentication token."""
-        self.base_url = base_url
-        self.token = token
-        self.headers = {"Authorization": f"token {token}"}
+The legacy `SandboxExecutor` wrapper still exists for code paths that have not migrated; new code uses `KernelSandbox` directly.
 
-    async def get_status(self) -> dict:
-        """Check Jupyter Server health and availability."""
-        # Returns: {"status": "healthy", "started": "...", "kernels": N}
-        # Or: {"status": "unreachable", "error": "..."}
+The killpg path includes a PID-reuse guard: if `setsid()` failed in the child, the parent does **not** signal the orphan group (which would historically reach the test runner / shell / desktop session). See `tests/unit/services/test_killpg_safety.py` for the regression coverage.
 
-    async def create_kernel(self, kernel_name="python3") -> str:
-        """Create a new Jupyter kernel and return its ID."""
-        # POST /api/kernels → Returns kernel_id
+### 8.3 KernelSessionManager
 
-    async def proxy_request(self, method: str, path: str, body=None) -> dict:
-        """Proxy HTTP requests to Jupyter Server."""
-        # Forwards GET/POST/DELETE to Jupyter API
+**Location**: `src/services/kernel_session_manager.py`
 
-    async def proxy_websocket(self, websocket: WebSocket, kernel_id: str):
-        """Relay WebSocket messages between client and kernel."""
-        # Bidirectional message forwarding for execute_request/reply
-```
+Each `(user, job_id)` pair gets one `KernelSession` containing the working directory, CSV path, and a long-lived `KernelSandbox` configured for that job. Sessions are evicted by TTL or explicit restart. The manager exposes:
 
-**Singleton Instance**:
-```python
-# Global instance for use across the application
-jupyter_service = JupyterService()
-```
+- `get_or_create(job_id, csv_path)` — idempotent session lookup
+- `restart(job_id)` — tear down and replace the kernel (clears in-memory state)
+- `interrupt(job_id)` — cancel the in-flight cell without dropping the session
+- `evict_expired()` — periodic background sweep
 
-### 8.3 API Endpoints
+### 8.4 API Endpoints
 
 **Location**: `src/server/routes/notebooks.py`
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/api/v2/notebooks/{job_id}/html` | GET | Convert job's notebook to HTML for rendering |
-| `/api/v2/notebooks/{job_id}/session` | POST | Create live Jupyter kernel session |
-| `/api/v2/notebooks/{job_id}/ws/{kernel_id}` | WebSocket | Live kernel communication channel |
+| `/api/v2/notebooks/{job_id}/html` | GET | Render the static notebook to HTML |
+| `/api/v2/notebooks/{job_id}/download` | GET | Download the notebook (`.ipynb`) |
+| `/api/v2/notebooks/{job_id}/cells` | GET | List the cells in the live session |
+| `/api/v2/notebooks/{job_id}/cells/execute` | POST | Run a cell, stream output via Socket.IO |
+| `/api/v2/notebooks/{job_id}/cells/restart` | POST | Restart the kernel session |
+| `/api/v2/notebooks/{job_id}/cells/interrupt` | POST | Interrupt the running cell |
+| `/api/v2/notebooks/{job_id}/cells/edit` | POST | Apply a `CellEditAgent` patch to a cell |
+| `/api/v2/notebooks/{job_id}/ask` | POST | Conversational follow-up via `FollowUpAgent` |
+| `/api/v2/notebooks/{job_id}/conversation` | GET | Retrieve the per-job conversation history |
 
-**Endpoint Details**:
+Authentication is bearer-token + RBAC (`Analyst` / `Admin` for execute/edit/ask; `Viewer` for read-only endpoints).
 
-**1. Get Notebook HTML**
+### 8.5 Streaming + Per-Cell Audit
+
+Output is streamed via Socket.IO from `src/server/services/cell_stream.py`. Each `KernelSandbox.execute_cell_streaming` callback (`stream`, `display_data`, `error`, `result`) is bridged to the client room and, on completion, persisted to:
+
 ```python
-@router.get("/{job_id}/html")
-async def get_notebook_html(job_id: str, db: Session):
-    """
-    Retrieve the generated notebook and convert to HTML.
-
-    Returns: {"html": "<rendered_html>", "job_id": "..."}
-    Errors:
-      - 404: Job not found or no notebook generated
-      - 500: Failed to render notebook
-    """
+class CellExecutionAudit(Base):
+    """Per-cell execution log for the Live panel sandbox."""
+    # job_id, user_id, cell_id, code_hash (sha256 of submitted code — full
+    # code is intentionally NOT stored), started_at, finished_at,
+    # exit_status, stdout_bytes, stderr_bytes, killed_by_timeout
 ```
 
-**2. Create Live Session**
-```python
-@router.post("/{job_id}/session")
-async def create_live_session(job_id: str, db: Session):
-    """
-    Start a live Jupyter kernel for interactive execution.
-
-    Returns: {"job_id": "...", "kernel_id": "...", "status": "ready"}
-    Errors:
-      - 503: Jupyter Service unavailable
-      - 500: Failed to create kernel
-    """
-```
-
-**3. WebSocket Endpoint**
-```python
-@router.websocket("/{job_id}/ws/{kernel_id}")
-async def websocket_endpoint(websocket: WebSocket, job_id: str, kernel_id: str):
-    """
-    Proxy WebSocket messages to/from Jupyter kernel.
-
-    Message Types (Jupyter Protocol):
-      - execute_request: Run cell code
-      - execute_reply: Execution result
-      - stream: stdout/stderr output
-      - display_data: Rich output (plots, HTML)
-      - error: Execution errors
-    """
-```
-
-### 8.4 WebSocket Communication Protocol
-
-**Message Flow**:
-```
-Client                  FastAPI                 Jupyter Server
-  │                        │                          │
-  │ ── connect ──────────→ │                          │
-  │                        │ ── ws connect ─────────→ │
-  │                        │ ←── ws accept ────────── │
-  │ ←── accept ─────────── │                          │
-  │                        │                          │
-  │ ── execute_request ──→ │                          │
-  │                        │ ── execute_request ───→ │
-  │                        │ ←── busy ─────────────── │
-  │ ←── busy ────────────── │                          │
-  │                        │ ←── stream (stdout) ──── │
-  │ ←── stream ──────────── │                          │
-  │                        │ ←── display_data ─────── │
-  │ ←── display_data ────── │                          │
-  │                        │ ←── execute_reply ────── │
-  │ ←── execute_reply ───── │                          │
-  │                        │ ←── idle ─────────────── │
-  │ ←── idle ────────────── │                          │
-```
-
-**WebSocket URL Construction**:
-```python
-# HTTP base URL → WebSocket URL
-ws_url = base_url.replace('http', 'ws')
-kernel_ws_url = f"{ws_url}/api/kernels/{kernel_id}/channels?token={token}"
-```
-
-### 8.5 Docker Compose Configuration
-
-**Network Isolation**: Services are divided across two Docker networks:
-- `backend` — connects frontend, backend, worker, jupyter, redis
-- `db` — connects backend, worker, and PostgreSQL only
-
-Database and Redis ports are bound to `127.0.0.1` to prevent external access. All services have memory limits enforced via `deploy.resources.limits`.
-
-**Jupyter Service**:
-```yaml
-# docker-compose.yml
-services:
-  jupyter:
-    image: jupyter/base-notebook:latest
-    container_name: inzyts-jupyter
-    environment:
-      # JUPYTER_TOKEN must be set in .env — no default, compose fails if missing
-      - JUPYTER_TOKEN=${JUPYTER_TOKEN:?JUPYTER_TOKEN must be set in .env}
-      - JUPYTER_ENABLE_LAB=yes
-    ports:
-      - "8888:8888"
-    volumes:
-      - ./notebooks:/home/jovyan/notebooks
-      - ./outputs:/home/jovyan/outputs
-    networks:
-      - backend
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8888/api/status"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-```
-
-**Backend healthcheck**: The FastAPI backend includes a healthcheck (`curl -f http://localhost:8000/health`). The frontend container uses `depends_on: condition: service_healthy` to wait for the backend before starting.
+The full code is intentionally not stored — only its SHA-256. Migration: `alembic/versions/d2e3f4a5b6c7_add_cell_execution_audit_table.py`.
 
 ### 8.6 Error Handling
 
-**JupyterService Errors**:
-- **Connection Refused**: Returns `{"status": "unreachable", "error": "..."}` for graceful degradation
-- **Kernel Creation Failed**: Raises exception, caught by API endpoint (500 response)
-- **WebSocket Disconnect**: Closes connection with code 1011 (internal error)
-- **Timeout**: AsyncIO timeout handling for unresponsive kernels
-
-**API Error Responses**:
-```python
-# 404 - Job/Notebook not found
-{"detail": "Job not found"}
-{"detail": "No notebook generated for this job yet"}
-
-# 503 - Jupyter Service unavailable
-{"detail": "Jupyter Service unavailable"}
-
-# 500 - Internal error (generic — internal details logged server-side only)
-{"detail": "Failed to render notebook"}
-{"detail": "Failed to create live session"}
-{"detail": "Failed to read file preview"}
-```
+- **Sandbox timeout** → `killpg(SIGKILL)` with the PID-reuse guard above; audit row marked `killed_by_timeout=true`; HTTP 408 to the client.
+- **Resource limit hit** (`RLIMIT_AS`, `RLIMIT_FSIZE`, etc.) → child exits non-zero; stderr forwarded; HTTP 200 with `exit_status` in the response payload.
+- **Egress denied** (iptables block) → `ConnectionRefusedError` surfaces as a normal cell error; no special handling.
+- **Session expired** (TTL eviction between calls) → manager auto-recreates on the next `execute`; the client sees a fresh kernel.
+- **Socket.IO disconnect mid-execution** → execution continues server-side; outputs are still recorded in the audit row, but the live stream is lost for that client.
 
 ---
 
@@ -2328,20 +2213,20 @@ async def admin_endpoint(user: User = Depends(require_role(UserRole.ADMIN))):
 - `backend` stage: data directories (`data/uploads`, `logs`, `output`) are `chown`-ed to `inzyts` before `USER inzyts`
 - Upload directory has restricted permissions (`chmod 750 data/uploads`)
 - Both the FastAPI server and Celery worker run as `inzyts`, not root
-- Jupyter target runs as `${NB_UID}` (jovyan), not root — pip installs done as non-root user
 
 **Mandatory secrets** (`docker-compose.yml`):
 - `POSTGRES_PASSWORD` uses `:?` syntax — compose fails at startup if the variable is unset (no silent `"postgres"` default)
-- `JUPYTER_TOKEN` uses `:?` syntax on the `jupyter` service for the same reason
 - `ADMIN_PASSWORD` is required (no default) — the settings model enforces this at startup
+- `JWT_SECRET_KEY` is required for token signing
 
 **Network isolation** (`docker-compose.yml`):
-- Two separate networks: `backend` (frontend, backend, worker, jupyter, redis) and `db` (backend, worker, postgres)
+- Two separate networks: `backend` (frontend, backend, worker, redis) and `db` (backend, worker, postgres)
 - PostgreSQL port bound to `127.0.0.1:5432` — not accessible from outside the host
 - Redis port bound to `127.0.0.1:6379` — not accessible from outside the host
+- Worker container holds `NET_ADMIN` and applies a default-on iptables egress allowlist (loopback, internal services, configured LLM hosts) — see `docker-entrypoint.sh`
 
 **Resource limits**:
-- All services have `deploy.resources.limits.memory` enforced (db: 1G, redis: 512M, backend/worker: 4G, jupyter: 2G, frontend: 512M)
+- All services have `deploy.resources.limits.memory` enforced (db: 1G, redis: 512M, backend/worker: 4G, frontend: 512M)
 - Restart policy: `on-failure:5` (prevents infinite restart loops)
 
 **Health checks**:
@@ -2409,57 +2294,54 @@ logger.log_execution_time("Phase1", duration_seconds=45.2)
 
 ### 14.1 Test Coverage
 
-The system includes comprehensive test coverage with **770+ tests** across **52 test files** achieving ~95% coverage.
+The suite collects ~1,184 tests across the directories below. By default `pytest` skips `tests/ui`, `tests/integration`, `tests/e2e`, and the `slow` marker (real-kernel sandbox tests) — run those explicitly. CI selectors and slow-test rationale live in `pyproject.toml`.
 
-**Unit Tests** (`tests/unit/`):
-- Individual agent process() methods
-- Cache manager operations
-- Validator quality scoring logic
-- Mode inference keyword detection (7-mode)
-- Data quality remediation logic
-- Dimensionality reduction assessment
+**Unit Tests** (`tests/unit/`) — fast, no I/O, no real subprocess:
+- `tests/unit/agents/` — per-agent `process()` method tests (Phase 1, Phase 2, extensions, cell-edit, follow-up)
+- `tests/unit/services/` — sandbox executor, kernel session manager, PII detector, cost estimator, template/dictionary/join services, killpg safety, kernel env isolation
+- `tests/unit/server/routes/` — per-route handler tests (analyze, jobs, files, metrics, notebooks, reports, websockets, auth, templates)
+- `tests/unit/server/services/` — engine, data ingestion (incl. SELECT-only enforcement)
+- `tests/unit/utils/` — DB URI host blocklist, path validators, helpers
+- `tests/unit/workflow/`, `tests/unit/models/` — graph nodes and Pydantic handoff models
 
-**Integration Tests** (`tests/integration/`):
-- Full Phase 1 pipeline (Profiler → CodeGen → Validator)
-- Full Phase 2 pipeline (Strategy → CodeGen → Validator)
-- Cache save/restore workflow
-- Multi-file join detection
+**Integration Tests** (`tests/integration/`) — multi-module flows, real DB / Redis / HTTP:
+- Full Phase 1 + Phase 2 pipelines, cache save/restore, multi-file join detection
+- IDOR cross-user access (`test_idor_cross_user.py`), RBAC enforcement (`test_role_based_access.py`)
+- Login rate limiting (`test_login_rate_limit.py`), SSRF redirect chain (`test_ssrf_redirects.py`)
 
 **End-to-End Tests** (`tests/e2e/`):
-- Complete exploratory workflow (CSV → Notebook)
-- Complete predictive workflow with cache
-- Upgrade workflow (exploratory → predictive)
-- All 7 pipeline modes
+- Exploratory and predictive workflows, cache upgrade, all 7 pipeline modes
 
-**Web API Tests** (`tests/server/`):
-- All FastAPI endpoints (`/api/v2/analyze`, `/api/v2/jobs`, etc.)
-- Background job management
-- Cache check integration
-- WebSocket communication
-- Notebook API endpoints
+**Security** (`tests/security/`):
+- `test_input_validation.py`, `test_sandbox_escape.py`
 
-**Service Tests** (`tests/services/`):
-- JupyterService proxy tests
-- Template manager tests
-- Join detector tests
-- Data loader tests
+**Safety** (`tests/safety/`):
+- `test_prompt_injection.py` (LLM jailbreak / instruction-override resistance)
+
+**API Contracts** (`tests/contracts/`):
+- `test_openapi_schemathesis.py` (property-based fuzzing of every documented endpoint)
+
+**Accessibility** (`tests/accessibility/`):
+- WCAG 2.1 AA scaffolding for backend-rendered HTML
+
+**Frontend** (`frontend/tests/`):
+- `e2e/` — Playwright critical-journey tests (login → upload → run → view notebook), with page-object models in `e2e/pages/`
+- `a11y/` — Playwright + axe-core WCAG 2.1 AA scans
+
+**Mutation Testing** (`setup.cfg` → `[mutmut]`):
+Targets the smallest security-critical helpers — `db_utils.py`, `path_validator.py`, `auth.py` middleware, and `api_agent.py` SSRF guards. Run with `mutmut run`; current state is documented in `setup.cfg`.
 
 ---
 
 ### 14.2 Test Fixtures
 
 **Sample Datasets** (`tests/fixtures/`):
-- `iris.csv` - Clean, small classification dataset
-- `Bank_Churn.csv` - Real-world churn prediction dataset with missing values
-- `synthetic_large.csv` - Performance testing (100K+ rows)
-- `titanic.csv` - Binary classification benchmark
-- `housing.csv` - Regression benchmark
+- `iris.csv`, `Bank_Churn.csv` (+ data dictionary), `test_churn.csv`, plus synthetic generators under `sample_data/` and golden notebook outputs under `expected_notebooks/`
 
 **Mock Components**:
-- Mock LLM responses for deterministic testing
+- Mock LLM responses for deterministic agent tests
 - Mock cache manager for isolated unit tests
-- Mock sandbox for validation testing
-- Mock JupyterService for notebook execution tests
+- Mock `KernelSandbox` / `SandboxExecutor` for validator and notebook-route tests (no real subprocess unless the test is marked `slow`)
 
 ---
 
