@@ -101,7 +101,9 @@ coverage_*.json
 htmlcov/
 .hypothesis/
 MagicMock/
-tests_datasets
+scripts/dataset_tests/logs/
+scripts/dataset_tests/output/
+scripts/dataset_tests/test_report_*.json
 
 # Cache directory
 .cache/
