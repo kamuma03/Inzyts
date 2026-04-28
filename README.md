@@ -283,7 +283,6 @@ INZYTS__LLM__ANTHROPIC_API_KEY=your_key_here
 # Required secrets (generate each with: openssl rand -hex 32)
 JWT_SECRET_KEY=<generate>
 INZYTS_API_TOKEN=<generate>
-JUPYTER_TOKEN=<generate>
 POSTGRES_PASSWORD=<choose>
 ADMIN_PASSWORD=<choose>
 ```
@@ -515,9 +514,9 @@ All endpoints require a `Authorization: Bearer <token>` header. Rate limits are 
 **WebSocket Events** (Socket.IO on `/socket.io`)
 - `job_started`, `job_progress`, `job_completed`, `job_failed`, `agent_event`, `progress` (phase-aware with ETA)
 
-**Live Notebook WebSocket Events**
-- Kernel messages relayed bidirectionally between client and Jupyter Server
-- Supports `execute_request`, `execute_reply`, `stream`, `error` message types
+**Live Cell Execution Events** (Socket.IO)
+- Cell output streamed from the in-process `KernelSandbox` (stdout, stderr, `display_data`, errors)
+- Per-cell lifecycle: `started`, `output`, `result`, `error`, `done` — each persisted to the `cell_execution_audit` table
 
 ### Example API Usage
 
@@ -1109,8 +1108,8 @@ JWT_SECRET_KEY=test-secret ADMIN_PASSWORD=test-admin pytest tests/integration
 ```
 
 > **⚠️ The `slow` marker — read before running.** The single test file
-> `tests/unit/services/test_sandbox_security.py` spawns *real* Jupyter
-> kernels to exercise the `setrlimit` / `setsid` / `killpg` machinery in
+> `tests/unit/services/test_sandbox_security.py` spawns *real* Python
+> kernel subprocesses to exercise the `setrlimit` / `setsid` / `killpg` machinery in
 > [src/services/sandbox_executor.py](src/services/sandbox_executor.py).
 > A bug in any of those primitives can SIGKILL the parent process group —
 > which on a desktop session may include the test runner, the shell, the
@@ -1228,11 +1227,11 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 - Dimensionality Reduction Mode with PCA/t-SNE
 - Data Quality Remediation with 25+ safety-rated strategies
 - Multi-file CSV support with intelligent join detection
-- Live Notebook Execution with Jupyter Server integration
+- Live cell execution via in-process `KernelSandbox` (no external Jupyter Server)
 - Interactive Notebooks with cell-level natural language editing
 - Comprehensive documentation (README, architecture, testing guides)
 - Multi-LLM support (Anthropic, OpenAI, Google, Ollama)
-- Full-stack deployment (FastAPI + React + PostgreSQL + Redis + Celery + Jupyter)
+- Full-stack deployment (FastAPI + React + PostgreSQL + Redis + Celery)
 - Modern UI with real-time agent trace and token tracking
 
 [⬆ Back to Top](#inzyts---analyze-predict-discover)

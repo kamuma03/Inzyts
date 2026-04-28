@@ -58,7 +58,7 @@ Thank you for your interest in contributing to Inzyts! This document provides gu
 
 ### Development Setup (Windows)
 
-> **Recommended**: Use Docker Desktop for Windows. All services (backend, worker, frontend, DB, Redis, Jupyter) run inside Linux containers, so no platform-specific changes are needed.
+> **Recommended**: Use Docker Desktop for Windows. All services (backend, worker, frontend, DB, Redis) run inside Linux containers, so no platform-specific changes are needed.
 
 1. **Prerequisites**
 
@@ -90,7 +90,6 @@ Thank you for your interest in contributing to Inzyts! This document provides gu
    This builds and starts all services. Access:
    - Backend: http://localhost:8000
    - Frontend: http://localhost:5173
-   - Jupyter: http://localhost:8888
 
 5. **Local development (optional, without Docker)**
 
@@ -217,13 +216,24 @@ frontend/src/
   utils/           # Utility functions (formatters, etc.)
 
 tests/
-  unit/            # Unit tests
-  integration/     # Integration tests
-  e2e/             # End-to-end tests
-  server/          # API endpoint tests
-  services/        # Service layer tests (data ingestion, cloud ingestion)
-  agents/          # Agent-level tests (SQL agent, API agent)
-  fixtures/        # Test data files
+  unit/                  # Fast, isolated tests (default pytest target)
+    agents/              # Per-agent process() tests
+    services/            # Service-level tests (sandbox, kernel, PII, etc.)
+    server/routes/       # FastAPI route handlers
+    server/services/     # Engine, data ingestion
+    server/middleware/   # Auth, audit, RBAC
+    utils/               # DB URI / path validators
+    workflow/            # LangGraph nodes + routing
+    models/              # Pydantic handoffs
+  integration/           # Multi-module flows (real DB / Redis / HTTP)
+  e2e/                   # Full pipeline runs (CSV → notebook)
+  ui/                    # Backend-driven Playwright smoke tests
+  security/              # Input validation, sandbox-escape attempts
+  safety/                # Prompt-injection resistance
+  contracts/             # OpenAPI Schemathesis fuzzing
+  accessibility/         # WCAG scaffolding
+  performance/           # Benchmarks
+  fixtures/              # Test data files
 ```
 
 ## License

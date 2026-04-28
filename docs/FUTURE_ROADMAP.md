@@ -238,7 +238,6 @@ Home → [Dashboard OR Upload]
 | PostgreSQL | Single instance | Connection pool exhaustion | DB crashes | Read replicas + PgBouncer |
 | Redis Cache | Single instance | Memory overflow | Cache misses | Redis Cluster |
 | LLM API Calls | Sequential | Rate limits hit | Cost explosion | Request batching + caching |
-| Jupyter Server | Single server | Session conflicts | Unusable | JupyterHub multi-user |
 | File Storage | Local disk | Disk full | Not scalable | S3/GCS object storage |
 
 ### Architecture Evolution Plan
