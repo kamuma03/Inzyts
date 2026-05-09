@@ -4,10 +4,12 @@ import json
 
 from src.models.state import AnalysisState
 from src.models.handoffs import StrategyToCodeGenHandoff, AnalysisType, ProfilerToCodeGenHandoff
-from src.agents.phase2.comparative_strategy import ComparativeStrategyAgent
-from src.agents.phase2.diagnostic_strategy import DiagnosticStrategyAgent
-from src.agents.phase2.forecasting_strategy import ForecastingStrategyAgent
-from src.agents.phase2.segmentation_strategy import SegmentationStrategyAgent
+from src.agents.phase2.configurable_strategy import (
+    ComparativeStrategyAgent,
+    DiagnosticStrategyAgent,
+    ForecastingStrategyAgent,
+    SegmentationStrategyAgent,
+)
 
 @pytest.fixture
 def mock_state():
