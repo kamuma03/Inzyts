@@ -36,7 +36,7 @@ export const ColumnDetailCard: FC<ColumnDetailCardProps> = ({ column }) => {
                     {column.name}
                 </h3>
                 <span
-                    className="ml-auto px-1.5 py-0.5 text-[9px] uppercase tracking-[1px] rounded shrink-0"
+                    className="ml-auto px-1.5 py-0.5 text-[11px] uppercase tracking-[0.04em] rounded shrink-0"
                     style={{
                         color: roleVar(column.role),
                         backgroundColor: 'rgba(255,255,255,0.05)',
@@ -83,7 +83,7 @@ export const ColumnDetailCard: FC<ColumnDetailCardProps> = ({ column }) => {
 
 const Stat: FC<{ label: string; value: string }> = ({ label, value }) => (
     <div className="flex items-baseline gap-1.5">
-        <dt className="m-0 uppercase tracking-[1px] text-[var(--text-dim)]">{label}</dt>
+        <dt className="m-0 uppercase tracking-[0.04em] text-[var(--text-dim)]">{label}</dt>
         <dd className="m-0 font-mono text-[var(--text-primary)]">{value}</dd>
     </div>
 );

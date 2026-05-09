@@ -9,7 +9,7 @@ interface QuestionCardProps {
 export const QuestionCard: FC<QuestionCardProps> = ({ question }) => {
     return (
         <div className="p-3 border border-[var(--rule)] rounded-lg bg-[var(--surface-2)]">
-            <div className="flex items-center gap-2 mb-2 text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)]">
+            <div className="flex items-center gap-2 mb-2 text-[12px] uppercase tracking-[0.04em] text-[var(--text-dim)]">
                 <HelpCircle size={12} />
                 <span>Question</span>
             </div>

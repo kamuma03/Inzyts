@@ -29,7 +29,7 @@ const Cell: FC<CellProps> = ({ label, value, values }) => (
     <div className="flex items-center gap-2">
         <div className="flex flex-col gap-0.5 min-w-0">
             <span className="font-mono text-[12px] font-semibold text-[var(--text-primary)]">{value}</span>
-            <span className="text-[9px] uppercase tracking-[1.5px] text-[var(--text-dim)]">{label}</span>
+            <span className="text-[11px] uppercase tracking-[0.04em] text-[var(--text-dim)]">{label}</span>
         </div>
         <Sparkline values={values} width={80} height={20} ariaLabel={`${label} trend`} />
     </div>

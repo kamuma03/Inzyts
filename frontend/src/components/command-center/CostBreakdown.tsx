@@ -45,11 +45,11 @@ export const CostBreakdown: FC<CostBreakdownProps> = ({ jobId, refreshKey }) => 
 
     return (
         <div className="p-3 border border-[var(--rule)] rounded-lg bg-[var(--surface-2)]">
-            <div className="flex items-center gap-2 mb-3 text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)]">
+            <div className="flex items-center gap-2 mb-3 text-[12px] uppercase tracking-[0.04em] text-[var(--text-dim)]">
                 <DollarSign size={12} />
                 <span>Cost</span>
                 {data?.is_estimate && (
-                    <span className="ml-auto px-1.5 py-px text-[9px] rounded bg-[rgba(251,191,36,0.15)] text-[var(--warn)]">
+                    <span className="ml-auto px-1.5 py-px text-[11px] rounded bg-[rgba(251,191,36,0.15)] text-[var(--warn)]">
                         ESTIMATE
                     </span>
                 )}
@@ -72,7 +72,7 @@ export const CostBreakdown: FC<CostBreakdownProps> = ({ jobId, refreshKey }) => 
                             ariaLabel={`cost breakdown totalling ${formatCost(data.total_cost_usd)}`}
                         />
                         <div className="flex-1">
-                            <div className="text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)]">Total</div>
+                            <div className="text-[12px] uppercase tracking-[0.04em] text-[var(--text-dim)]">Total</div>
                             <div className="text-[18px] font-mono font-semibold text-[var(--text-primary)]">
                                 {formatCost(data.total_cost_usd)}
                             </div>

@@ -108,7 +108,7 @@ export const CodePanel: FC<CodePanelProps> = ({ job, events }) => {
                                 key={idx}
                                 className="border-b border-[var(--rule)] last:border-b-0"
                             >
-                                <div className="px-3 py-1 text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)]">
+                                <div className="px-3 py-1 text-[12px] uppercase tracking-[0.04em] text-[var(--text-dim)]">
                                     Cell {idx + 1}
                                 </div>
                                 <pre className="m-0 px-3 pb-3 font-mono text-[12px] text-[var(--text-primary)] whitespace-pre-wrap break-words">

@@ -84,7 +84,7 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
                 ...t,
                 badge: (
                     <span
-                        className={`inline-flex items-center gap-1 px-1 py-px text-[9px] uppercase tracking-[1px] rounded ${
+                        className={`inline-flex items-center gap-1 px-1 py-px text-[11px] uppercase tracking-[0.04em] rounded ${
                             codeStreaming
                                 ? 'bg-[rgba(76,201,240,0.12)] text-[var(--accent)]'
                                 : 'bg-[rgba(52,211,153,0.12)] text-[var(--ok)]'
@@ -107,7 +107,7 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
             return {
                 ...t,
                 badge: (
-                    <span className="inline-flex items-center px-1 py-px text-[9px] font-mono rounded bg-[rgba(255,255,255,0.06)] text-[var(--text-secondary)]">
+                    <span className="inline-flex items-center px-1 py-px text-[11px] font-mono rounded bg-[rgba(255,255,255,0.06)] text-[var(--text-secondary)]">
                         {events.length}
                     </span>
                 ),

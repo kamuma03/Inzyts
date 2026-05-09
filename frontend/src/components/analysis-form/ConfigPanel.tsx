@@ -155,7 +155,7 @@ export const ConfigPanel: FC<ConfigPanelProps> = ({
                             Your Question
                         </label>
                         <span
-                            className="ml-auto font-mono text-[10px] text-[var(--text-dim)]"
+                            className="ml-auto font-mono text-[12px] text-[var(--text-dim)]"
                             aria-hidden="true"
                         >
                             local · debounced 300ms

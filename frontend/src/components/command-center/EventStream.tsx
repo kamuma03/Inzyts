@@ -70,7 +70,7 @@ const Row = (props: RowProps): JSX.Element => {
                 className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
                 style={{ backgroundColor: eventDot(e) }}
             />
-            <span className="font-mono text-[10px] text-[var(--text-dim)] shrink-0">
+            <span className="font-mono text-[12px] text-[var(--text-dim)] shrink-0">
                 {eventTimestamp(e)}
             </span>
             <span className="font-mono text-[var(--text-secondary)] shrink-0">
@@ -134,10 +134,10 @@ export const EventStream: FC<EventStreamProps> = ({ events, onSelect }) => {
         >
             <header className="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-[var(--rule)]">
                 <Filter size={12} className="text-[var(--text-dim)]" />
-                <span className="text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)]">
+                <span className="text-[12px] uppercase tracking-[0.04em] text-[var(--text-dim)]">
                     Events
                 </span>
-                <span className="ml-1 font-mono text-[10px] text-[var(--text-dim)]">
+                <span className="ml-1 font-mono text-[12px] text-[var(--text-dim)]">
                     {filtered.length}
                     {filtered.length !== events.length && (
                         <> / {events.length}</>

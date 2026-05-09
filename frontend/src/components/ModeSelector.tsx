@@ -291,10 +291,10 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
             {/* WHY card — inline expanded explanation when a suggestion is active. */}
             {showSuggestion && !dismissed && suggestedMeta && suggestionExplanation && (
                 <div className="mb-3 p-3 rounded-md border border-[var(--rule)] bg-[var(--surface-2)]">
-                    <div className="text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)] mb-1.5">
+                    <div className="text-[12px] uppercase tracking-[0.04em] text-[var(--text-dim)] mb-1.5">
                         Why {suggestedMeta.label}?
                     </div>
-                    <p className="m-0 text-[12px] leading-[1.5] text-[var(--text-secondary)]">
+                    <p className="m-0 text-[12px] leading-[1.5] text-[var(--text-secondary)] [text-wrap:pretty]">
                         {renderExplanation(suggestionExplanation)}
                     </p>
                 </div>
@@ -302,11 +302,11 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
 
             {/* Section header for the grid */}
             <div className="flex items-center gap-2 mb-2">
-                <span className="text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)]">
+                <span className="text-[12px] uppercase tracking-[0.04em] text-[var(--text-dim)]">
                     All modes · click to override
                 </span>
                 <span
-                    className="ml-auto font-mono text-[10px] text-[var(--text-dim)]"
+                    className="ml-auto font-mono text-[12px] text-[var(--text-dim)]"
                     aria-hidden="true"
                 >
                     ↑ ↓ ← → to navigate
@@ -367,7 +367,7 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
                                     {mode.label}
                                 </div>
                                 {isSuggested && (
-                                    <span className="ml-auto flex items-center gap-1 text-[9px] font-bold uppercase tracking-[1px] text-[var(--accent)] shrink-0">
+                                    <span className="ml-auto flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.04em] text-[var(--accent)] shrink-0">
                                         <span
                                             className="inline-block w-1.5 h-1.5 rounded-full"
                                             style={{ backgroundColor: 'var(--accent)' }}

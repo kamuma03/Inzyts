@@ -24,7 +24,7 @@ export const ColumnInspector: FC<ColumnInspectorProps> = ({ jobId, selectedColum
 
     return (
         <div className="flex flex-col gap-3 min-h-0">
-            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)]">
+            <div className="flex items-center gap-2 text-[12px] uppercase tracking-[0.04em] text-[var(--text-dim)]">
                 <Columns size={12} />
                 <span>Columns</span>
                 {columns && (
@@ -80,7 +80,7 @@ export const ColumnInspector: FC<ColumnInspectorProps> = ({ jobId, selectedColum
                                             ariaLabel={`${col.name} distribution`}
                                         />
                                         <span
-                                            className="text-[9px] uppercase tracking-[1px] shrink-0"
+                                            className="text-[11px] uppercase tracking-[0.04em] shrink-0"
                                             style={{ color: roleVar(col.role) }}
                                             title={col.role}
                                         >

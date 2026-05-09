@@ -30,16 +30,16 @@ interface KpiCellProps {
 }
 
 const KpiCell: FC<KpiCellProps> = memo(({ label, value, delta }) => (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col gap-1">
         <div className="flex items-baseline gap-1.5">
-            <span className="font-mono font-semibold text-[15px] text-[var(--text-primary)]">{value}</span>
+            <span className="font-mono font-semibold text-[18px] leading-none text-[var(--text-primary)]">{value}</span>
             {delta && delta.direction !== 'none' && (
-                <span className={`font-mono text-[10px] ${directionClass[delta.direction]}`}>
+                <span className={`font-mono text-[12px] ${directionClass[delta.direction]}`}>
                     {delta.label}
                 </span>
             )}
         </div>
-        <span className="text-[9px] uppercase tracking-[1.5px] text-[var(--text-dim)]">{label}</span>
+        <span className="text-[11px] uppercase tracking-[0.06em] text-[var(--text-dim)]">{label}</span>
     </div>
 ));
 
@@ -98,17 +98,17 @@ export const TopStrip: FC<TopStripProps> = ({ job, metrics, onCancel, onExport }
                 <span className="font-mono text-[13px] font-semibold text-[var(--text-primary)] truncate">
                     {filename}
                 </span>
-                <span className="font-mono text-[10px] text-[var(--text-dim)]">
+                <span className="font-mono text-[12px] text-[var(--text-dim)]">
                     job_id={job.id.slice(0, 8)}
                 </span>
                 <span
-                    className="px-1.5 py-0.5 text-[9px] uppercase tracking-[1px] rounded bg-[rgba(76,201,240,0.12)] text-[var(--accent)]"
+                    className="px-1.5 py-0.5 text-[11px] uppercase tracking-[0.04em] rounded bg-[rgba(76,201,240,0.12)] text-[var(--accent)]"
                     aria-label={`Analysis mode: ${job.mode}`}
                 >
                     {job.mode}
                 </span>
                 {metrics?.previous_job_id && (
-                    <span className="text-[10px] text-[var(--text-dim)]">
+                    <span className="text-[12px] text-[var(--text-dim)]">
                         vs.{' '}
                         <a
                             href={`/jobs/${metrics.previous_job_id}`}
@@ -120,7 +120,7 @@ export const TopStrip: FC<TopStripProps> = ({ job, metrics, onCancel, onExport }
                 )}
 
                 <div className="ml-auto flex items-center gap-2">
-                    <span className="text-[10px] text-[var(--text-dim)]">
+                    <span className="text-[12px] text-[var(--text-dim)]">
                         <kbd className="font-mono px-1 bg-[rgba(255,255,255,0.05)] rounded">⌘K</kbd>
                     </span>
                     {isRunning && onCancel && (

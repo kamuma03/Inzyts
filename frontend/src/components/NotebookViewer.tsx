@@ -363,7 +363,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                     {summaryExpanded && (
                         <div className="px-4 pb-4 text-[0.88rem] text-[var(--text-secondary)]">
                             {executiveSummary.summary_text && (
-                                <p className="mb-3 leading-normal">
+                                <p className="mb-3 leading-normal [text-wrap:pretty]">
                                     {executiveSummary.summary_text.length > 500
                                         ? executiveSummary.summary_text.slice(0, 497) + '...'
                                         : executiveSummary.summary_text}

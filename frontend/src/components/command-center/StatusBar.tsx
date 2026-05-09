@@ -28,7 +28,7 @@ export const StatusBar: FC<StatusBarProps> = ({ isConnected, phases }) => {
         <footer
             role="status"
             aria-live="polite"
-            className="shrink-0 flex items-center gap-3 px-3 py-1.5 border border-[var(--rule)] rounded-lg bg-[var(--surface-1)] text-[10px]"
+            className="shrink-0 flex items-center gap-3 px-3 py-1.5 border border-[var(--rule)] rounded-lg bg-[var(--surface-1)] text-[12px]"
         >
             <span className="flex items-center gap-1.5">
                 <Activity size={11} className="text-[var(--text-dim)]" />
@@ -41,7 +41,7 @@ export const StatusBar: FC<StatusBarProps> = ({ isConnected, phases }) => {
                     }}
                     aria-label={isConnected ? 'connected' : 'disconnected'}
                 />
-                <span className="text-[var(--text-dim)] uppercase tracking-[1.5px]">
+                <span className="text-[var(--text-dim)] uppercase tracking-[0.04em]">
                     {isConnected ? 'live' : 'offline'}
                 </span>
             </span>
@@ -50,7 +50,7 @@ export const StatusBar: FC<StatusBarProps> = ({ isConnected, phases }) => {
 
             <span className="flex items-center gap-1.5">
                 <span className="font-mono text-[var(--text-secondary)]">{totalRetries}</span>
-                <span className="uppercase tracking-[1.5px] text-[var(--text-dim)]">retries</span>
+                <span className="uppercase tracking-[0.04em] text-[var(--text-dim)]">retries</span>
             </span>
 
             <div className="flex-1" />

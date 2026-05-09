@@ -74,7 +74,7 @@ export const PipelineRail: FC<PipelineRailProps> = ({ phases, mode }) => {
 
     return (
         <aside className="flex flex-col gap-3 min-h-0">
-            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)]">
+            <div className="flex items-center gap-2 text-[12px] uppercase tracking-[0.04em] text-[var(--text-dim)]">
                 <Workflow size={12} />
                 <span>Pipeline</span>
             </div>

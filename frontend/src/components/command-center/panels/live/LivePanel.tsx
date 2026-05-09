@@ -195,7 +195,7 @@ export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells = [] }) => {
     return (
         <div className="flex flex-col h-full min-h-0 bg-[var(--surface-0)]">
             <header className="shrink-0 px-3 py-2 flex items-center gap-2 border-b border-[var(--rule)]">
-                <span className="text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)]">
+                <span className="text-[12px] uppercase tracking-[0.04em] text-[var(--text-dim)]">
                     Live notebook
                 </span>
                 <span className="ml-auto flex items-center gap-1.5">
@@ -274,7 +274,7 @@ const CellRow: FC<CellRowProps> = ({ index, cell, onCodeChange, onRun, onStop })
                         style={{ backgroundColor: stateColor }}
                         aria-label={`Cell ${index + 1} ${cell.state}`}
                     />
-                    <span className="font-mono text-[10px] text-[var(--text-dim)]">
+                    <span className="font-mono text-[12px] text-[var(--text-dim)]">
                         [{cell.execution_count ?? ' '}]
                     </span>
                 </div>
@@ -314,12 +314,12 @@ const CellRow: FC<CellRowProps> = ({ index, cell, onCodeChange, onRun, onStop })
                             </button>
                         )}
                         {cell.duration_ms != null && cell.state !== 'busy' && (
-                            <span className="ml-2 font-mono text-[10px] text-[var(--text-dim)]">
+                            <span className="ml-2 font-mono text-[12px] text-[var(--text-dim)]">
                                 {cell.duration_ms} ms
                             </span>
                         )}
                         {cell.killed_reason && (
-                            <span className="ml-2 font-mono text-[10px] text-[var(--warn)]">
+                            <span className="ml-2 font-mono text-[12px] text-[var(--warn)]">
                                 killed: {cell.killed_reason}
                             </span>
                         )}

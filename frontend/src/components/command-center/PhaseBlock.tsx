@@ -31,7 +31,7 @@ export const PhaseBlock: FC<PhaseBlockProps> = memo(({ phase, inactiveSteps }) =
                     {phase.name}
                 </span>
                 {phaseElapsed != null && (
-                    <span className="ml-auto font-mono text-[10px] text-[var(--text-dim)]">
+                    <span className="ml-auto font-mono text-[12px] text-[var(--text-dim)]">
                         {formatDuration(phaseElapsed)}
                     </span>
                 )}
@@ -74,12 +74,12 @@ const SubStepRow: FC<SubStepRowProps> = memo(({ step, inactive }) => {
                     {step.name}
                 </span>
                 {inactive ? (
-                    <span className="text-[9px] uppercase tracking-[1px] text-[var(--text-dim)]">
+                    <span className="text-[11px] uppercase tracking-[0.04em] text-[var(--text-dim)]">
                         skipped
                     </span>
                 ) : (
                     stepElapsed != null && (
-                        <span className="font-mono text-[10px] text-[var(--text-dim)]">
+                        <span className="font-mono text-[12px] text-[var(--text-dim)]">
                             {formatDuration(stepElapsed)}
                         </span>
                     )
@@ -108,7 +108,7 @@ const AgentRow: FC<{ agent: AgentSummary }> = memo(({ agent }) => {
                 aria-label={`${agent.name} ${agent.status}`}
             />
             <span
-                className={`font-mono text-[10.5px] truncate ${
+                className={`font-mono text-[11px] truncate ${
                     isRunning ? 'text-[var(--text-primary)]' : 'text-[var(--text-dim)]'
                 }`}
                 style={isRunning ? undefined : { color: 'var(--accent-violet)' }}
