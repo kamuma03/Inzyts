@@ -48,7 +48,9 @@ export const JobHistory: React.FC<JobHistoryProps> = ({ jobs, onSelectJob, activ
             <div className="flex flex-col gap-2">
                 {jobs.map((job) => {
                     const isActive = activeJobId === job.id;
-                    const statusColor = STATUS_DOT_COLOR[job.status.toLowerCase()] ?? 'var(--text-dim)';
+                    const statusKey = job.status.toLowerCase();
+                    const statusColor = STATUS_DOT_COLOR[statusKey] ?? 'var(--text-dim)';
+                    const isLive = statusKey === 'running' || statusKey === 'pending';
                     const fullTimestamp = new Date(job.created_at).toLocaleString();
                     return (
                         <button
@@ -62,7 +64,7 @@ export const JobHistory: React.FC<JobHistoryProps> = ({ jobs, onSelectJob, activ
                         >
                             <div className="flex items-center gap-2 mb-1">
                                 <span
-                                    className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+                                    className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${isLive ? 'animate-pulse' : ''}`}
                                     style={{ backgroundColor: statusColor }}
                                     aria-label={`status: ${job.status}`}
                                 />
@@ -81,9 +83,13 @@ export const JobHistory: React.FC<JobHistoryProps> = ({ jobs, onSelectJob, activ
                                 </span>
                             </div>
 
-                            {/* Hover/active reveals tokens, cost, and the upgrade button. */}
+                            {/* Tokens / cost / upgrade — hover-revealed on pointer
+                                devices, always visible on touch (which has no
+                                hover state) and on the active card. */}
                             <div className={`mt-2 flex items-center gap-2 text-[11px] text-[var(--text-secondary)] ${
-                                isActive ? 'flex' : 'hidden group-hover:flex'
+                                isActive
+                                    ? 'flex'
+                                    : 'hidden group-hover:flex [@media(hover:none)]:flex'
                             }`}>
                                 {job.token_usage?.total !== undefined && (
                                     <span className="bg-white/10 px-1.5 py-px rounded-sm font-mono">
