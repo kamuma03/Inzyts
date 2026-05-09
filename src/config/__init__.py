@@ -297,7 +297,8 @@ class LLMConfig(BaseSettings):
     # Global Defaults
     default_provider: str = "anthropic"  # Options: ollama, anthropic, openai, gemini
     temperature: float = 0.1  # Low temperature for deterministic code generation
-    max_tokens: int = 8192
+    # Codegen agents emit large notebook JSON specs that previously truncated at 8k.
+    max_tokens: int = 32000
 
     # Gemini Configuration
     google_api_key: Optional[str] = Field(None, validation_alias="GOOGLE_API_KEY")

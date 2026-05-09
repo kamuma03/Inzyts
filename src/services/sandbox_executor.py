@@ -278,6 +278,23 @@ class KernelSandbox:
             env["no_proxy"] = ""
             env["NO_PROXY"] = ""
 
+        # Pin HOME and Jupyter/IPython dirs to the kernel's working dir.
+        # In Docker the inzyts user has --no-create-home and HOME=/app is
+        # not writable, so ipykernel can't write its connection file and
+        # dies before the kernel_info handshake completes.
+        if getattr(self, "_working_dir", None):
+            jupyter_data = os.path.join(self._working_dir, ".local", "share", "jupyter")
+            jupyter_runtime = os.path.join(jupyter_data, "runtime")
+            ipython_dir = os.path.join(self._working_dir, ".ipython")
+            jupyter_config = os.path.join(self._working_dir, ".jupyter")
+            for d in (jupyter_runtime, ipython_dir, jupyter_config):
+                os.makedirs(d, exist_ok=True)
+            env["HOME"] = self._working_dir
+            env["IPYTHONDIR"] = ipython_dir
+            env["JUPYTER_CONFIG_DIR"] = jupyter_config
+            env["JUPYTER_DATA_DIR"] = jupyter_data
+            env["JUPYTER_RUNTIME_DIR"] = jupyter_runtime
+
         # Layer per-instance overrides last so callers can pass dataset paths
         # etc. without mutating the worker's own os.environ.
         env.update(self._extra_env)
