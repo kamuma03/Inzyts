@@ -1,6 +1,6 @@
 import { FC, useState, useCallback, useRef, useEffect, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, BarChart2, TrendingUp, GitCompare, Activity, PieChart, Layers, Info, Wand2 } from 'lucide-react';
+import { Sparkles, BarChart2, TrendingUp, GitCompare, Activity, PieChart, Layers, Info, Wand2, ChevronDown } from 'lucide-react';
 import { AnalysisRequest } from '../api';
 
 export const ANALYSIS_MODES: {
@@ -242,6 +242,17 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
     const [dismissedSuggestion, setDismissedSuggestion] = useState<string | null>(null);
     const dismissed = dismissedSuggestion === suggestedMode;
 
+    // Collapse the seven-tile grid when a confident suggestion is active so
+    // analysts see one tile + reasoning instead of six tiles of noise. The
+    // user can still flip the disclosure to override.
+    const [showAllModes, setShowAllModes] = useState<boolean>(!suggestedMode);
+    useEffect(() => {
+        if (suggestedMode && !dismissed) setShowAllModes(false);
+        if (!suggestedMode || dismissed) setShowAllModes(true);
+    }, [suggestedMode, dismissed]);
+
+    const collapsed = !showAllModes && !!suggestedMeta && !dismissed;
+
     return (
         <div>
             {/* Suggestion pill — appears only when the heuristic finds a confident match. */}
@@ -300,97 +311,107 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
                 </div>
             )}
 
-            {/* Section header for the grid */}
-            <div className="flex items-center gap-2 mb-2">
-                <span className="text-[12px] uppercase tracking-[0.04em] text-[var(--text-dim)]">
-                    All modes · click to override
-                </span>
-                <span
-                    className="ml-auto font-mono text-[12px] text-[var(--text-dim)]"
-                    aria-hidden="true"
-                >
-                    ↑ ↓ ← → to navigate
-                </span>
-            </div>
-
-            <div
-                role="radiogroup"
-                aria-label="Analysis mode selection"
-                onKeyDown={handleKeyDown}
-                className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-2"
-            >
-                {ANALYSIS_MODES.map((mode) => {
-                    const isSelected = selectedMode === mode.id;
-                    const isSuggested = suggestedMode === mode.id && !isSelected;
-                    const Icon = mode.icon;
-                    return (
-                        <button
-                            key={mode.id}
-                            id={`mode-${mode.id}`}
-                            onClick={() => onSelect(mode.id)}
-                            type="button"
-                            role="radio"
-                            aria-checked={isSelected}
-                            aria-label={`${mode.label} mode: ${mode.desc}`}
-                            tabIndex={isSelected ? 0 : -1}
-                            className={`group relative px-3 py-3 cursor-pointer flex flex-col gap-2 transition-all duration-150 w-full text-left appearance-none text-inherit rounded-md border ${
-                                isSelected
-                                    ? 'border-[var(--accent)] bg-[rgba(76,201,240,0.06)]'
-                                    : isSuggested
-                                        ? 'border-[rgba(76,201,240,0.45)] bg-[var(--surface-2)]'
-                                        : 'border-[var(--rule)] bg-[var(--surface-2)] hover:border-[var(--text-dim)]'
-                            }`}
+            {/* When a suggestion is active, render only the suggested tile and a
+                disclosure that reveals the seven-tile grid for override. */}
+            {collapsed && suggestedMeta ? (
+                <div>
+                    <ModeTile
+                        mode={suggestedMeta}
+                        isSelected={selectedMode === suggestedMeta.id}
+                        onSelect={onSelect}
+                    />
+                    <button
+                        type="button"
+                        onClick={() => setShowAllModes(true)}
+                        className="mt-3 flex items-center gap-1.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-transparent border-none cursor-pointer transition-colors"
+                    >
+                        <ChevronDown size={14} />
+                        Choose a different mode
+                    </button>
+                </div>
+            ) : (
+                <>
+                    <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[12px] uppercase tracking-[0.04em] text-[var(--text-dim)]">
+                            All modes · click to override
+                        </span>
+                        <span
+                            className="ml-auto font-mono text-[12px] text-[var(--text-dim)]"
+                            aria-hidden="true"
                         >
-                            {/* Top row: icon-in-box and label on the same line, suggested marker / info on the right. */}
-                            <div className="flex items-center gap-2">
-                                <span
-                                    className={`flex items-center justify-center w-7 h-7 rounded-md shrink-0 ${
-                                        isSelected
-                                            ? 'bg-[rgba(76,201,240,0.16)]'
-                                            : 'bg-[rgba(0,0,0,0.25)]'
-                                    }`}
-                                >
-                                    <Icon
-                                        size={14}
-                                        className={
-                                            isSelected
-                                                ? 'text-[var(--accent)]'
-                                                : 'text-[var(--text-secondary)]'
-                                        }
-                                    />
-                                </span>
-                                <div
-                                    className={`text-[13px] font-semibold tracking-tight truncate ${
-                                        isSelected ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'
-                                    }`}
-                                >
-                                    {mode.label}
-                                </div>
-                                {isSuggested && (
-                                    <span className="ml-auto flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.04em] text-[var(--accent)] shrink-0">
-                                        <span
-                                            className="inline-block w-1.5 h-1.5 rounded-full"
-                                            style={{ backgroundColor: 'var(--accent)' }}
-                                            aria-hidden="true"
-                                        />
-                                        Suggested
-                                    </span>
-                                )}
-                                {!isSuggested && (
-                                    <span className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                                        <InfoTooltip text={mode.detailedDesc} />
-                                    </span>
-                                )}
-                            </div>
+                            ↑ ↓ ← → to navigate
+                        </span>
+                    </div>
 
-                            {/* One-line action description */}
-                            <p className="m-0 text-[11px] text-[var(--text-dim)] leading-[1.4]">
-                                {mode.desc}
-                            </p>
-                        </button>
-                    );
-                })}
-            </div>
+                    <div
+                        role="radiogroup"
+                        aria-label="Analysis mode selection"
+                        onKeyDown={handleKeyDown}
+                        className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-2"
+                    >
+                        {ANALYSIS_MODES.map((mode) => (
+                            <ModeTile
+                                key={mode.id}
+                                mode={mode}
+                                isSelected={selectedMode === mode.id}
+                                onSelect={onSelect}
+                            />
+                        ))}
+                    </div>
+                </>
+            )}
         </div>
+    );
+};
+
+interface ModeTileProps {
+    mode: typeof ANALYSIS_MODES[number];
+    isSelected: boolean;
+    onSelect: (id: AnalysisRequest['mode']) => void;
+}
+
+const ModeTile: FC<ModeTileProps> = ({ mode, isSelected, onSelect }) => {
+    const Icon = mode.icon;
+    return (
+        <button
+            id={`mode-${mode.id}`}
+            onClick={() => onSelect(mode.id)}
+            type="button"
+            role="radio"
+            aria-checked={isSelected}
+            aria-label={`${mode.label} mode: ${mode.desc}`}
+            tabIndex={isSelected ? 0 : -1}
+            className={`group relative px-3 py-3 cursor-pointer flex flex-col gap-2 transition-all duration-150 w-full text-left appearance-none text-inherit rounded-md border ${
+                isSelected
+                    ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
+                    : 'border-[var(--rule)] bg-[var(--surface-2)] hover:border-[var(--text-dim)]'
+            }`}
+        >
+            <div className="flex items-center gap-2">
+                <span
+                    className={`flex items-center justify-center w-7 h-7 rounded-md shrink-0 ${
+                        isSelected ? 'bg-[rgba(76,201,240,0.16)]' : 'bg-[rgba(0,0,0,0.25)]'
+                    }`}
+                >
+                    <Icon
+                        size={14}
+                        className={isSelected ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'}
+                    />
+                </span>
+                <div
+                    className={`text-[13px] font-semibold tracking-tight truncate ${
+                        isSelected ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'
+                    }`}
+                >
+                    {mode.label}
+                </div>
+                <span className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                    <InfoTooltip text={mode.detailedDesc} />
+                </span>
+            </div>
+            <p className="m-0 text-[11px] text-[var(--text-dim)] leading-[1.4]">
+                {mode.desc}
+            </p>
+        </button>
     );
 };

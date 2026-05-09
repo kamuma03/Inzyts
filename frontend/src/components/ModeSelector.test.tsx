@@ -33,7 +33,7 @@ describe('ModeSelector', () => {
         expect(exploratoryBtn).toHaveAttribute('aria-checked', 'false')
     })
 
-    it('shows "Suggested" badge when suggestedMode differs from selected', () => {
+    it('shows the suggestion pill when suggestedMode differs from selected', () => {
         render(
             <ModeSelector
                 {...defaultProps}
@@ -42,7 +42,10 @@ describe('ModeSelector', () => {
             />
         )
 
-        expect(screen.getByText('Suggested')).toBeInTheDocument()
+        // The pill leads with "Suggested: …" — the exact "Suggested" inline tile
+        // label was dropped to remove duplication with the pill.
+        expect(screen.getByText(/^Suggested:/)).toBeInTheDocument()
+        expect(screen.getByText(/use forecasting/i)).toBeInTheDocument()
     })
 
     it('does not show suggestion badge when suggestedMode matches selected', () => {
