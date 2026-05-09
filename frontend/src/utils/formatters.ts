@@ -26,6 +26,24 @@ export const formatDate = (dateStr: string): string => {
 };
 
 /**
+ * Format an ISO timestamp as a coarse relative duration ("just now",
+ * "5 min ago", "3 hr ago", "2 days ago"). Falls back to a locale date
+ * once the timestamp is older than a week.
+ */
+export const formatRelativeTime = (iso: string): string => {
+    const ms = Date.now() - new Date(iso).getTime();
+    if (!Number.isFinite(ms) || ms < 0) return new Date(iso).toLocaleDateString();
+    const min = Math.floor(ms / 60_000);
+    if (min < 1) return 'just now';
+    if (min < 60) return `${min} min ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr} hr ago`;
+    const day = Math.floor(hr / 24);
+    if (day < 7) return `${day} day${day === 1 ? '' : 's'} ago`;
+    return new Date(iso).toLocaleDateString();
+};
+
+/**
  * Format a USD amount with appropriate precision.
  * < $1 → 4 decimals, < $100 → 2 decimals, otherwise integer.
  */

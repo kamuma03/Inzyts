@@ -1,7 +1,7 @@
 import React from 'react';
 import { JobSummary } from '../api';
-import { Calendar, CheckCircle, XCircle, PlayCircle, AlertCircle, Clock, Loader2, Inbox, Zap } from 'lucide-react';
-import { getFileName } from '../utils/formatters';
+import { Calendar, Loader2, Inbox, Zap } from 'lucide-react';
+import { getFileName, formatRelativeTime } from '../utils/formatters';
 
 interface JobHistoryProps {
     jobs: JobSummary[];
@@ -11,23 +11,21 @@ interface JobHistoryProps {
     isLoading?: boolean;
 }
 
-export const JobHistory: React.FC<JobHistoryProps> = ({ jobs, onSelectJob, activeJobId, onUpgradeJob, isLoading = false }) => {
+const STATUS_DOT_COLOR: Record<string, string> = {
+    completed: 'var(--ok)',
+    running: 'var(--accent)',
+    pending: 'var(--accent)',
+    failed: 'var(--bad)',
+    cancelled: 'var(--text-dim)',
+};
 
-    const getStatusIcon = (status: string) => {
-        switch (status.toLowerCase()) {
-            case 'completed': return <CheckCircle size={16} color="#68d391" />;
-            case 'running': return <PlayCircle size={16} color="#63b3ed" />;
-            case 'failed': return <XCircle size={16} color="#fc8181" />;
-            case 'cancelled': return <AlertCircle size={16} color="#a0aec0" />;
-            default: return <Clock size={16} color="#a0aec0" />;
-        }
-    };
+export const JobHistory: React.FC<JobHistoryProps> = ({ jobs, onSelectJob, activeJobId, onUpgradeJob, isLoading = false }) => {
 
     if (isLoading) {
         return (
             <div className="flex flex-col items-center gap-3 py-8 text-[var(--text-secondary)]">
                 <Loader2 size={24} className="animate-spin" />
-                <span className="text-[0.85rem]">Loading jobs...</span>
+                <span className="text-[12px]">Loading jobs...</span>
             </div>
         );
     }
@@ -36,71 +34,84 @@ export const JobHistory: React.FC<JobHistoryProps> = ({ jobs, onSelectJob, activ
         return (
             <div className="flex flex-col items-center gap-3 py-8 text-[var(--text-secondary)]">
                 <Inbox size={28} className="opacity-50" />
-                <span className="text-[0.85rem]">No analysis jobs yet</span>
-                <span className="text-[0.8rem] opacity-60">Start a new analysis to see it here</span>
+                <span className="text-[13px]">No analysis jobs yet</span>
+                <span className="text-[12px] opacity-60">Start a new analysis to see it here</span>
             </div>
         );
     }
 
     return (
         <div className="flex-1 overflow-y-auto">
-            <h3 className="mb-4 flex items-center gap-2 text-[0.9rem]">
+            <h3 className="mb-4 flex items-center gap-2 text-[14px]">
                 <Calendar size={16} /> History
             </h3>
             <div className="flex flex-col gap-2">
-                {jobs.map((job) => (
-                    <button
-                        key={job.id}
-                        onClick={() => onSelectJob(job.id)}
-                        type="button"
-                        aria-label={`Select job ${job.id}`}
-                        className={`p-3 rounded-md border w-full text-left text-inherit appearance-none block cursor-pointer transition-all duration-200 ${
-                            activeJobId === job.id
-                                ? 'border-[var(--accent)] bg-[var(--rule-strong)]'
-                                : 'border-[var(--rule)] bg-white/[0.03] hover:bg-white/[0.06]'
-                        }`}
-                    >
-                        <div className="flex justify-between items-center mb-1">
-                            <span className="font-medium text-[0.9rem] text-[var(--text-primary)]">{job.mode} Analysis</span>
-                            {getStatusIcon(job.status)}
-                        </div>
+                {jobs.map((job) => {
+                    const isActive = activeJobId === job.id;
+                    const statusColor = STATUS_DOT_COLOR[job.status.toLowerCase()] ?? 'var(--text-dim)';
+                    const fullTimestamp = new Date(job.created_at).toLocaleString();
+                    return (
+                        <button
+                            key={job.id}
+                            onClick={() => onSelectJob(job.id)}
+                            type="button"
+                            aria-label={`Select job ${job.id}`}
+                            className={`group p-3 rounded-md border w-full text-left text-inherit appearance-none block cursor-pointer transition-all duration-200 ${
+                                isActive ? 'is-active border-[var(--accent)] bg-[var(--surface-2)]' : 'border-[var(--rule)] bg-white/[0.03] hover:bg-white/[0.06]'
+                            }`}
+                        >
+                            <div className="flex items-center gap-2 mb-1">
+                                <span
+                                    className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+                                    style={{ backgroundColor: statusColor }}
+                                    aria-label={`status: ${job.status}`}
+                                />
+                                <span
+                                    className="text-[14px] font-medium text-[var(--text-primary)] truncate"
+                                    title={job.csv_path}
+                                >
+                                    {getFileName(job.csv_path)}
+                                </span>
+                            </div>
+                            <div className="text-[12px] text-[var(--text-secondary)] flex items-center gap-2">
+                                <span className="capitalize">{job.mode}</span>
+                                <span className="text-[var(--text-dim)]">·</span>
+                                <span title={fullTimestamp}>
+                                    {formatRelativeTime(job.created_at)}
+                                </span>
+                            </div>
 
-                        {/* Filename Display */}
-                        <div className="text-[0.8rem] text-[var(--text-secondary)] mb-1 font-medium overflow-hidden text-ellipsis whitespace-nowrap" title={job.csv_path}>
-                            {getFileName(job.csv_path)}
-                        </div>
-
-                        <div className="text-[0.8rem] text-[var(--text-secondary)] flex justify-between items-center">
-                            <span>{new Date(job.created_at).toLocaleString()}</span>
-                            <div className="flex gap-2 items-center">
+                            {/* Hover/active reveals tokens, cost, and the upgrade button. */}
+                            <div className={`mt-2 flex items-center gap-2 text-[11px] text-[var(--text-secondary)] ${
+                                isActive ? 'flex' : 'hidden group-hover:flex'
+                            }`}>
                                 {job.token_usage?.total !== undefined && (
-                                    <span className="text-[0.75rem] bg-white/10 px-1 py-px rounded-sm">
+                                    <span className="bg-white/10 px-1.5 py-px rounded-sm font-mono">
                                         {job.token_usage.total.toLocaleString()} tks
                                     </span>
                                 )}
                                 {job.cost_estimate && (
-                                    <span>${job.cost_estimate.total?.toFixed(4) || '0.000'}</span>
+                                    <span className="font-mono">
+                                        ${job.cost_estimate.total?.toFixed(4) || '0.000'}
+                                    </span>
+                                )}
+                                {job.status === 'completed' && job.mode === 'exploratory' && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onUpgradeJob(job);
+                                        }}
+                                        title="Upgrade to Predictive using Cached Profile"
+                                        className="ml-auto bg-transparent border border-[var(--accent)] text-[var(--accent)] rounded-sm px-1.5 py-px text-[11px] cursor-pointer font-semibold hover:bg-[var(--accent-soft)] flex items-center gap-1"
+                                    >
+                                        <Zap size={12} />
+                                        Upgrade
+                                    </button>
                                 )}
                             </div>
-                        </div>
-                        <div className="text-[0.75rem] text-white/40 mt-1 font-mono flex justify-between items-center">
-                            <span>ID: {job.id.slice(0, 8)}</span>
-                            {job.status === 'completed' && job.mode === 'exploratory' && (
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onUpgradeJob(job);
-                                    }}
-                                    title="Upgrade to Predictive using Cached Profile"
-                                    className="bg-transparent border border-[var(--accent)] text-[var(--accent)] rounded-sm px-1.5 py-px text-[11px] cursor-pointer font-semibold hover:bg-[var(--accent-soft)] flex items-center gap-1"
-                                >
-                                    <Zap size={12} />
-                                    Upgrade
-                                </button>
-                            )}
-                        </div>
-                    </button>
-                ))}
+                        </button>
+                    );
+                })}
             </div>
         </div>
     );
