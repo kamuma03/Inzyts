@@ -1,10 +1,67 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { AnalysisAPI } from '../api';
-import { Loader, Terminal, Sparkles, Download, FileText, Shield, AlertTriangle, ChevronDown, ChevronUp, Presentation, Clock, FileCode } from 'lucide-react';
+import { Loader, Terminal, Sparkles, Download, FileText, Shield, AlertTriangle, ChevronDown, ChevronUp, Presentation, Clock, FileCode, Sun, Moon } from 'lucide-react';
 import { LivePanel } from './command-center/panels/live/LivePanel';
 import { InteractiveCell } from './InteractiveCell';
 import { FollowUpChat } from './FollowUpChat';
 import { CellOutput, NotebookCellData } from '../types/notebook';
+
+type NotebookTheme = 'light' | 'dark';
+
+const NOTEBOOK_THEME_STORAGE_KEY = 'inzyts_notebook_theme';
+
+const readStoredTheme = (): NotebookTheme => {
+    if (typeof localStorage === 'undefined') return 'dark';
+    const stored = localStorage.getItem(NOTEBOOK_THEME_STORAGE_KEY);
+    return stored === 'light' ? 'light' : 'dark';
+};
+
+/** Inline CSS overrides applied to the static notebook HTML when the user
+ *  selects dark mode. Server-side dark Jinja templating is out of scope for
+ *  this UI pass, so the style tag is injected client-side before the iframe
+ *  receives the document. */
+const DARK_NOTEBOOK_OVERRIDES = `
+<style>
+  html, body {
+    background: #0d1b2a !important;
+    color: #e6e7e1 !important;
+  }
+  .jp-Notebook, .jp-MainAreaWidget, .jp-OutputArea, .jp-OutputArea-output {
+    background: transparent !important;
+    color: #e6e7e1 !important;
+  }
+  .jp-RenderedHTMLCommon, .jp-RenderedHTMLCommon * {
+    color: #e6e7e1 !important;
+  }
+  .jp-Cell, .jp-CodeCell, .jp-MarkdownCell {
+    background: rgba(20, 34, 53, 0.6) !important;
+    border-color: #2a3b56 !important;
+  }
+  pre, code, .highlight, .jp-CodeMirrorEditor {
+    background: rgba(255, 255, 255, 0.04) !important;
+    color: #e6e7e1 !important;
+  }
+  table {
+    background: rgba(20, 34, 53, 0.4) !important;
+    color: #e6e7e1 !important;
+    border-color: #2a3b56 !important;
+  }
+  th, td { border-color: #2a3b56 !important; }
+  a { color: #4cc9f0 !important; }
+  hr { border-color: #2a3b56 !important; }
+  blockquote {
+    color: #a0aab5 !important;
+    border-left-color: #4cc9f0 !important;
+  }
+</style>`;
+
+const applyNotebookTheme = (html: string, theme: NotebookTheme): string => {
+    if (theme === 'light') return html;
+    if (html.includes('</head>')) {
+        return html.replace('</head>', `${DARK_NOTEBOOK_OVERRIDES}</head>`);
+    }
+    return `${DARK_NOTEBOOK_OVERRIDES}${html}`;
+};
 
 interface NotebookViewerProps {
     jobId: string;
@@ -50,6 +107,20 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
     const [summaryLoading, setSummaryLoading] = useState(false);
     const [summaryExpanded, setSummaryExpanded] = useState(true);
     const [piiResult, setPiiResult] = useState<PIIScanResult | null>(null);
+
+    // Notebook theme — persisted across reloads. Default is dark to match the
+    // surrounding shell.
+    const [notebookTheme, setNotebookTheme] = useState<NotebookTheme>(() => readStoredTheme());
+    useEffect(() => {
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(NOTEBOOK_THEME_STORAGE_KEY, notebookTheme);
+        }
+    }, [notebookTheme]);
+
+    const themedHtmlContent = useMemo(
+        () => (htmlContent ? applyNotebookTheme(htmlContent, notebookTheme) : null),
+        [htmlContent, notebookTheme],
+    );
 
     // Load static HTML
     useEffect(() => {
@@ -279,6 +350,18 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                 {/* Export Controls */}
                 {status === 'completed' && (
                     <div className="flex items-center gap-2">
+                        {viewMode === 'static' && (
+                            <button
+                                onClick={() => setNotebookTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+                                aria-label={notebookTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+                                title={notebookTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+                                className="flex items-center gap-1 px-2 py-1 rounded-md border border-[var(--rule)] text-[var(--text-secondary)] bg-transparent text-[12px] cursor-pointer hover:text-[var(--text-primary)] transition-colors"
+                            >
+                                {notebookTheme === 'dark' ? <Moon size={14} /> : <Sun size={14} />}
+                                <span className="capitalize">{notebookTheme}</span>
+                            </button>
+                        )}
+
                         {/* .ipynb download */}
                         {resultPath && (
                             <button
@@ -423,9 +506,15 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
             )}
 
             {/* Notebook Content */}
-            <div className={`relative flex-1 min-h-0 overflow-y-auto ${viewMode === 'interactive' ? 'bg-[var(--surface-0)]' : 'bg-white'}`}>
+            <div className={`relative flex-1 min-h-0 overflow-y-auto ${
+                viewMode === 'interactive' || (viewMode === 'static' && notebookTheme === 'dark')
+                    ? 'bg-[var(--surface-0)]'
+                    : 'bg-white'
+            }`}>
                 {loading && viewMode === 'static' && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-white/80">
+                    <div className={`absolute inset-0 flex items-center justify-center ${
+                        notebookTheme === 'dark' ? 'bg-[var(--surface-0)]/80' : 'bg-white/80'
+                    }`}>
                         <Loader className="animate-spin" size={32} color="var(--accent)" />
                     </div>
                 )}
@@ -462,9 +551,10 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                         <div className="p-8 text-center text-red-500">
                             {error}
                         </div>
-                    ) : htmlContent ? (
+                    ) : themedHtmlContent ? (
                         <iframe
-                            srcDoc={htmlContent}
+                            key={notebookTheme}
+                            srcDoc={themedHtmlContent}
                             className="w-full h-full border-none block"
                             title="Notebook Results"
                             sandbox="allow-same-origin"
