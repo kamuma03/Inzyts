@@ -94,7 +94,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
             if (initialValues.dbUri) { setDbUri(initialValues.dbUri); setActiveTab('database'); }
             if (initialValues.dbQuery) setDbQuery(initialValues.dbQuery);
             if (initialValues.mode) setMode(initialValues.mode);
-            if (initialValues.use_cache) setUseCache(initialValues.use_cache);
+            if (initialValues.use_cache !== undefined) setUseCache(initialValues.use_cache);
             if (initialValues.targetCol) setTargetCol(initialValues.targetCol);
             if (initialValues.title) setTitle(initialValues.title);
             if (initialValues.question) setQuestion(initialValues.question);

@@ -57,7 +57,7 @@ export const JobHistory: React.FC<JobHistoryProps> = ({ jobs, onSelectJob, activ
                             type="button"
                             aria-label={`Select job ${job.id}`}
                             className={`group p-3 rounded-md border w-full text-left text-inherit appearance-none block cursor-pointer transition-all duration-200 ${
-                                isActive ? 'is-active border-[var(--accent)] bg-[var(--surface-2)]' : 'border-[var(--rule)] bg-white/[0.03] hover:bg-white/[0.06]'
+                                isActive ? 'border-[var(--accent)] bg-[var(--surface-2)]' : 'border-[var(--rule)] bg-white/[0.03] hover:bg-white/[0.06]'
                             }`}
                         >
                             <div className="flex items-center gap-2 mb-1">

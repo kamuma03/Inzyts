@@ -1,4 +1,4 @@
-import { useCallback, useState, type FC } from 'react';
+import { useCallback, useState, type FC, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { JobSummary } from '../../api';
 import { useJobContext } from '../../context/JobContext';
@@ -156,11 +156,21 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
                         label="Run"
                         active={topTab === 'run'}
                         onClick={() => setTopTab('run')}
+                        badge={
+                            events.length > 0 ? (
+                                <span className="inline-flex items-center px-1 py-px text-[11px] font-mono rounded bg-[rgba(255,255,255,0.06)] text-[var(--text-secondary)]">
+                                    {events.length}
+                                </span>
+                            ) : null
+                        }
                     />
                 </div>
 
-                <div className="flex-1 min-h-0 min-w-0">
-                    {topTab === 'results' ? (
+                {/* Both top-level groups render with `hidden` rather than a ternary
+                    so each group keeps its sub-tab scroll position when the user
+                    cycles Results → Run → Results. */}
+                <div className="flex-1 min-h-0 min-w-0 relative">
+                    <div className="absolute inset-0" hidden={topTab !== 'results'}>
                         <PreviewTabs
                             tabs={resultsTabsWithBadges}
                             activeTab={resultsSubTab}
@@ -180,7 +190,8 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
                                 data: <DataPanel jobId={job.id} />,
                             }}
                         </PreviewTabs>
-                    ) : (
+                    </div>
+                    <div className="absolute inset-0" hidden={topTab !== 'run'}>
                         <PreviewTabs
                             tabs={runTabsWithBadges}
                             activeTab={runSubTab}
@@ -195,7 +206,7 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
                                 ),
                             }}
                         </PreviewTabs>
-                    )}
+                    </div>
                 </div>
             </div>
 
@@ -208,20 +219,22 @@ interface TopTabButtonProps {
     label: string;
     active: boolean;
     onClick: () => void;
+    badge?: ReactNode;
 }
 
-const TopTabButton: FC<TopTabButtonProps> = ({ label, active, onClick }) => (
+const TopTabButton: FC<TopTabButtonProps> = ({ label, active, onClick, badge }) => (
     <button
         type="button"
         role="tab"
         aria-selected={active}
         onClick={onClick}
-        className={`px-4 py-2 text-[14px] font-semibold rounded-t-md transition-colors ${
+        className={`px-4 py-2 text-[14px] font-semibold rounded-t-md transition-colors flex items-center gap-1.5 ${
             active
                 ? 'bg-[var(--surface-2)] text-[var(--text-primary)]'
                 : 'bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
         }`}
     >
-        {label}
+        <span>{label}</span>
+        {badge}
     </button>
 );
