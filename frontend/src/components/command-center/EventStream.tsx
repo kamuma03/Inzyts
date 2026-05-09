@@ -20,9 +20,9 @@ const eventLabel = (e: AgentEvent): string => {
 };
 
 const eventDot = (e: AgentEvent): string => {
-    if (/FAIL|ERROR/i.test(e.event ?? '')) return 'var(--status-bad)';
-    if (/COMPLET|DONE|GRANTED|PASSED/i.test(e.event ?? '')) return 'var(--status-good)';
-    if (/INVOK|START/i.test(e.event ?? '')) return 'var(--bg-turquoise-surf)';
+    if (/FAIL|ERROR/i.test(e.event ?? '')) return 'var(--bad)';
+    if (/COMPLET|DONE|GRANTED|PASSED/i.test(e.event ?? '')) return 'var(--ok)';
+    if (/INVOK|START/i.test(e.event ?? '')) return 'var(--accent)';
     return 'var(--text-dim)';
 };
 
@@ -62,7 +62,7 @@ const Row = (props: RowProps): JSX.Element => {
             onClick={() => setSelectedIndex(index)}
             className={`flex items-center gap-2 px-3 text-[11px] cursor-pointer border-l-2 ${
                 isSelected
-                    ? 'border-[var(--bg-turquoise-surf)] bg-[rgba(76,201,240,0.06)]'
+                    ? 'border-[var(--accent)] bg-[rgba(76,201,240,0.06)]'
                     : 'border-transparent hover:bg-[rgba(255,255,255,0.03)]'
             }`}
         >
@@ -130,9 +130,9 @@ export const EventStream: FC<EventStreamProps> = ({ events, onSelect }) => {
             tabIndex={0}
             onKeyDown={handleKey}
             aria-label="Agent event stream"
-            className="border border-[var(--border-color)] rounded-lg bg-[var(--bg-true-cobalt)] flex flex-col min-h-0"
+            className="border border-[var(--rule)] rounded-lg bg-[var(--surface-1)] flex flex-col min-h-0"
         >
-            <header className="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-[var(--border-color)]">
+            <header className="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-[var(--rule)]">
                 <Filter size={12} className="text-[var(--text-dim)]" />
                 <span className="text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)]">
                     Events
@@ -156,7 +156,7 @@ export const EventStream: FC<EventStreamProps> = ({ events, onSelect }) => {
                         onChange={(e) => setSearch(e.target.value)}
                         placeholder="search"
                         aria-label="Search events"
-                        className="ml-2 px-2 py-0.5 text-[11px] bg-[rgba(0,0,0,0.2)] border border-[var(--border-color)] rounded text-[var(--text-primary)] w-32"
+                        className="ml-2 px-2 py-0.5 text-[11px] bg-[rgba(0,0,0,0.2)] border border-[var(--rule)] rounded text-[var(--text-primary)] w-32"
                     />
                 </div>
             </header>
@@ -209,7 +209,7 @@ const FilterChip: FC<FilterChipProps> = ({ value, current, onClick, children }) 
         aria-pressed={current === value}
         className={`px-2 py-0.5 text-[11px] rounded ${
             current === value
-                ? 'bg-[rgba(76,201,240,0.12)] text-[var(--bg-turquoise-surf)]'
+                ? 'bg-[rgba(76,201,240,0.12)] text-[var(--accent)]'
                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
         }`}
     >

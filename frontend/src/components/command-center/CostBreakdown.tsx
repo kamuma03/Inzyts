@@ -11,9 +11,9 @@ interface CostBreakdownProps {
 }
 
 const PHASE_COLORS: Record<string, string> = {
-    phase1: 'var(--bg-blue-green)',
+    phase1: 'var(--accent)',
     extensions: 'var(--accent-violet)',
-    phase2: 'var(--bg-turquoise-surf)',
+    phase2: 'var(--accent)',
     all: 'var(--text-secondary)',
 };
 
@@ -44,19 +44,19 @@ export const CostBreakdown: FC<CostBreakdownProps> = ({ jobId, refreshKey }) => 
     }, [jobId, refreshKey]);
 
     return (
-        <div className="p-3 border border-[var(--border-color)] rounded-lg bg-[var(--bg-surface-hi)]">
+        <div className="p-3 border border-[var(--rule)] rounded-lg bg-[var(--surface-2)]">
             <div className="flex items-center gap-2 mb-3 text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)]">
                 <DollarSign size={12} />
                 <span>Cost</span>
                 {data?.is_estimate && (
-                    <span className="ml-auto px-1.5 py-px text-[9px] rounded bg-[rgba(251,191,36,0.15)] text-[var(--status-warn)]">
+                    <span className="ml-auto px-1.5 py-px text-[9px] rounded bg-[rgba(251,191,36,0.15)] text-[var(--warn)]">
                         ESTIMATE
                     </span>
                 )}
             </div>
 
             {loading && <div className="text-[12px] text-[var(--text-dim)]">Loading…</div>}
-            {error && <div className="text-[12px] text-[var(--status-bad)]">{error}</div>}
+            {error && <div className="text-[12px] text-[var(--bad)]">{error}</div>}
 
             {data && !loading && (
                 <>

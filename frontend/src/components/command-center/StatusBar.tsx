@@ -28,7 +28,7 @@ export const StatusBar: FC<StatusBarProps> = ({ isConnected, phases }) => {
         <footer
             role="status"
             aria-live="polite"
-            className="shrink-0 flex items-center gap-3 px-3 py-1.5 border border-[var(--border-color)] rounded-lg bg-[var(--bg-true-cobalt)] text-[10px]"
+            className="shrink-0 flex items-center gap-3 px-3 py-1.5 border border-[var(--rule)] rounded-lg bg-[var(--surface-1)] text-[10px]"
         >
             <span className="flex items-center gap-1.5">
                 <Activity size={11} className="text-[var(--text-dim)]" />
@@ -36,8 +36,8 @@ export const StatusBar: FC<StatusBarProps> = ({ isConnected, phases }) => {
                     className="inline-block w-1.5 h-1.5 rounded-full"
                     style={{
                         backgroundColor: isConnected
-                            ? 'var(--status-good)'
-                            : 'var(--status-bad)',
+                            ? 'var(--ok)'
+                            : 'var(--bad)',
                     }}
                     aria-label={isConnected ? 'connected' : 'disconnected'}
                 />

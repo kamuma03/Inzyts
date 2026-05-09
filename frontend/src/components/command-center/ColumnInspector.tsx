@@ -36,12 +36,12 @@ export const ColumnInspector: FC<ColumnInspectorProps> = ({ jobId, selectedColum
 
             <ColumnDetailCard column={selected} />
 
-            <div className="flex-1 min-h-0 overflow-y-auto border border-[var(--border-color)] rounded-lg bg-[var(--bg-surface-hi)]">
+            <div className="flex-1 min-h-0 overflow-y-auto border border-[var(--rule)] rounded-lg bg-[var(--surface-2)]">
                 {loading && (
                     <div className="p-3 text-[12px] text-[var(--text-dim)]">Loading columns…</div>
                 )}
                 {error && (
-                    <div className="p-3 text-[12px] text-[var(--status-bad)]">{error}</div>
+                    <div className="p-3 text-[12px] text-[var(--bad)]">{error}</div>
                 )}
                 {columns && columns.length === 0 && !loading && (
                     <div className="p-3 text-[12px] text-[var(--text-dim)]">
@@ -62,7 +62,7 @@ export const ColumnInspector: FC<ColumnInspectorProps> = ({ jobId, selectedColum
                                         onClick={() => onSelect(isSelected ? null : col.name)}
                                         className={`w-full text-left px-3 py-2 flex items-center gap-2 border-l-2 transition-colors duration-150 ${
                                             isSelected
-                                                ? 'border-[var(--bg-turquoise-surf)] bg-[rgba(76,201,240,0.08)]'
+                                                ? 'border-[var(--accent)] bg-[rgba(76,201,240,0.08)]'
                                                 : 'border-transparent hover:bg-[rgba(255,255,255,0.03)]'
                                         }`}
                                     >

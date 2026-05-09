@@ -86,16 +86,16 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
                     <span
                         className={`inline-flex items-center gap-1 px-1 py-px text-[9px] uppercase tracking-[1px] rounded ${
                             codeStreaming
-                                ? 'bg-[rgba(76,201,240,0.12)] text-[var(--bg-turquoise-surf)]'
-                                : 'bg-[rgba(52,211,153,0.12)] text-[var(--status-good)]'
+                                ? 'bg-[rgba(76,201,240,0.12)] text-[var(--accent)]'
+                                : 'bg-[rgba(52,211,153,0.12)] text-[var(--ok)]'
                         }`}
                     >
                         <span
                             className={`inline-block w-1.5 h-1.5 rounded-full ${codeStreaming ? 'animate-pulse' : ''}`}
                             style={{
                                 backgroundColor: codeStreaming
-                                    ? 'var(--bg-turquoise-surf)'
-                                    : 'var(--status-good)',
+                                    ? 'var(--accent)'
+                                    : 'var(--ok)',
                             }}
                         />
                         {codeStreaming ? 'streaming' : 'ready'}
@@ -127,7 +127,7 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
 
             {isRunning && <TrafficRow history={history} />}
 
-            <div className="flex-1 min-h-0 min-w-0 border border-[var(--border-color)] rounded-lg bg-[var(--bg-true-cobalt)] overflow-hidden flex flex-col">
+            <div className="flex-1 min-h-0 min-w-0 border border-[var(--rule)] rounded-lg bg-[var(--surface-1)] overflow-hidden flex flex-col">
                 <PreviewTabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab}>
                     {{
                         overview: (

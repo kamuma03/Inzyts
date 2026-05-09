@@ -114,3 +114,6 @@ scripts/dataset_tests/test_report_*.json
 
 # Build artifacts
 *.tsbuildinfo
+# spec-driven-build working notes
+spec.md
+todo.md

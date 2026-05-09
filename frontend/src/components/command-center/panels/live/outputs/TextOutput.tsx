@@ -11,7 +11,7 @@ export const TextOutput: FC<TextOutputProps> = ({ output }) => {
     return (
         <pre
             className={`m-0 px-3 py-1.5 font-mono text-[12px] whitespace-pre-wrap break-words ${
-                isStderr ? 'text-[var(--status-warn)]' : 'text-[var(--text-primary)]'
+                isStderr ? 'text-[var(--warn)]' : 'text-[var(--text-primary)]'
             }`}
         >
             {output.text}

@@ -13,14 +13,14 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({ selectedJob, isConne
 
     return (
         <div
-            className={`border-l border-[var(--border-color)] bg-[var(--bg-deep-twilight)] flex flex-col h-full relative transition-all duration-300 ${
+            className={`border-l border-[var(--rule)] bg-[var(--surface-0)] flex flex-col h-full relative transition-all duration-300 ${
                 isCollapsed ? 'w-[60px] min-w-[60px] py-6 px-0 items-center' : 'w-[300px] min-w-[300px] p-6 items-stretch'
             }`}
         >
             {/* Toggle Button */}
             <button
                 onClick={() => setIsCollapsed(!isCollapsed)}
-                className={`absolute top-3 z-10 w-7 h-7 flex items-center justify-center cursor-pointer bg-[var(--bg-french-blue)] border border-[var(--border-color)] rounded-full transition-all duration-300 ${
+                className={`absolute top-3 z-10 w-7 h-7 flex items-center justify-center cursor-pointer bg-[var(--rule-strong)] border border-[var(--rule)] rounded-full transition-all duration-300 ${
                     isCollapsed ? 'left-1/2 -translate-x-1/2' : 'left-3 translate-x-0'
                 }`}
                 title={isCollapsed ? "Expand Context" : "Collapse Context"}
@@ -35,7 +35,7 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({ selectedJob, isConne
                         Context
                     </h3>
                     <div
-                        className={`w-2 h-2 rounded-full ${isConnected ? 'bg-[var(--bg-blue-green)]' : 'bg-red-500'}`}
+                        className={`w-2 h-2 rounded-full ${isConnected ? 'bg-[var(--accent)]' : 'bg-red-500'}`}
                         title={isConnected ? "Connected" : "Disconnected"}
                     />
                 </div>
@@ -43,32 +43,32 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({ selectedJob, isConne
                 {/* Model Section */}
                 <div className="mb-8">
                     <label className="text-[0.8rem] text-[var(--text-secondary)] font-semibold block mb-2">MODEL</label>
-                    <div className="px-3 py-2 bg-white/5 border border-[var(--border-color)] rounded-md text-[var(--text-primary)] text-[0.9rem]">
+                    <div className="px-3 py-2 bg-white/5 border border-[var(--rule)] rounded-md text-[var(--text-primary)] text-[0.9rem]">
                         <span>{import.meta.env.VITE_LLM_MODEL || 'claude-sonnet-4-5-20250929'}</span>
                     </div>
                 </div>
 
-                <div className="h-px bg-[var(--border-color)] mb-6" />
+                <div className="h-px bg-[var(--rule)] mb-6" />
 
                 {/* Templates */}
                 <div className="mb-8">
                     <button
                         onClick={onShowTemplates}
-                        className="w-full bg-[var(--bg-deep-twilight)] border border-[var(--border-color)] rounded-md text-[var(--text-secondary)] cursor-pointer p-2 flex items-center justify-center gap-2 text-[0.85rem] font-medium transition-all duration-200 hover:border-[var(--bg-turquoise-surf)] hover:text-[var(--text-primary)] hover:bg-[rgba(79,209,197,0.1)]"
+                        className="w-full bg-[var(--surface-0)] border border-[var(--rule)] rounded-md text-[var(--text-secondary)] cursor-pointer p-2 flex items-center justify-center gap-2 text-[0.85rem] font-medium transition-all duration-200 hover:border-[var(--accent)] hover:text-[var(--text-primary)] hover:bg-[rgba(79,209,197,0.1)]"
                     >
                         <FileJson size={14} />
                         <span>Manage Templates</span>
                     </button>
                 </div>
 
-                <div className="h-px bg-[var(--border-color)] mb-6" />
+                <div className="h-px bg-[var(--rule)] mb-6" />
 
                 {/* Data Context */}
                 <div className="mb-8">
                     <label className="text-[0.8rem] text-[var(--text-secondary)] font-semibold block mb-2">DATA IN CONTEXT</label>
                     {selectedJob && selectedJob.csv_path ? (
                         <div className="flex items-center gap-3">
-                            <Database size={16} color="var(--bg-blue-green)" />
+                            <Database size={16} color="var(--accent)" />
                             <div>
                                 <div className="text-[var(--text-primary)] text-[0.9rem] font-medium">
                                     {selectedJob.csv_path.split('/').pop()}
@@ -83,14 +83,14 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({ selectedJob, isConne
                     )}
                 </div>
 
-                <div className="h-px bg-[var(--border-color)] mb-6" />
+                <div className="h-px bg-[var(--rule)] mb-6" />
 
                 {/* Cache Status */}
                 <div>
                     <label className="text-[0.8rem] text-[var(--text-secondary)] font-semibold block mb-2">CACHE STATUS</label>
                     <div className="bg-white/[0.03] rounded-lg p-3">
                         <div className="flex items-center gap-2 mb-2">
-                            <CheckCircle size={14} color="var(--bg-blue-green)" />
+                            <CheckCircle size={14} color="var(--accent)" />
                             <span className="text-[var(--text-primary)] text-[0.9rem]">Base Profile</span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -110,7 +110,7 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({ selectedJob, isConne
                 </div>
                 {selectedJob && selectedJob.csv_path && (
                     <div title="Data Loaded">
-                        <Database size={24} color="var(--bg-blue-green)" />
+                        <Database size={24} color="var(--accent)" />
                     </div>
                 )}
             </div>

@@ -20,14 +20,14 @@ const formatStat = (n: number | null | undefined): string => {
 export const ColumnDetailCard: FC<ColumnDetailCardProps> = ({ column }) => {
     if (!column) {
         return (
-            <div className="p-3 border border-dashed border-[var(--border-color)] rounded-lg bg-[var(--bg-surface-hi)] text-center text-[12px] text-[var(--text-dim)]">
+            <div className="p-3 border border-dashed border-[var(--rule)] rounded-lg bg-[var(--surface-2)] text-center text-[12px] text-[var(--text-dim)]">
                 Select a column to inspect its profile.
             </div>
         );
     }
 
     return (
-        <div className="p-3 border border-[var(--border-color)] rounded-lg bg-[var(--bg-surface-hi)]">
+        <div className="p-3 border border-[var(--rule)] rounded-lg bg-[var(--surface-2)]">
             <div className="flex items-center gap-2 mb-2">
                 <h3
                     className="m-0 font-mono text-[13px] font-semibold text-[var(--text-primary)] truncate"

@@ -186,10 +186,10 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
     }, [jobId]);
 
     const modeButtonClass = (mode: ViewMode) =>
-        `text-[0.8rem] px-2 py-1 rounded border border-[var(--bg-turquoise-surf)] cursor-pointer flex items-center gap-1 ${
+        `text-[0.8rem] px-2 py-1 rounded border border-[var(--accent)] cursor-pointer flex items-center gap-1 ${
             viewMode === mode
-                ? 'text-white bg-[var(--bg-turquoise-surf)]'
-                : 'text-[var(--bg-turquoise-surf)] bg-transparent'
+                ? 'text-white bg-[var(--accent)]'
+                : 'text-[var(--accent)] bg-transparent'
         }`;
 
     const exportFormats: { key: ExportFormat; label: string; icon: React.ReactNode }[] = [
@@ -203,7 +203,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
     if (status !== 'completed') {
         const isRunning = status === 'running';
         return (
-            <div className="mt-0 border border-[var(--border-color)] rounded-lg flex-1 flex flex-col items-center justify-center gap-4 bg-[var(--bg-true-cobalt)] min-h-[300px]">
+            <div className="mt-0 border border-[var(--rule)] rounded-lg flex-1 flex flex-col items-center justify-center gap-4 bg-[var(--surface-1)] min-h-[300px]">
                 {isRunning ? (
                     <>
                         <Clock size={40} color="var(--text-secondary)" className="animate-spin opacity-50" />
@@ -243,9 +243,9 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
     }
 
     return (
-        <div className="mt-0 border border-[var(--border-color)] rounded-lg overflow-hidden flex-1 flex flex-col min-h-0">
+        <div className="mt-0 border border-[var(--rule)] rounded-lg overflow-hidden flex-1 flex flex-col min-h-0">
             {/* Header */}
-            <div className="p-4 border-b border-[var(--border-color)] bg-[var(--bg-true-cobalt)] flex justify-between items-center shrink-0">
+            <div className="p-4 border-b border-[var(--rule)] bg-[var(--surface-1)] flex justify-between items-center shrink-0">
                 <h3 className="m-0 font-semibold text-[var(--text-primary)] flex items-center gap-2">
                     Results Notebook
                     {status === 'completed' && (
@@ -298,7 +298,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                                         if (import.meta.env.DEV) console.error('Notebook download failed', err);
                                     }
                                 }}
-                                className="text-[0.8rem] text-[var(--bg-turquoise-surf)] bg-transparent border-none cursor-pointer px-2 py-1"
+                                className="text-[0.8rem] text-[var(--accent)] bg-transparent border-none cursor-pointer px-2 py-1"
                             >
                                 .ipynb
                             </button>
@@ -309,7 +309,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                             <button
                                 onClick={() => setExportMenuOpen(prev => !prev)}
                                 disabled={!!exportLoading}
-                                className={`flex items-center gap-1 px-2.5 py-1 rounded-md border border-[var(--bg-turquoise-surf)] bg-[var(--bg-turquoise-surf)] text-white text-[0.8rem] font-medium ${
+                                className={`flex items-center gap-1 px-2.5 py-1 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-white text-[0.8rem] font-medium ${
                                     exportLoading ? 'cursor-wait' : 'cursor-pointer'
                                 }`}
                             >
@@ -323,7 +323,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                             </button>
 
                             {exportMenuOpen && (
-                                <div className="absolute right-0 top-full mt-1 bg-[var(--bg-true-cobalt)] border border-[var(--border-color)] rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.3)] min-w-[160px] z-[100] overflow-hidden">
+                                <div className="absolute right-0 top-full mt-1 bg-[var(--surface-1)] border border-[var(--rule)] rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.3)] min-w-[160px] z-[100] overflow-hidden">
                                     {exportFormats.map((fmt) => (
                                         <button
                                             key={fmt.key}
@@ -343,13 +343,13 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
 
             {/* Executive Summary Card */}
             {executiveSummary && status === 'completed' && (
-                <div className="border-b border-[var(--border-color)] bg-[var(--bg-deep-twilight)] shrink-0">
+                <div className="border-b border-[var(--rule)] bg-[var(--surface-0)] shrink-0">
                     <button
                         onClick={() => setSummaryExpanded(prev => !prev)}
                         className="flex items-center justify-between w-full px-4 py-3 border-none bg-transparent text-[var(--text-primary)] cursor-pointer text-[0.9rem] font-semibold"
                     >
                         <span className="flex items-center gap-2">
-                            <Shield size={16} className="text-[var(--bg-turquoise-surf)]" />
+                            <Shield size={16} className="text-[var(--accent)]" />
                             Executive Summary
                             {executiveSummary.generated_by === 'fallback' && (
                                 <span className="text-[0.7rem] text-[var(--text-secondary)] font-normal">
@@ -373,7 +373,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                             <div className="grid grid-cols-2 gap-4">
                                 {/* Key Findings */}
                                 <div>
-                                    <h4 className="text-[0.8rem] text-[var(--bg-turquoise-surf)] mb-1.5 uppercase tracking-wider">
+                                    <h4 className="text-[0.8rem] text-[var(--accent)] mb-1.5 uppercase tracking-wider">
                                         Key Findings
                                     </h4>
                                     <ul className="m-0 pl-4">
@@ -385,7 +385,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
 
                                 {/* Recommendations */}
                                 <div>
-                                    <h4 className="text-[0.8rem] text-[var(--bg-turquoise-surf)] mb-1.5 uppercase tracking-wider">
+                                    <h4 className="text-[0.8rem] text-[var(--accent)] mb-1.5 uppercase tracking-wider">
                                         Recommendations
                                     </h4>
                                     <ul className="m-0 pl-4">
@@ -399,7 +399,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                             {/* Data Quality */}
                             {executiveSummary.data_quality_highlights.length > 0 && (
                                 <div className="mt-3">
-                                    <h4 className="text-[0.8rem] text-[var(--bg-turquoise-surf)] mb-1.5 uppercase tracking-wider">
+                                    <h4 className="text-[0.8rem] text-[var(--accent)] mb-1.5 uppercase tracking-wider">
                                         Data Quality
                                     </h4>
                                     <ul className="m-0 pl-4">
@@ -416,17 +416,17 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
 
             {/* Summary loading indicator */}
             {summaryLoading && status === 'completed' && (
-                <div className="px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-deep-twilight)] flex items-center gap-2 text-[0.8rem] text-[var(--text-secondary)] shrink-0">
+                <div className="px-4 py-2 border-b border-[var(--rule)] bg-[var(--surface-0)] flex items-center gap-2 text-[0.8rem] text-[var(--text-secondary)] shrink-0">
                     <Loader className="animate-spin" size={14} />
                     Generating executive summary...
                 </div>
             )}
 
             {/* Notebook Content */}
-            <div className={`relative flex-1 min-h-0 overflow-y-auto ${viewMode === 'interactive' ? 'bg-[var(--bg-deep-twilight)]' : 'bg-white'}`}>
+            <div className={`relative flex-1 min-h-0 overflow-y-auto ${viewMode === 'interactive' ? 'bg-[var(--surface-0)]' : 'bg-white'}`}>
                 {loading && viewMode === 'static' && (
                     <div className="absolute inset-0 flex items-center justify-center bg-white/80">
-                        <Loader className="animate-spin" size={32} color="var(--bg-turquoise-surf)" />
+                        <Loader className="animate-spin" size={32} color="var(--accent)" />
                     </div>
                 )}
 
@@ -470,7 +470,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                             sandbox="allow-same-origin"
                         />
                     ) : (
-                        <div className="p-8 text-center text-[var(--text-secondary)] bg-[var(--bg-deep-twilight)] h-full flex items-center justify-center">
+                        <div className="p-8 text-center text-[var(--text-secondary)] bg-[var(--surface-0)] h-full flex items-center justify-center">
                             Loading notebook preview...
                         </div>
                     )

@@ -103,9 +103,9 @@ export const FollowUpChat: React.FC<FollowUpChatProps> = ({ jobId }) => {
     };
 
     return (
-        <div className="mt-4 border border-[var(--border-color)] rounded-lg bg-[rgba(13,27,42,0.5)] overflow-hidden">
+        <div className="mt-4 border border-[var(--rule)] rounded-lg bg-[rgba(13,27,42,0.5)] overflow-hidden">
             {/* Header */}
-            <div className="flex items-center gap-2 px-4 py-2.5 text-[0.85rem] font-semibold text-[var(--bg-turquoise-surf)] border-b border-[rgba(65,90,119,0.3)] bg-[rgba(27,38,59,0.4)]">
+            <div className="flex items-center gap-2 px-4 py-2.5 text-[0.85rem] font-semibold text-[var(--accent)] border-b border-[rgba(65,90,119,0.3)] bg-[rgba(27,38,59,0.4)]">
                 <MessageSquare size={16} />
                 <span>Follow-Up Analysis</span>
                 {messages.length > 0 && (
@@ -122,7 +122,7 @@ export const FollowUpChat: React.FC<FollowUpChatProps> = ({ jobId }) => {
                         <div key={i} className="animate-[slideIn_0.2s_ease-out]">
                             {msg.role === 'user' ? (
                                 <div className="inline-flex items-center gap-2 bg-[rgba(76,201,240,0.1)] border border-[rgba(76,201,240,0.25)] rounded-[12px_12px_12px_4px] px-3.5 py-2 text-[0.88rem] text-[var(--text-primary)] max-w-[80%]">
-                                    <Sparkles size={14} className="text-[var(--bg-turquoise-surf)] shrink-0" />
+                                    <Sparkles size={14} className="text-[var(--accent)] shrink-0" />
                                     <span>{msg.content}</span>
                                 </div>
                             ) : (
@@ -170,7 +170,7 @@ export const FollowUpChat: React.FC<FollowUpChatProps> = ({ jobId }) => {
                     {/* Loading indicator */}
                     {isLoading && (
                         <div className="animate-[slideIn_0.2s_ease-out]">
-                            <div className="flex items-center gap-2 text-[0.85rem] text-[var(--bg-turquoise-surf)] py-2">
+                            <div className="flex items-center gap-2 text-[0.85rem] text-[var(--accent)] py-2">
                                 <Loader size={16} className="animate-spin" />
                                 <span>Analyzing...</span>
                             </div>
@@ -191,7 +191,7 @@ export const FollowUpChat: React.FC<FollowUpChatProps> = ({ jobId }) => {
 
             {/* Input */}
             <div className="flex items-center gap-2 px-3.5 py-2.5 bg-[rgba(27,38,59,0.5)] border-t border-[rgba(65,90,119,0.3)]">
-                <Sparkles size={16} className="text-[var(--bg-turquoise-surf)] shrink-0 opacity-70" />
+                <Sparkles size={16} className="text-[var(--accent)] shrink-0 opacity-70" />
                 <input
                     ref={inputRef}
                     type="text"
@@ -203,7 +203,7 @@ export const FollowUpChat: React.FC<FollowUpChatProps> = ({ jobId }) => {
                     disabled={isLoading}
                 />
                 <button
-                    className="flex items-center justify-center bg-transparent border border-[rgba(76,201,240,0.3)] rounded-md p-1.5 text-[var(--bg-turquoise-surf)] cursor-pointer transition-all duration-200 hover:bg-[rgba(76,201,240,0.1)] hover:border-[var(--bg-turquoise-surf)] disabled:opacity-35 disabled:cursor-not-allowed"
+                    className="flex items-center justify-center bg-transparent border border-[rgba(76,201,240,0.3)] rounded-md p-1.5 text-[var(--accent)] cursor-pointer transition-all duration-200 hover:bg-[rgba(76,201,240,0.1)] hover:border-[var(--accent)] disabled:opacity-35 disabled:cursor-not-allowed"
                     onClick={handleSubmit}
                     disabled={isLoading || !question.trim()}
                     title="Send"

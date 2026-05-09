@@ -75,24 +75,24 @@ export const CodePanel: FC<CodePanelProps> = ({ job, events }) => {
 
     return (
         <div className="h-full flex flex-col min-h-0">
-            <div className="shrink-0 px-3 py-1.5 flex items-center gap-2 text-[11px] text-[var(--text-dim)] border-b border-[var(--border-color)]">
+            <div className="shrink-0 px-3 py-1.5 flex items-center gap-2 text-[11px] text-[var(--text-dim)] border-b border-[var(--rule)]">
                 <span
                     className={`inline-block w-2 h-2 rounded-full shrink-0 ${
                         isCompleted ? '' : 'animate-pulse'
                     }`}
                     style={{
                         backgroundColor: isCompleted
-                            ? 'var(--status-good)'
-                            : 'var(--bg-turquoise-surf)',
+                            ? 'var(--ok)'
+                            : 'var(--accent)',
                     }}
                 />
                 <span>{isCompleted ? 'ready' : 'streaming'}</span>
                 <span className="ml-auto font-mono">{totalSourceLines} lines</span>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-auto bg-[var(--bg-deep-twilight)]">
+            <div className="flex-1 min-h-0 overflow-auto bg-[var(--surface-0)]">
                 {error && (
-                    <div className="p-3 text-[12px] text-[var(--status-bad)]">{error}</div>
+                    <div className="p-3 text-[12px] text-[var(--bad)]">{error}</div>
                 )}
 
                 {isCompleted && cells && cells.length === 0 && !error && (
@@ -106,7 +106,7 @@ export const CodePanel: FC<CodePanelProps> = ({ job, events }) => {
                         {cells.map((cell, idx) => (
                             <li
                                 key={idx}
-                                className="border-b border-[var(--border-color)] last:border-b-0"
+                                className="border-b border-[var(--rule)] last:border-b-0"
                             >
                                 <div className="px-3 py-1 text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)]">
                                     Cell {idx + 1}

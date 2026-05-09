@@ -29,7 +29,7 @@ export const PreviewTabs: FC<PreviewTabsProps> = ({ tabs, activeTab, onChange, c
             <div
                 role="tablist"
                 aria-label="Preview tabs"
-                className="shrink-0 flex items-center gap-1 px-3 border-b border-[var(--border-color)]"
+                className="shrink-0 flex items-center gap-1 px-3 border-b border-[var(--rule)]"
             >
                 {tabs.map((tab) => (
                     <button
@@ -43,7 +43,7 @@ export const PreviewTabs: FC<PreviewTabsProps> = ({ tabs, activeTab, onChange, c
                         onClick={() => onChange(tab.id)}
                         className={`px-3 py-2 text-[12px] font-medium border-b-2 transition-colors ${
                             activeTab === tab.id
-                                ? 'border-[var(--bg-turquoise-surf)] text-[var(--bg-turquoise-surf)]'
+                                ? 'border-[var(--accent)] text-[var(--accent)]'
                                 : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                         }`}
                     >

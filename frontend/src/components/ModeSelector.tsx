@@ -148,7 +148,7 @@ const InfoTooltip: FC<{ text: string }> = ({ text }) => {
                         left: coords.left,
                         width: 260,
                     }}
-                    className="p-3 text-[0.8rem] leading-[1.5] text-[var(--text-secondary)] bg-[var(--bg-deep-twilight)] border border-[var(--border-color)] rounded-lg shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+                    className="p-3 text-[0.8rem] leading-[1.5] text-[var(--text-secondary)] bg-[var(--surface-0)] border border-[var(--rule)] rounded-lg shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
                 >
                     {text}
                 </div>,
@@ -181,7 +181,7 @@ const renderExplanation = (text: string): React.ReactNode => {
         parts.push(
             <code
                 key={match.index}
-                className="font-mono text-[var(--bg-turquoise-surf)] bg-[rgba(76,201,240,0.08)] px-1 py-px rounded text-[11px]"
+                className="font-mono text-[var(--accent)] bg-[rgba(76,201,240,0.08)] px-1 py-px rounded text-[11px]"
             >
                 {token}
             </code>,
@@ -194,8 +194,8 @@ const renderExplanation = (text: string): React.ReactNode => {
 
 const confidenceColor = (c: number | null | undefined): string => {
     if (c == null) return 'var(--text-dim)';
-    if (c >= 0.7) return 'var(--status-good)';
-    if (c >= 0.5) return 'var(--status-warn)';
+    if (c >= 0.7) return 'var(--ok)';
+    if (c >= 0.5) return 'var(--warn)';
     return 'var(--text-dim)';
 };
 
@@ -247,10 +247,10 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
             {/* Suggestion pill — appears only when the heuristic finds a confident match. */}
             {showSuggestion && !dismissed && suggestedMeta && (
                 <div className="mb-3 flex items-center gap-2 px-3 py-1.5 rounded-full border border-[rgba(76,201,240,0.3)] bg-[rgba(76,201,240,0.04)] text-[12px] text-[var(--text-secondary)] w-fit">
-                    <Wand2 size={12} className="text-[var(--bg-turquoise-surf)] shrink-0" />
+                    <Wand2 size={12} className="text-[var(--accent)] shrink-0" />
                     <span>
                         Suggested:{' '}
-                        <strong className="text-[var(--bg-turquoise-surf)] font-semibold">
+                        <strong className="text-[var(--accent)] font-semibold">
                             {suggestedMeta.label}
                         </strong>
                     </span>
@@ -274,7 +274,7 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
                     <button
                         type="button"
                         onClick={() => onSelect(suggestedMode!)}
-                        className="ml-2 px-2.5 py-0.5 text-[12px] font-semibold bg-[var(--bg-turquoise-surf)] text-[var(--bg-deep-twilight)] border-none rounded cursor-pointer shrink-0"
+                        className="ml-2 px-2.5 py-0.5 text-[12px] font-semibold bg-[var(--accent)] text-[var(--surface-0)] border-none rounded cursor-pointer shrink-0"
                     >
                         Use {suggestedMeta.label.toLowerCase()}
                     </button>
@@ -290,7 +290,7 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
 
             {/* WHY card — inline expanded explanation when a suggestion is active. */}
             {showSuggestion && !dismissed && suggestedMeta && suggestionExplanation && (
-                <div className="mb-3 p-3 rounded-md border border-[var(--border-color)] bg-[var(--bg-surface-hi)]">
+                <div className="mb-3 p-3 rounded-md border border-[var(--rule)] bg-[var(--surface-2)]">
                     <div className="text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)] mb-1.5">
                         Why {suggestedMeta.label}?
                     </div>
@@ -335,10 +335,10 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
                             tabIndex={isSelected ? 0 : -1}
                             className={`group relative px-3 py-3 cursor-pointer flex flex-col gap-2 transition-all duration-150 w-full text-left appearance-none text-inherit rounded-md border ${
                                 isSelected
-                                    ? 'border-[var(--bg-turquoise-surf)] bg-[rgba(76,201,240,0.06)]'
+                                    ? 'border-[var(--accent)] bg-[rgba(76,201,240,0.06)]'
                                     : isSuggested
-                                        ? 'border-[rgba(76,201,240,0.45)] bg-[var(--bg-surface-hi)]'
-                                        : 'border-[var(--border-color)] bg-[var(--bg-surface-hi)] hover:border-[var(--text-dim)]'
+                                        ? 'border-[rgba(76,201,240,0.45)] bg-[var(--surface-2)]'
+                                        : 'border-[var(--rule)] bg-[var(--surface-2)] hover:border-[var(--text-dim)]'
                             }`}
                         >
                             {/* Top row: icon-in-box and label on the same line, suggested marker / info on the right. */}
@@ -354,23 +354,23 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
                                         size={14}
                                         className={
                                             isSelected
-                                                ? 'text-[var(--bg-turquoise-surf)]'
+                                                ? 'text-[var(--accent)]'
                                                 : 'text-[var(--text-secondary)]'
                                         }
                                     />
                                 </span>
                                 <div
                                     className={`text-[13px] font-semibold tracking-tight truncate ${
-                                        isSelected ? 'text-[var(--bg-turquoise-surf)]' : 'text-[var(--text-primary)]'
+                                        isSelected ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'
                                     }`}
                                 >
                                     {mode.label}
                                 </div>
                                 {isSuggested && (
-                                    <span className="ml-auto flex items-center gap-1 text-[9px] font-bold uppercase tracking-[1px] text-[var(--bg-turquoise-surf)] shrink-0">
+                                    <span className="ml-auto flex items-center gap-1 text-[9px] font-bold uppercase tracking-[1px] text-[var(--accent)] shrink-0">
                                         <span
                                             className="inline-block w-1.5 h-1.5 rounded-full"
-                                            style={{ backgroundColor: 'var(--bg-turquoise-surf)' }}
+                                            style={{ backgroundColor: 'var(--accent)' }}
                                             aria-hidden="true"
                                         />
                                         Suggested

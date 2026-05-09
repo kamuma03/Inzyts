@@ -18,7 +18,7 @@ export const Tabs: FC<TabsProps> = ({ tabs, activeTab, onSelect, ariaLabel = 'Ta
         <div
             role="tablist"
             aria-label={ariaLabel}
-            className="flex gap-1 border-b border-[var(--border-color)] flex-wrap"
+            className="flex gap-1 border-b border-[var(--rule)] flex-wrap"
         >
             {tabs.map((tab) => {
                 const isActive = activeTab === tab.id;
@@ -33,7 +33,7 @@ export const Tabs: FC<TabsProps> = ({ tabs, activeTab, onSelect, ariaLabel = 'Ta
                         onClick={() => onSelect(tab.id)}
                         className={`flex items-center gap-[0.4rem] px-4 py-[0.6rem] text-[0.9rem] bg-none border-none border-b-2 cursor-pointer transition-[color,border-color] duration-200 whitespace-nowrap ${
                             isActive
-                                ? 'text-[var(--bg-turquoise-surf)] font-semibold border-b-[var(--bg-turquoise-surf)]'
+                                ? 'text-[var(--accent)] font-semibold border-b-[var(--accent)]'
                                 : 'text-[var(--text-secondary)] font-medium border-b-transparent'
                         }`}
                     >

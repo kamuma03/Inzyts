@@ -30,12 +30,12 @@ export const DatabaseSection: FC<DatabaseSectionProps> = ({
                 placeholder="Database URI (e.g. postgresql://user:pass@localhost/db)"
                 value={dbUri}
                 onChange={(e) => { setDbUri(e.target.value); setDbTestResult(null); }}
-                className="w-full p-4 rounded border border-[var(--border-color)] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-base"
+                className="w-full p-4 rounded border border-[var(--rule)] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-base"
             />
             <button
                 onClick={onTestConnection}
                 disabled={!dbUri || dbTestLoading}
-                className={`py-2 px-4 bg-[#2d3748] text-white border border-[var(--border-color)] rounded cursor-pointer text-[0.9rem] ${!dbUri ? 'opacity-60' : 'opacity-100'}`}
+                className={`py-2 px-4 bg-[#2d3748] text-white border border-[var(--rule)] rounded cursor-pointer text-[0.9rem] ${!dbUri ? 'opacity-60' : 'opacity-100'}`}
             >
                 {dbTestLoading ? 'Testing...' : 'Test Connection'}
             </button>
@@ -53,7 +53,7 @@ export const DatabaseSection: FC<DatabaseSectionProps> = ({
                 value={dbQuery}
                 onChange={(e) => setDbQuery(e.target.value)}
                 rows={3}
-                className="w-full p-4 rounded border border-[var(--border-color)] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-base font-mono"
+                className="w-full p-4 rounded border border-[var(--rule)] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-base font-mono"
             />
         </div>
     );

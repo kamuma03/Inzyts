@@ -16,12 +16,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ jobs, onSelectJob, activeJobId
 
     return (
         <div
-            className={`${isCollapsed ? 'w-[60px] min-w-[60px]' : 'w-[350px] min-w-[350px]'} transition-all duration-300 ease-in-out bg-[var(--bg-deep-twilight)] border-r border-[var(--border-color)] text-[var(--text-primary)] flex flex-col h-auto min-h-fit relative overflow-hidden rounded-xl`}
+            className={`${isCollapsed ? 'w-[60px] min-w-[60px]' : 'w-[350px] min-w-[350px]'} transition-all duration-300 ease-in-out bg-[var(--surface-0)] border-r border-[var(--rule)] text-[var(--text-primary)] flex flex-col h-auto min-h-fit relative overflow-hidden rounded-xl`}
         >
             {/* Toggle Button */}
             <button
                 onClick={() => setIsCollapsed(!isCollapsed)}
-                className={`absolute top-3 ${isCollapsed ? 'right-1/2 translate-x-1/2' : 'right-3 translate-x-0'} bg-[var(--bg-french-blue)] border border-[var(--border-color)] rounded-full w-7 h-7 flex items-center justify-center cursor-pointer z-10 transition-all duration-300 ease-in-out`}
+                className={`absolute top-3 ${isCollapsed ? 'right-1/2 translate-x-1/2' : 'right-3 translate-x-0'} bg-[var(--rule-strong)] border border-[var(--rule)] rounded-full w-7 h-7 flex items-center justify-center cursor-pointer z-10 transition-all duration-300 ease-in-out`}
                 title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
                 aria-label={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
                 aria-expanded={!isCollapsed}
@@ -35,7 +35,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ jobs, onSelectJob, activeJobId
                 <button
                     onClick={onNewAnalysis}
                     aria-label="New Analysis"
-                    className="w-full p-4 bg-[var(--bg-blue-green)] text-white border-none rounded-lg cursor-pointer flex items-center justify-center gap-3 text-base font-bold mb-4 shadow-[0_4px_6px_rgba(0,0,0,0.2)] transition-transform duration-100 ease-in-out hover:-translate-y-0.5"
+                    className="w-full p-4 bg-[var(--accent)] text-white border-none rounded-lg cursor-pointer flex items-center justify-center gap-3 text-base font-bold mb-4 shadow-[0_4px_6px_rgba(0,0,0,0.2)] transition-transform duration-100 ease-in-out hover:-translate-y-0.5"
                 >
                     <Plus size={20} fontWeight={800} /> NEW ANALYSIS
                 </button>
@@ -52,7 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ jobs, onSelectJob, activeJobId
                     title="New Analysis"
                     onClick={onNewAnalysis}
                     aria-label="New Analysis"
-                    className="cursor-pointer bg-[var(--bg-blue-green)] p-2 rounded-full border-none flex items-center justify-center"
+                    className="cursor-pointer bg-[var(--accent)] p-2 rounded-full border-none flex items-center justify-center"
                 >
                     <Plus size={24} color="#fff" />
                 </button>

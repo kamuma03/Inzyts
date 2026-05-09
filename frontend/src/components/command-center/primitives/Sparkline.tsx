@@ -14,7 +14,7 @@ export const Sparkline: FC<SparklineProps> = ({
     values,
     width = 80,
     height = 18,
-    stroke = 'var(--bg-turquoise-surf)',
+    stroke = 'var(--accent)',
     fill = 'transparent',
     ariaLabel,
 }) => {

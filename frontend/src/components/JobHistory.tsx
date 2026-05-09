@@ -56,8 +56,8 @@ export const JobHistory: React.FC<JobHistoryProps> = ({ jobs, onSelectJob, activ
                         aria-label={`Select job ${job.id}`}
                         className={`p-3 rounded-md border w-full text-left text-inherit appearance-none block cursor-pointer transition-all duration-200 ${
                             activeJobId === job.id
-                                ? 'border-[var(--bg-sky-aqua)] bg-[var(--bg-french-blue)]'
-                                : 'border-[var(--border-color)] bg-white/[0.03] hover:bg-white/[0.06]'
+                                ? 'border-[var(--accent)] bg-[var(--rule-strong)]'
+                                : 'border-[var(--rule)] bg-white/[0.03] hover:bg-white/[0.06]'
                         }`}
                     >
                         <div className="flex justify-between items-center mb-1">
@@ -92,7 +92,7 @@ export const JobHistory: React.FC<JobHistoryProps> = ({ jobs, onSelectJob, activ
                                         onUpgradeJob(job);
                                     }}
                                     title="Upgrade to Predictive using Cached Profile"
-                                    className="bg-transparent border border-[var(--bg-blue-green)] text-[var(--bg-blue-green)] rounded-sm px-1.5 py-px text-[0.7rem] cursor-pointer font-semibold hover:bg-[rgba(56,161,105,0.1)]"
+                                    className="bg-transparent border border-[var(--accent)] text-[var(--accent)] rounded-sm px-1.5 py-px text-[0.7rem] cursor-pointer font-semibold hover:bg-[rgba(56,161,105,0.1)]"
                                 >
                                     UPGRADE ⚡
                                 </button>

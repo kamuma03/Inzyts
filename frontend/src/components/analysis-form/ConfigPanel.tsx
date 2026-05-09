@@ -71,9 +71,9 @@ export const ConfigPanel: FC<ConfigPanelProps> = ({
                 <div>
                     <label className="block text-[0.8rem] mb-1.5 text-[var(--text-secondary)]">Dataset Info</label>
                     {dictPath ? (
-                        <div className="flex items-center gap-2 py-2 px-2.5 bg-[rgba(0,0,0,0.2)] rounded border border-[var(--border-color)] h-[38px]">
-                            <FileText size={14} className="text-[var(--bg-turquoise-surf)] shrink-0" />
-                            <span className="text-[0.8rem] text-[var(--bg-turquoise-surf)] flex-1 truncate">
+                        <div className="flex items-center gap-2 py-2 px-2.5 bg-[rgba(0,0,0,0.2)] rounded border border-[var(--rule)] h-[38px]">
+                            <FileText size={14} className="text-[var(--accent)] shrink-0" />
+                            <span className="text-[0.8rem] text-[var(--accent)] flex-1 truncate">
                                 {dictPath.split('/').pop()}
                             </span>
                             {onDictClear && (
@@ -95,18 +95,18 @@ export const ConfigPanel: FC<ConfigPanelProps> = ({
                             onClick={() => fileInputRef.current?.click()}
                             className={`border border-dashed rounded py-2 px-2.5 flex items-center gap-2 cursor-pointer transition-all duration-200 h-[38px] ${
                                 isDragOver
-                                    ? 'border-[var(--bg-turquoise-surf)] bg-[rgba(76,201,240,0.08)]'
-                                    : 'border-[var(--border-color)] bg-[rgba(0,0,0,0.1)]'
+                                    ? 'border-[var(--accent)] bg-[rgba(76,201,240,0.08)]'
+                                    : 'border-[var(--rule)] bg-[rgba(0,0,0,0.1)]'
                             }`}
                         >
                             <UploadCloud
                                 size={16}
                                 className={`shrink-0 transition-colors duration-200 ${
-                                    isDragOver ? 'text-[var(--bg-turquoise-surf)]' : 'text-[var(--text-secondary)]'
+                                    isDragOver ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'
                                 }`}
                             />
                             <span className={`text-[0.8rem] ${
-                                isDragOver ? 'text-[var(--bg-turquoise-surf)]' : 'text-[var(--text-secondary)]'
+                                isDragOver ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'
                             }`}>
                                 {isDragOver ? 'Drop here' : 'Drop or browse'}
                             </span>
@@ -127,7 +127,7 @@ export const ConfigPanel: FC<ConfigPanelProps> = ({
                         value={targetCol}
                         onChange={(e: ChangeEvent<HTMLInputElement>) => setTargetCol(e.target.value)}
                         placeholder="e.g. Churn, Price"
-                        className="w-full py-2 px-2.5 rounded border border-[var(--border-color)] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-[0.85rem] h-[38px]"
+                        className="w-full py-2 px-2.5 rounded border border-[var(--rule)] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-[0.85rem] h-[38px]"
                     />
                 </div>
                 <div>
@@ -137,7 +137,7 @@ export const ConfigPanel: FC<ConfigPanelProps> = ({
                         value={excludeCols}
                         onChange={(e: ChangeEvent<HTMLInputElement>) => setExcludeCols(e.target.value)}
                         placeholder="e.g. id, timestamp"
-                        className="w-full py-2 px-2.5 rounded border border-[var(--border-color)] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-[0.85rem] h-[38px]"
+                        className="w-full py-2 px-2.5 rounded border border-[var(--rule)] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-[0.85rem] h-[38px]"
                     />
                 </div>
             </div>
@@ -167,15 +167,15 @@ export const ConfigPanel: FC<ConfigPanelProps> = ({
                         onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setQuestion(e.target.value)}
                         placeholder="e.g. Forecast next quarter's revenue and flag the product lines driving change"
                         rows={3}
-                        className="w-full py-2 px-2.5 rounded border border-[var(--border-color)] font-[inherit] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-[0.85rem]"
+                        className="w-full py-2 px-2.5 rounded border border-[var(--rule)] font-[inherit] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-[0.85rem]"
                     />
                 </div>
-                <label className="flex items-center gap-2 cursor-pointer py-2 px-3 bg-[rgba(0,0,0,0.15)] rounded border border-[var(--border-color)] whitespace-nowrap h-fit">
+                <label className="flex items-center gap-2 cursor-pointer py-2 px-3 bg-[rgba(0,0,0,0.15)] rounded border border-[var(--rule)] whitespace-nowrap h-fit">
                     <input
                         type="checkbox"
                         checked={useCache}
                         onChange={(e) => setUseCache(e.target.checked)}
-                        className="w-4 h-4 accent-[var(--bg-turquoise-surf)] cursor-pointer"
+                        className="w-4 h-4 accent-[var(--accent)] cursor-pointer"
                     />
                     <span className="text-[0.8rem] text-[var(--text-primary)]">Use cache</span>
                 </label>

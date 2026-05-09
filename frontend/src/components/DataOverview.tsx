@@ -97,7 +97,7 @@ export const DataOverview: React.FC<DataOverviewProps> = ({ jobId }) => {
 
                 {/* Summary Header */}
                 <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4 min-w-0">
-                    <div className="p-6 bg-[var(--bg-true-cobalt)] rounded-lg border border-[var(--border-color)] shadow-[0_1px_3px_rgba(0,0,0,0.3)]">
+                    <div className="p-6 bg-[var(--surface-1)] rounded-lg border border-[var(--rule)] shadow-[0_1px_3px_rgba(0,0,0,0.3)]">
                         <div className="text-[var(--text-secondary)] text-[0.9rem] mb-2 flex items-center gap-2">
                             <Hash size={16} /> Total Rows
                         </div>
@@ -105,7 +105,7 @@ export const DataOverview: React.FC<DataOverviewProps> = ({ jobId }) => {
                             {metrics.row_count.toLocaleString()}
                         </div>
                     </div>
-                    <div className="p-6 bg-[var(--bg-true-cobalt)] rounded-lg border border-[var(--border-color)] shadow-[0_1px_3px_rgba(0,0,0,0.3)]">
+                    <div className="p-6 bg-[var(--surface-1)] rounded-lg border border-[var(--rule)] shadow-[0_1px_3px_rgba(0,0,0,0.3)]">
                         <div className="text-[var(--text-secondary)] text-[0.9rem] mb-2 flex items-center gap-2">
                             <BarChart size={16} /> Columns
                         </div>
@@ -127,7 +127,7 @@ export const DataOverview: React.FC<DataOverviewProps> = ({ jobId }) => {
                                 })) : [];
 
                                 return (
-                                    <div key={colName} className="bg-[var(--bg-true-cobalt)] border border-[var(--border-color)] rounded-lg p-5 min-w-[380px] shrink-0">
+                                    <div key={colName} className="bg-[var(--surface-1)] border border-[var(--rule)] rounded-lg p-5 min-w-[380px] shrink-0">
                                         <div className="flex justify-between mb-4">
                                             <div className="font-semibold text-[var(--text-primary)]">{colName}</div>
                                             <div className="text-[0.85rem] text-[var(--text-secondary)]">Mean: {stats.mean?.toFixed(2)}</div>
@@ -140,7 +140,7 @@ export const DataOverview: React.FC<DataOverviewProps> = ({ jobId }) => {
                                                         <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
                                                         <YAxis tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
                                                         <Tooltip contentStyle={{ backgroundColor: '#03045e', borderColor: '#0077b6', color: '#fff' }} />
-                                                        <Bar dataKey="count" fill="var(--bg-turquoise-surf)" radius={[4, 4, 0, 0]} />
+                                                        <Bar dataKey="count" fill="var(--accent)" radius={[4, 4, 0, 0]} />
                                                     </RechartsBar>
                                                 </ResponsiveContainer>
                                             ) : (
@@ -159,9 +159,9 @@ export const DataOverview: React.FC<DataOverviewProps> = ({ jobId }) => {
                 {/* Data Preview Table */}
                 <div>
                     <h3 className="text-[1.25rem] font-semibold text-[var(--text-primary)] mb-4">Data Preview</h3>
-                    <div className="overflow-x-auto border border-[var(--border-color)] rounded-lg bg-[var(--bg-true-cobalt)] max-w-full">
+                    <div className="overflow-x-auto border border-[var(--rule)] rounded-lg bg-[var(--surface-1)] max-w-full">
                         <table className="w-full border-collapse text-[0.9rem]">
-                            <thead className="bg-black/20 border-b border-[var(--border-color)]">
+                            <thead className="bg-black/20 border-b border-[var(--rule)]">
                                 <tr>
                                     {metrics.columns.map(col => (
                                         <th key={col.name} className="px-4 py-3 text-left font-semibold text-[var(--text-primary)] whitespace-nowrap">

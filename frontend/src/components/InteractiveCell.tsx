@@ -89,7 +89,7 @@ export const InteractiveCell: React.FC<InteractiveCellProps> = ({ cell, index, j
 
     return (
         <div
-            className="flex gap-0 border border-transparent rounded-md transition-all duration-200 hover:border-[var(--border-color)] hover:shadow-[0_0_0_1px_rgba(76,201,240,0.1)]"
+            className="flex gap-0 border border-transparent rounded-md transition-all duration-200 hover:border-[var(--rule)] hover:shadow-[0_0_0_1px_rgba(76,201,240,0.1)]"
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => { if (!isEditing) setIsHovered(false); }}
         >
@@ -136,7 +136,7 @@ export const InteractiveCell: React.FC<InteractiveCellProps> = ({ cell, index, j
                     <div className="mt-2 animate-[slideIn_0.15s_ease-out]">
                         {!isEditing ? (
                             <button
-                                className="inline-flex items-center gap-1.5 text-[0.78rem] text-[var(--bg-turquoise-surf)] bg-transparent border border-dashed border-[rgba(76,201,240,0.3)] rounded px-2.5 py-1 cursor-pointer transition-all duration-200 hover:bg-[rgba(76,201,240,0.08)] hover:border-[var(--bg-turquoise-surf)]"
+                                className="inline-flex items-center gap-1.5 text-[0.78rem] text-[var(--accent)] bg-transparent border border-dashed border-[rgba(76,201,240,0.3)] rounded px-2.5 py-1 cursor-pointer transition-all duration-200 hover:bg-[rgba(76,201,240,0.08)] hover:border-[var(--accent)]"
                                 onClick={() => {
                                     setIsEditing(true);
                                     setTimeout(() => inputRef.current?.focus(), 100);
@@ -146,8 +146,8 @@ export const InteractiveCell: React.FC<InteractiveCellProps> = ({ cell, index, j
                                 Tweak this cell
                             </button>
                         ) : (
-                            <div className="flex items-center gap-2 bg-[rgba(27,38,59,0.8)] border border-[var(--bg-turquoise-surf)] rounded-md px-2.5 py-1.5">
-                                <Sparkles size={14} className="text-[var(--bg-turquoise-surf)] shrink-0" />
+                            <div className="flex items-center gap-2 bg-[rgba(27,38,59,0.8)] border border-[var(--accent)] rounded-md px-2.5 py-1.5">
+                                <Sparkles size={14} className="text-[var(--accent)] shrink-0" />
                                 <input
                                     ref={inputRef}
                                     type="text"
@@ -159,7 +159,7 @@ export const InteractiveCell: React.FC<InteractiveCellProps> = ({ cell, index, j
                                     disabled={editStatus === 'loading'}
                                 />
                                 {editStatus === 'loading' && (
-                                    <Loader size={16} className="animate-spin text-[var(--bg-turquoise-surf)]" />
+                                    <Loader size={16} className="animate-spin text-[var(--accent)]" />
                                 )}
                                 {editStatus === 'success' && (
                                     <Check size={16} className="text-green-500" />

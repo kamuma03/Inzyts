@@ -82,11 +82,11 @@ export const FileUploadSection: FC<FileUploadSectionProps> = ({
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-xl py-8 px-6 flex flex-col items-center gap-3 cursor-pointer transition-all duration-200 ${isDragOver ? 'border-[var(--bg-turquoise-surf)] bg-[rgba(76,201,240,0.08)]' : 'border-[var(--border-color)] bg-[rgba(0,0,0,0.1)]'}`}
+                className={`border-2 border-dashed rounded-xl py-8 px-6 flex flex-col items-center gap-3 cursor-pointer transition-all duration-200 ${isDragOver ? 'border-[var(--accent)] bg-[rgba(76,201,240,0.08)]' : 'border-[var(--rule)] bg-[rgba(0,0,0,0.1)]'}`}
             >
-                <UploadCloud size={36} color={isDragOver ? 'var(--bg-turquoise-surf)' : 'var(--text-secondary)'} className="transition-colors duration-200" />
+                <UploadCloud size={36} color={isDragOver ? 'var(--accent)' : 'var(--text-secondary)'} className="transition-colors duration-200" />
                 <div className="text-center">
-                    <div className={`text-[0.95rem] font-medium ${isDragOver ? 'text-[var(--bg-turquoise-surf)]' : 'text-[var(--text-primary)]'}`}>
+                    <div className={`text-[0.95rem] font-medium ${isDragOver ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>
                         {isDragOver ? 'Drop files here' : 'Drop files here or click to browse'}
                     </div>
                     <div className="text-[0.8rem] text-[var(--text-secondary)] mt-1">
@@ -113,7 +113,7 @@ export const FileUploadSection: FC<FileUploadSectionProps> = ({
                     <button
                         onClick={onUpload}
                         disabled={loading}
-                        className={`flex items-center justify-center gap-2 py-3 px-8 bg-[var(--bg-blue-green)] text-white border-none rounded-md cursor-pointer font-semibold transition-opacity duration-200 ${loading ? 'opacity-70' : 'opacity-100'}`}
+                        className={`flex items-center justify-center gap-2 py-3 px-8 bg-[var(--accent)] text-white border-none rounded-md cursor-pointer font-semibold transition-opacity duration-200 ${loading ? 'opacity-70' : 'opacity-100'}`}
                     >
                         <UploadCloud size={18} /> {loading ? 'Uploading...' : 'Upload Selected Files'}
                     </button>
@@ -124,14 +124,14 @@ export const FileUploadSection: FC<FileUploadSectionProps> = ({
             {uploadedPaths.length > 0 && (
                 <div className="bg-[rgba(0,0,0,0.2)] rounded-lg p-3">
                     <div className="flex justify-between items-center mb-2">
-                        <div className="text-[0.85rem] text-[var(--bg-turquoise-surf)] font-semibold">Uploaded ({uploadedPaths.length})</div>
+                        <div className="text-[0.85rem] text-[var(--accent)] font-semibold">Uploaded ({uploadedPaths.length})</div>
                         <button onClick={onClearFiles} className="bg-none border-none text-[#fc8181] text-[0.8rem] cursor-pointer underline">Clear</button>
                     </div>
                     <ul className="list-none p-0 m-0">
                         {uploadedFiles.map((f, i) => (
                             <li key={i} className="text-[0.85rem] text-[var(--text-primary)] py-[0.3rem] flex justify-between items-center">
                                 <span className="flex items-center gap-2">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--bg-turquoise-surf)] shrink-0" />
+                                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] shrink-0" />
                                     {f.filename}
                                 </span>
                                 <span className="text-[var(--text-secondary)] text-[0.8rem]">{(f.size / 1024).toFixed(1)} KB</span>

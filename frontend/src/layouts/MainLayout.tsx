@@ -40,7 +40,7 @@ export const MainLayout: React.FC = () => {
     };
 
     return (
-        <div className="h-screen flex flex-col font-sans overflow-hidden bg-[var(--bg-deep-twilight)]">
+        <div className="h-screen flex flex-col font-sans overflow-hidden bg-[var(--surface-0)]">
             {/* Toast Container */}
             <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-2">
                 {toasts.map(toast => (
@@ -48,7 +48,7 @@ export const MainLayout: React.FC = () => {
                 ))}
             </div>
 
-            <header className="shrink-0 flex items-center justify-between px-6 py-2 border-b border-[var(--border-color)] bg-[var(--bg-deep-twilight)] z-10 max-md:px-4 max-md:py-1.5 max-md:flex-wrap max-md:gap-2">
+            <header className="shrink-0 flex items-center justify-between px-6 py-2 border-b border-[var(--rule)] bg-[var(--surface-0)] z-10 max-md:px-4 max-md:py-1.5 max-md:flex-wrap max-md:gap-2">
                 <div className="flex items-center gap-3">
                     <img src="/Inzyts_icon.png" alt="Inzyts Logo" className="w-8 h-8" />
                     <div className="mr-6 max-md:mr-2">

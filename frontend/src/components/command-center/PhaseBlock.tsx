@@ -20,8 +20,8 @@ export const PhaseBlock: FC<PhaseBlockProps> = memo(({ phase, inactiveSteps }) =
     const phaseElapsed = elapsedSeconds(phase.started_at, phase.finished_at);
 
     return (
-        <div className="border border-[var(--border-color)] rounded-lg bg-[var(--bg-surface-hi)] overflow-hidden">
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--border-color)]">
+        <div className="border border-[var(--rule)] rounded-lg bg-[var(--surface-2)] overflow-hidden">
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--rule)]">
                 <span
                     className="inline-block w-2 h-2 rounded-full shrink-0"
                     style={{ backgroundColor: statusVar(phase.status) }}
@@ -60,7 +60,7 @@ const SubStepRow: FC<SubStepRowProps> = memo(({ step, inactive }) => {
     const stepElapsed = elapsedSeconds(step.started_at, step.finished_at);
     return (
         <li
-            className={`px-3 py-2 border-b border-[var(--border-color)] last:border-b-0 ${
+            className={`px-3 py-2 border-b border-[var(--rule)] last:border-b-0 ${
                 inactive ? 'opacity-40' : ''
             }`}
         >

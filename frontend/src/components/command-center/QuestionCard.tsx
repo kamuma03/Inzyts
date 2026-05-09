@@ -8,7 +8,7 @@ interface QuestionCardProps {
 /** Read-only display of the user's analysis question, shown in the right rail. */
 export const QuestionCard: FC<QuestionCardProps> = ({ question }) => {
     return (
-        <div className="p-3 border border-[var(--border-color)] rounded-lg bg-[var(--bg-surface-hi)]">
+        <div className="p-3 border border-[var(--rule)] rounded-lg bg-[var(--surface-2)]">
             <div className="flex items-center gap-2 mb-2 text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)]">
                 <HelpCircle size={12} />
                 <span>Question</span>

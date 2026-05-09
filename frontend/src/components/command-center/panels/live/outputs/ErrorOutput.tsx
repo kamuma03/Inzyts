@@ -12,8 +12,8 @@ const stripAnsi = (s: string): string => s.replace(ansiRegex, '');
 
 /** Renders a Python traceback in red, with ANSI color codes stripped. */
 export const ErrorOutput: FC<ErrorOutputProps> = ({ output }) => (
-    <div className="px-3 py-2 border-l-2 border-[var(--status-bad)] bg-[rgba(248,113,113,0.05)]">
-        <div className="flex items-center gap-1.5 mb-1.5 text-[12px] font-semibold text-[var(--status-bad)]">
+    <div className="px-3 py-2 border-l-2 border-[var(--bad)] bg-[rgba(248,113,113,0.05)]">
+        <div className="flex items-center gap-1.5 mb-1.5 text-[12px] font-semibold text-[var(--bad)]">
             <AlertCircle size={12} />
             <span>{output.ename}: {output.evalue}</span>
         </div>

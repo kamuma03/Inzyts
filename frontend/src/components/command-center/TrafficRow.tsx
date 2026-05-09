@@ -12,7 +12,7 @@ const last = (arr: number[]): number => (arr.length > 0 ? arr[arr.length - 1] : 
 /** Three compact sparklines: token rate / cumulative tokens / cumulative cost.
  *  Sourced from the rolling 60-point history maintained by useRunMetrics. */
 export const TrafficRow: FC<TrafficRowProps> = ({ history }) => (
-    <div className="grid grid-cols-3 gap-3 px-3 py-2 border border-[var(--border-color)] rounded-lg bg-[var(--bg-true-cobalt)]">
+    <div className="grid grid-cols-3 gap-3 px-3 py-2 border border-[var(--rule)] rounded-lg bg-[var(--surface-1)]">
         <Cell label="tok/s" value={`${last(history.tokenRate).toFixed(1)}`} values={history.tokenRate} />
         <Cell label="tokens" value={formatTokens(last(history.tokens))} values={history.tokens} />
         <Cell label="cost" value={formatCost(last(history.cost))} values={history.cost} />

@@ -193,8 +193,8 @@ export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells = [] }) => {
     }, [jobId]);  // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
-        <div className="flex flex-col h-full min-h-0 bg-[var(--bg-deep-twilight)]">
-            <header className="shrink-0 px-3 py-2 flex items-center gap-2 border-b border-[var(--border-color)]">
+        <div className="flex flex-col h-full min-h-0 bg-[var(--surface-0)]">
+            <header className="shrink-0 px-3 py-2 flex items-center gap-2 border-b border-[var(--rule)]">
                 <span className="text-[10px] uppercase tracking-[1.5px] text-[var(--text-dim)]">
                     Live notebook
                 </span>
@@ -255,15 +255,15 @@ const CellRow: FC<CellRowProps> = ({ index, cell, onCodeChange, onRun, onStop })
 
     const stateColor =
         cell.state === 'busy'
-            ? 'var(--bg-turquoise-surf)'
+            ? 'var(--accent)'
             : cell.state === 'queued'
             ? 'var(--text-dim)'
             : isError
-            ? 'var(--status-bad)'
-            : 'var(--status-good)';
+            ? 'var(--bad)'
+            : 'var(--ok)';
 
     return (
-        <article className="border-b border-[var(--border-color)] last:border-b-0">
+        <article className="border-b border-[var(--rule)] last:border-b-0">
             <div className="flex items-stretch">
                 {/* Gutter — execution count + state dot */}
                 <div className="shrink-0 w-12 flex flex-col items-center pt-2 pb-1.5 gap-1">
@@ -286,7 +286,7 @@ const CellRow: FC<CellRowProps> = ({ index, cell, onCodeChange, onRun, onStop })
                         onChange={(e) => onCodeChange(e.target.value)}
                         spellCheck={false}
                         rows={Math.min(20, Math.max(2, cell.code.split('\n').length))}
-                        className="w-full font-mono text-[12px] leading-[1.4] bg-[var(--bg-true-cobalt)] text-[var(--text-primary)] border border-[var(--border-color)] rounded px-2 py-1.5 resize-y focus:outline-none focus:border-[var(--bg-turquoise-surf)]"
+                        className="w-full font-mono text-[12px] leading-[1.4] bg-[var(--surface-1)] text-[var(--text-primary)] border border-[var(--rule)] rounded px-2 py-1.5 resize-y focus:outline-none focus:border-[var(--accent)]"
                         aria-label={`Cell ${index + 1} source`}
                     />
 
@@ -296,7 +296,7 @@ const CellRow: FC<CellRowProps> = ({ index, cell, onCodeChange, onRun, onStop })
                             <button
                                 type="button"
                                 onClick={onStop}
-                                className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded bg-[rgba(248,113,113,0.1)] text-[var(--status-bad)] border border-[rgba(248,113,113,0.3)] cursor-pointer"
+                                className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded bg-[rgba(248,113,113,0.1)] text-[var(--bad)] border border-[rgba(248,113,113,0.3)] cursor-pointer"
                                 aria-label="Stop cell"
                             >
                                 <StopCircle size={11} />
@@ -306,7 +306,7 @@ const CellRow: FC<CellRowProps> = ({ index, cell, onCodeChange, onRun, onStop })
                             <button
                                 type="button"
                                 onClick={onRun}
-                                className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded bg-[rgba(76,201,240,0.1)] text-[var(--bg-turquoise-surf)] border border-[rgba(76,201,240,0.3)] cursor-pointer"
+                                className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded bg-[rgba(76,201,240,0.1)] text-[var(--accent)] border border-[rgba(76,201,240,0.3)] cursor-pointer"
                                 aria-label="Run cell"
                             >
                                 <Play size={11} />
@@ -319,7 +319,7 @@ const CellRow: FC<CellRowProps> = ({ index, cell, onCodeChange, onRun, onStop })
                             </span>
                         )}
                         {cell.killed_reason && (
-                            <span className="ml-2 font-mono text-[10px] text-[var(--status-warn)]">
+                            <span className="ml-2 font-mono text-[10px] text-[var(--warn)]">
                                 killed: {cell.killed_reason}
                             </span>
                         )}
@@ -329,7 +329,7 @@ const CellRow: FC<CellRowProps> = ({ index, cell, onCodeChange, onRun, onStop })
 
             {/* Outputs */}
             {cell.outputs.length > 0 && (
-                <div className="ml-12 mr-2 mb-2 border-l-2 border-[var(--border-color)]">
+                <div className="ml-12 mr-2 mb-2 border-l-2 border-[var(--rule)]">
                     {cell.outputs.map((output, i) => (
                         <CellOutputView key={i} output={output} />
                     ))}

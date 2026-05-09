@@ -25,7 +25,7 @@ export const RichOutput: FC<RichOutputProps> = ({ output }) => {
                 <img
                     src={`data:image/png;base64,${b64}`}
                     alt="cell output"
-                    className="max-w-full h-auto rounded border border-[var(--border-color)]"
+                    className="max-w-full h-auto rounded border border-[var(--rule)]"
                 />
             </div>
         );

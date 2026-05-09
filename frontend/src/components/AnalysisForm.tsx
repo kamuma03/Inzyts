@@ -279,7 +279,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
                         placeholder="/absolute/path/to/data.csv"
                         value={manualPath}
                         onChange={(e: ChangeEvent<HTMLInputElement>) => { setManualPath(e.target.value); setUploadedPaths([e.target.value]); }}
-                        className="w-full p-4 rounded border border-[var(--border-color)] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-base"
+                        className="w-full p-4 rounded border border-[var(--rule)] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-base"
                     />
                 );
             case 'database':
@@ -312,7 +312,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
     };
 
     return (
-        <div className="p-5 bg-[var(--bg-true-cobalt)] border border-[var(--border-color)] rounded-lg mb-4 shadow-[0_1px_3px_rgba(0,0,0,0.3)] h-full flex flex-col">
+        <div className="p-5 bg-[var(--surface-1)] border border-[var(--rule)] rounded-lg mb-4 shadow-[0_1px_3px_rgba(0,0,0,0.3)] h-full flex flex-col">
             <div className="flex items-center gap-4 mb-4">
                 <h3 className="m-0 text-[var(--text-primary)] text-[1.2rem] shrink-0">New Analysis</h3>
                 <input
@@ -320,7 +320,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
                     value={title}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
                     placeholder="Title (optional)"
-                    className="flex-1 py-2 px-3 rounded border border-[var(--border-color)] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-[0.85rem]"
+                    className="flex-1 py-2 px-3 rounded border border-[var(--rule)] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-[0.85rem]"
                 />
             </div>
 
@@ -333,7 +333,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
                 />
 
                 {/* Data Source Panel */}
-                <div className="p-2 bg-[rgba(0,0,0,0.2)] rounded-lg border border-dashed border-[var(--border-color)]">
+                <div className="p-2 bg-[rgba(0,0,0,0.2)] rounded-lg border border-dashed border-[var(--rule)]">
                     {renderDataSource()}
                 </div>
 
@@ -356,7 +356,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
                 <button
                     onClick={handleSubmit}
                     disabled={loading}
-                    className="py-3 px-6 bg-[var(--bg-french-blue)] text-white font-bold text-base border-none rounded-lg cursor-pointer flex justify-center items-center gap-3 shadow-[0_4px_6px_rgba(0,0,0,0.2)] transition-[transform,box-shadow] duration-100 hover:-translate-y-px hover:shadow-[0_6px_12px_rgba(0,0,0,0.3)]"
+                    className="py-3 px-6 bg-[var(--rule-strong)] text-white font-bold text-base border-none rounded-lg cursor-pointer flex justify-center items-center gap-3 shadow-[0_4px_6px_rgba(0,0,0,0.2)] transition-[transform,box-shadow] duration-100 hover:-translate-y-px hover:shadow-[0_6px_12px_rgba(0,0,0,0.3)]"
                 >
                     {loading ? 'Processing...' : <><Play size={20} /> START ANALYSIS</>}
                 </button>

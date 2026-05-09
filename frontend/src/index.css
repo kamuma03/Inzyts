@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Libre+Caslon+Display&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
 *,
@@ -21,33 +21,31 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  /* Ink Black Palette */
-  --bg-deep-twilight: #0d1b2a;
-  --bg-true-cobalt: #1b263b;
-  --bg-french-blue: #415a77;
+  /* Surfaces — each step is LIGHTER than the previous */
+  --surface-0: #0d1b2a;   /* page chrome */
+  --surface-1: #142235;   /* panels, cards, top strip */
+  --surface-2: #1d2f48;   /* raised: selected tile, hover, active job */
 
-  /* Accents */
-  --bg-bright-teal: #4cc9f0;
-  --bg-blue-green: #4895ef;
-  --bg-turquoise-surf: #4cc9f0;
-  --bg-sky-aqua: #4361ee;
+  /* Lines */
+  --rule:        #2a3b56;
+  --rule-strong: #415a77;
 
-  /* UI Elements */
-  --bg-frosted-blue-1: #e0e1dd;
-  --bg-frosted-blue-2: #f0f0f0;
-  --bg-light-cyan: #e0fbfc;
+  /* Single accent */
+  --accent:      #4cc9f0;
+  --accent-soft: rgba(76, 201, 240, 0.10);
 
-  --text-primary: #e0e1dd;
+  /* Status */
+  --ok:   #34d399;
+  --warn: #fbbf24;
+  --bad:  #f87171;
+
+  /* Text */
+  --text-primary:   #e6e7e1;
   --text-secondary: #a0aab5;
-  --border-color: #415a77;
+  --text-dim:       #5a6478;
 
-  /* Command Center role tokens */
-  --bg-surface-hi: #152133;
-  --text-dim: #5a6478;
+  /* Secondary accent — used for differentiating queued/categorical agent states. */
   --accent-violet: #a78bfa;
-  --status-good: #34d399;
-  --status-warn: #fbbf24;
-  --status-bad: #f87171;
 
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
@@ -56,13 +54,13 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background-color: var(--bg-deep-twilight);
+  background-color: var(--surface-0);
   color: var(--text-primary);
 }
 
 /* Global focus-visible ring for keyboard navigation */
 *:focus-visible {
-  outline: 2px solid var(--bg-turquoise-surf);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -72,7 +70,7 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--bg-turquoise-surf);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 

@@ -14,7 +14,7 @@ export const MiniBars: FC<MiniBarsProps> = ({
     values,
     width = 56,
     height = 18,
-    color = 'var(--bg-turquoise-surf)',
+    color = 'var(--accent)',
     gap = 1,
     ariaLabel,
 }) => {

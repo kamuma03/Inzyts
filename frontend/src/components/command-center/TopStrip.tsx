@@ -17,8 +17,8 @@ interface TopStripProps {
 }
 
 const directionClass: Record<DeltaResult['direction'], string> = {
-    better: 'text-[var(--status-good)]',
-    worse: 'text-[var(--status-warn)]',
+    better: 'text-[var(--ok)]',
+    worse: 'text-[var(--warn)]',
     same: 'text-[var(--text-dim)]',
     none: 'hidden',
 };
@@ -92,9 +92,9 @@ export const TopStrip: FC<TopStripProps> = ({ job, metrics, onCancel, onExport }
     );
 
     return (
-        <div className="border border-[var(--border-color)] rounded-lg bg-[var(--bg-true-cobalt)]">
+        <div className="border border-[var(--rule)] rounded-lg bg-[var(--surface-1)]">
             {/* Identity row */}
-            <div className="flex items-center gap-3 px-4 py-2 border-b border-[var(--border-color)]">
+            <div className="flex items-center gap-3 px-4 py-2 border-b border-[var(--rule)]">
                 <span className="font-mono text-[13px] font-semibold text-[var(--text-primary)] truncate">
                     {filename}
                 </span>
@@ -102,7 +102,7 @@ export const TopStrip: FC<TopStripProps> = ({ job, metrics, onCancel, onExport }
                     job_id={job.id.slice(0, 8)}
                 </span>
                 <span
-                    className="px-1.5 py-0.5 text-[9px] uppercase tracking-[1px] rounded bg-[rgba(76,201,240,0.12)] text-[var(--bg-turquoise-surf)]"
+                    className="px-1.5 py-0.5 text-[9px] uppercase tracking-[1px] rounded bg-[rgba(76,201,240,0.12)] text-[var(--accent)]"
                     aria-label={`Analysis mode: ${job.mode}`}
                 >
                     {job.mode}
@@ -112,7 +112,7 @@ export const TopStrip: FC<TopStripProps> = ({ job, metrics, onCancel, onExport }
                         vs.{' '}
                         <a
                             href={`/jobs/${metrics.previous_job_id}`}
-                            className="font-mono text-[var(--bg-blue-green)] hover:underline"
+                            className="font-mono text-[var(--accent)] hover:underline"
                         >
                             {metrics.previous_job_id.slice(0, 8)}
                         </a>
@@ -127,7 +127,7 @@ export const TopStrip: FC<TopStripProps> = ({ job, metrics, onCancel, onExport }
                         <button
                             type="button"
                             onClick={onCancel}
-                            className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-[rgba(248,113,113,0.1)] text-[var(--status-bad)] border border-[rgba(248,113,113,0.3)] hover:bg-[rgba(248,113,113,0.2)] transition-colors"
+                            className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-[rgba(248,113,113,0.1)] text-[var(--bad)] border border-[rgba(248,113,113,0.3)] hover:bg-[rgba(248,113,113,0.2)] transition-colors"
                             aria-label="Cancel job"
                         >
                             <X size={12} />
@@ -138,7 +138,7 @@ export const TopStrip: FC<TopStripProps> = ({ job, metrics, onCancel, onExport }
                         <button
                             type="button"
                             onClick={onExport}
-                            className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-[rgba(76,201,240,0.1)] text-[var(--bg-turquoise-surf)] border border-[rgba(76,201,240,0.3)] hover:bg-[rgba(76,201,240,0.2)] transition-colors"
+                            className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-[rgba(76,201,240,0.1)] text-[var(--accent)] border border-[rgba(76,201,240,0.3)] hover:bg-[rgba(76,201,240,0.2)] transition-colors"
                             aria-label="Export"
                         >
                             <Download size={12} />
