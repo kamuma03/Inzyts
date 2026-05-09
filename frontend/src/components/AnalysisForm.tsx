@@ -1,6 +1,6 @@
-import React, { useState, useEffect, type FC, type ChangeEvent } from 'react';
+import React, { useState, useEffect, useMemo, type FC, type ChangeEvent } from 'react';
 import { AnalysisAPI, AnalysisRequest } from '../api';
-import { Play, X } from 'lucide-react';
+import { Play, X, ArrowRight } from 'lucide-react';
 import { Tabs } from './Tabs';
 import { useModeSuggestion } from '../hooks/useModeSuggestion';
 import { FileUploadSection, DatabaseSection, CloudSection, APISection, ConfigPanel } from './analysis-form';
@@ -12,6 +12,8 @@ const DATA_SOURCE_TABS = [
     { id: 'cloud', label: 'Cloud Storage' },
     { id: 'api', label: 'REST API' },
 ];
+
+type Step = 'connect' | 'frame';
 
 export interface AnalysisFormInitialValues {
     manualPath?: string;
@@ -53,6 +55,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
     const [useCache, setUseCache] = useState(false);
 
     // UI State
+    const [step, setStep] = useState<Step>('connect');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'upload' | 'manual' | 'database' | 'cloud' | 'api'>('upload');
@@ -84,7 +87,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
     const [apiHeaders] = useState<Array<{ key: string; value: string }>>([{ key: '', value: '' }]);
     const [jsonPath, setJsonPath] = useState('');
 
-    // Initial Values Effect
+    // Initial Values Effect — auto-advance to step 2 if a path is already present.
     useEffect(() => {
         if (initialValues) {
             if (initialValues.manualPath) { setManualPath(initialValues.manualPath); setActiveTab('manual'); }
@@ -97,8 +100,23 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
             if (initialValues.question) setQuestion(initialValues.question);
             if (initialValues.excludeCols) setExcludeCols(initialValues.excludeCols);
             if (initialValues.dictPath) setDictPath(initialValues.dictPath);
+            if (initialValues.manualPath || initialValues.dbUri) {
+                setStep('frame');
+            }
         }
     }, [initialValues]);
+
+    // Whether the user has provided enough data-source input to advance to step 2.
+    const dataResolved = useMemo(() => {
+        switch (activeTab) {
+            case 'upload': return uploadedPaths.length > 0;
+            case 'manual': return manualPath.trim() !== '';
+            case 'database': return dbUri.trim() !== '';
+            case 'cloud': return cloudUri.trim() !== '';
+            case 'api': return apiUrl.trim() !== '';
+            default: return false;
+        }
+    }, [activeTab, uploadedPaths, manualPath, dbUri, cloudUri, apiUrl]);
 
     // --- Handlers ---
 
@@ -311,55 +329,111 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
         }
     };
 
+    const breadcrumb = (
+        <nav aria-label="Form steps" className="flex items-center gap-3 text-[12px] mb-4">
+            <button
+                type="button"
+                onClick={() => setStep('connect')}
+                className={`flex items-center gap-1.5 transition-colors ${
+                    step === 'connect'
+                        ? 'text-[var(--accent)] font-semibold'
+                        : 'text-[var(--text-dim)] hover:text-[var(--text-secondary)]'
+                }`}
+                aria-current={step === 'connect' ? 'step' : undefined}
+            >
+                <span className={`w-5 h-5 rounded-full inline-flex items-center justify-center text-[11px] font-mono ${
+                    step === 'connect' ? 'bg-[var(--accent)] text-[var(--surface-0)]' : 'bg-[var(--surface-2)] text-[var(--text-dim)]'
+                }`}>1</span>
+                Connect data
+            </button>
+            <span className="text-[var(--text-dim)]" aria-hidden="true">·</span>
+            <button
+                type="button"
+                onClick={() => dataResolved && setStep('frame')}
+                disabled={!dataResolved}
+                className={`flex items-center gap-1.5 transition-colors ${
+                    step === 'frame'
+                        ? 'text-[var(--accent)] font-semibold'
+                        : dataResolved
+                            ? 'text-[var(--text-dim)] hover:text-[var(--text-secondary)] cursor-pointer'
+                            : 'text-[var(--text-dim)] opacity-50 cursor-not-allowed'
+                }`}
+                aria-current={step === 'frame' ? 'step' : undefined}
+            >
+                <span className={`w-5 h-5 rounded-full inline-flex items-center justify-center text-[11px] font-mono ${
+                    step === 'frame' ? 'bg-[var(--accent)] text-[var(--surface-0)]' : 'bg-[var(--surface-2)] text-[var(--text-dim)]'
+                }`}>2</span>
+                Ask a question
+            </button>
+        </nav>
+    );
+
     return (
         <div className="p-5 bg-[var(--surface-1)] border border-[var(--rule)] rounded-lg mb-4 shadow-[0_1px_3px_rgba(0,0,0,0.3)] h-full flex flex-col">
-            <div className="flex items-center gap-4 mb-4">
-                <h3 className="m-0 text-[var(--text-primary)] text-[1.2rem] shrink-0">New Analysis</h3>
-                <input
-                    type="text"
-                    value={title}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
-                    placeholder="Title (optional)"
-                    className="flex-1 py-2 px-3 rounded border border-[var(--rule)] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-[0.85rem]"
-                />
-            </div>
+            <h3 className="m-0 mb-3 text-[var(--text-primary)] text-[1.2rem] shrink-0">New analysis</h3>
+            {breadcrumb}
 
             <div className="flex flex-col gap-4 flex-1 overflow-y-auto">
-                <Tabs
-                    tabs={DATA_SOURCE_TABS}
-                    activeTab={activeTab}
-                    onSelect={(id) => setActiveTab(id as typeof activeTab)}
-                    ariaLabel="Data source selection"
-                />
+                {step === 'connect' && (
+                    <>
+                        <Tabs
+                            tabs={DATA_SOURCE_TABS}
+                            activeTab={activeTab}
+                            onSelect={(id) => setActiveTab(id as typeof activeTab)}
+                            ariaLabel="Data source selection"
+                        />
 
-                {/* Data Source Panel */}
-                <div className="p-2 bg-[rgba(0,0,0,0.2)] rounded-lg border border-dashed border-[var(--rule)]">
-                    {renderDataSource()}
-                </div>
+                        <div className="p-2 bg-[rgba(0,0,0,0.2)] rounded-lg border border-dashed border-[var(--rule)]">
+                            {renderDataSource()}
+                        </div>
 
-                {/* Configuration */}
-                <ConfigPanel
-                    dictPath={dictPath} onDictFileChange={handleDictFileChange}
-                    onDictFileDrop={uploadDictFile} onDictClear={() => setDictPath('')}
-                    targetCol={targetCol} setTargetCol={setTargetCol}
-                    excludeCols={excludeCols} setExcludeCols={setExcludeCols}
-                    mode={mode} setMode={setMode}
-                    suggestedMode={suggestedMode} suggestionExplanation={suggestionExplanation}
-                    suggestionConfidence={suggestionConfidence}
-                    suggestionMatchedKeywords={suggestionMatchedKeywords}
-                    question={question} setQuestion={setQuestion}
-                    useCache={useCache} setUseCache={setUseCache}
-                />
+                        <div className="flex-1" />
 
-                <div className="flex-1"></div>
+                        <button
+                            type="button"
+                            onClick={() => setStep('frame')}
+                            disabled={!dataResolved}
+                            className="self-end py-2.5 px-5 bg-[var(--accent)] text-[var(--surface-0)] font-semibold text-[14px] rounded-md flex items-center gap-2 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                        >
+                            Continue <ArrowRight size={16} />
+                        </button>
+                    </>
+                )}
 
-                <button
-                    onClick={handleSubmit}
-                    disabled={loading}
-                    className="py-3 px-6 bg-[var(--accent)] text-[var(--surface-0)] font-semibold text-[15px] rounded-md flex justify-center items-center gap-2 shadow-sm hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                >
-                    {loading ? 'Starting analysis…' : <><Play size={16} /> Start analysis</>}
-                </button>
+                {step === 'frame' && (
+                    <>
+                        <input
+                            type="text"
+                            value={title}
+                            onChange={(e: ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
+                            placeholder="Title (optional)"
+                            className="w-full py-2 px-3 rounded border border-[var(--rule)] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-[0.85rem]"
+                        />
+
+                        <ConfigPanel
+                            dictPath={dictPath} onDictFileChange={handleDictFileChange}
+                            onDictFileDrop={uploadDictFile} onDictClear={() => setDictPath('')}
+                            targetCol={targetCol} setTargetCol={setTargetCol}
+                            excludeCols={excludeCols} setExcludeCols={setExcludeCols}
+                            mode={mode} setMode={setMode}
+                            suggestedMode={suggestedMode} suggestionExplanation={suggestionExplanation}
+                            suggestionConfidence={suggestionConfidence}
+                            suggestionMatchedKeywords={suggestionMatchedKeywords}
+                            question={question} setQuestion={setQuestion}
+                            useCache={useCache} setUseCache={setUseCache}
+                        />
+
+                        <div className="flex-1" />
+
+                        <button
+                            onClick={handleSubmit}
+                            disabled={loading}
+                            className="py-3 px-6 bg-[var(--accent)] text-[var(--surface-0)] font-semibold text-[15px] rounded-md flex justify-center items-center gap-2 shadow-sm hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                        >
+                            {loading ? 'Starting analysis…' : <><Play size={16} /> Start analysis</>}
+                        </button>
+                    </>
+                )}
 
                 {error && (
                     <div className="text-[#fc8181] py-2 px-3 bg-[rgba(245,101,101,0.1)] border border-[rgba(245,101,101,0.3)] rounded-md flex items-center justify-between text-[0.85rem]">
