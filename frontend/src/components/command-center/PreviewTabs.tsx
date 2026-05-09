@@ -9,6 +9,81 @@ export interface PreviewTabDef<T extends PreviewTabId = PreviewTabId> {
     badge?: ReactNode;
 }
 
+interface PreviewTabBarProps<T extends PreviewTabId> {
+    tabs: PreviewTabDef<T>[];
+    activeTab: T;
+    onChange: (id: T) => void;
+    /** Optional content rendered to the left of the tab buttons — e.g. the
+     *  Results/Run segmented control that shares the row in option B. */
+    prefix?: ReactNode;
+    ariaLabel?: string;
+}
+
+/** The tab strip portion of the preview surface — renders as a row of tab
+ *  buttons. Decoupled from PreviewTabPanels so callers can inline a
+ *  segmented control or other chrome alongside the tabs on the same row. */
+export const PreviewTabBar = <T extends PreviewTabId>({
+    tabs,
+    activeTab,
+    onChange,
+    prefix,
+    ariaLabel = 'Preview tabs',
+}: PreviewTabBarProps<T>) => (
+    <div
+        role="tablist"
+        aria-label={ariaLabel}
+        className="shrink-0 flex items-center gap-1 px-3 border-b border-[var(--rule)]"
+    >
+        {prefix}
+        {tabs.map((tab) => (
+            <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                aria-controls={`tabpanel-${tab.id}`}
+                id={`tab-${tab.id}`}
+                tabIndex={activeTab === tab.id ? 0 : -1}
+                onClick={() => onChange(tab.id)}
+                className={`px-3 py-2 text-[12px] font-medium border-b-2 transition-colors ${
+                    activeTab === tab.id
+                        ? 'border-[var(--accent)] text-[var(--accent)]'
+                        : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+            >
+                <span>{tab.label}</span>
+                {tab.badge != null && <span className="ml-1.5">{tab.badge}</span>}
+            </button>
+        ))}
+    </div>
+);
+
+interface PreviewTabPanelsProps<T extends PreviewTabId> {
+    tabs: PreviewTabDef<T>[];
+    activeTab: T;
+    children: Partial<Record<T, ReactNode>>;
+}
+
+/** The panels portion. All tabs render at once and toggle with `hidden`,
+ *  so the browser preserves each panel's scroll position natively. */
+export const PreviewTabPanels = <T extends PreviewTabId>({
+    tabs,
+    activeTab,
+    children,
+}: PreviewTabPanelsProps<T>) => (
+    <div className="flex-1 min-h-0 relative">
+        {tabs.map((tab) => (
+            <PreviewPanel
+                key={tab.id}
+                id={tab.id}
+                active={activeTab === tab.id}
+            >
+                {children[tab.id]}
+            </PreviewPanel>
+        ))}
+    </div>
+);
+
 interface PreviewTabsProps<T extends PreviewTabId> {
     tabs: PreviewTabDef<T>[];
     activeTab: T;
@@ -16,63 +91,22 @@ interface PreviewTabsProps<T extends PreviewTabId> {
     children: Partial<Record<T, ReactNode>>;
 }
 
-/** Tabbed preview surface, generic over the subset of PreviewTabIds that a
- *  given group renders. Results uses the four-id subset; Run uses the
- *  two-id subset. The generic stops callers from passing an activeTab id
- *  that isn't part of the supplied tabs[].
- *
- *  All tabs are rendered into the DOM at once and toggled with `hidden`
- *  so each panel keeps its native scroll position when toggled out and
- *  back in — cheaper than re-rendering large panels on every switch. */
+/** Convenience wrapper for the simple case where the strip and panels live
+ *  in the same vertical stack. CommandCenterView composes the bar and panels
+ *  separately so it can inline the Results/Run pill into the strip. */
 export const PreviewTabs = <T extends PreviewTabId>({
     tabs,
     activeTab,
     onChange,
     children,
-}: PreviewTabsProps<T>) => {
-    return (
-        <div className="flex flex-col h-full min-h-0">
-            <div
-                role="tablist"
-                aria-label="Preview tabs"
-                className="shrink-0 flex items-center gap-1 px-3 border-b border-[var(--rule)]"
-            >
-                {tabs.map((tab) => (
-                    <button
-                        key={tab.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={activeTab === tab.id}
-                        aria-controls={`tabpanel-${tab.id}`}
-                        id={`tab-${tab.id}`}
-                        tabIndex={activeTab === tab.id ? 0 : -1}
-                        onClick={() => onChange(tab.id)}
-                        className={`px-3 py-2 text-[12px] font-medium border-b-2 transition-colors ${
-                            activeTab === tab.id
-                                ? 'border-[var(--accent)] text-[var(--accent)]'
-                                : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                        }`}
-                    >
-                        <span>{tab.label}</span>
-                        {tab.badge != null && <span className="ml-1.5">{tab.badge}</span>}
-                    </button>
-                ))}
-            </div>
-
-            <div className="flex-1 min-h-0 relative">
-                {tabs.map((tab) => (
-                    <PreviewPanel
-                        key={tab.id}
-                        id={tab.id}
-                        active={activeTab === tab.id}
-                    >
-                        {children[tab.id]}
-                    </PreviewPanel>
-                ))}
-            </div>
-        </div>
-    );
-};
+}: PreviewTabsProps<T>) => (
+    <div className="flex flex-col h-full min-h-0">
+        <PreviewTabBar tabs={tabs} activeTab={activeTab} onChange={onChange} />
+        <PreviewTabPanels tabs={tabs} activeTab={activeTab}>
+            {children}
+        </PreviewTabPanels>
+    </div>
+);
 
 interface PreviewPanelProps {
     id: PreviewTabId;
