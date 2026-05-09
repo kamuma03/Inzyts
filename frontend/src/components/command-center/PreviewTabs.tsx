@@ -13,7 +13,7 @@ interface PreviewTabsProps {
     tabs: PreviewTabDef[];
     activeTab: PreviewTabId;
     onChange: (id: PreviewTabId) => void;
-    children: Record<PreviewTabId, ReactNode>;
+    children: Partial<Record<PreviewTabId, ReactNode>>;
 }
 
 /** Tabbed preview surface with per-tab scroll preservation.

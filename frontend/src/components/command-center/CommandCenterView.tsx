@@ -5,7 +5,7 @@ import { useJobContext } from '../../context/JobContext';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useMetricsHistory } from '../../hooks/useRunMetrics';
 import { TopStrip } from './TopStrip';
-import { PreviewTabs, type PreviewTabId } from './PreviewTabs';
+import { PreviewTabs, type PreviewTabId, type PreviewTabDef } from './PreviewTabs';
 import { OverviewPanel } from './panels/OverviewPanel';
 import { VisualPanel } from './panels/VisualPanel';
 import { CodePanel } from './panels/CodePanel';
@@ -19,40 +19,40 @@ interface CommandCenterViewProps {
     job: JobSummary;
 }
 
-const TAB_DEFS = [
-    { id: 'overview' as const, label: 'Overview' },
-    { id: 'visual' as const, label: 'Visual' },
-    { id: 'code' as const, label: 'Code' },
-    { id: 'data' as const, label: 'Data' },
-    { id: 'logs' as const, label: 'Logs' },
-    { id: 'events' as const, label: 'Events' },
+type TopTab = 'results' | 'run';
+type ResultsSubTab = Extract<PreviewTabId, 'overview' | 'visual' | 'code' | 'data'>;
+type RunSubTab = Extract<PreviewTabId, 'logs' | 'events'>;
+
+const RESULTS_TABS: { id: ResultsSubTab; label: string }[] = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'visual', label: 'Visual' },
+    { id: 'code', label: 'Code' },
+    { id: 'data', label: 'Data' },
 ];
 
-const TAB_BY_HOTKEY: Record<string, PreviewTabId> = {
-    '1': 'overview',
-    '2': 'visual',
-    '3': 'code',
-    '4': 'data',
-    '5': 'logs',
-    '6': 'events',
-};
+const RUN_TABS: { id: RunSubTab; label: string }[] = [
+    { id: 'logs', label: 'Logs' },
+    { id: 'events', label: 'Events' },
+];
 
-const DEFAULT_TAB_FOR_STATUS = (status: string): PreviewTabId =>
+const DEFAULT_RESULTS_TAB_FOR_STATUS = (status: string): ResultsSubTab =>
     status === 'completed' ? 'visual' : 'overview';
 
-/** Top-level analyst surface. All contextual information (pipeline, columns,
- *  cost, question) and all output views (notebook, code, data, logs, events)
- *  are top-level tabs sharing the full page width. The previous 3-column
- *  layout with cramped side rails is gone. */
+/** Top-level analyst surface. Two top-level tabs ("Results" and "Run") split
+ *  the six-tab original into "what came out" vs "how it ran". Each top-level
+ *  tab remembers its own active sub-tab so cycling between them feels
+ *  stateful. */
 export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
     const navigate = useNavigate();
     const { logs, events, metrics, phases, isConnected, handleCancelJob } = useJobContext();
     const history = useMetricsHistory(metrics, job.id);
 
     const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<PreviewTabId>(() =>
-        DEFAULT_TAB_FOR_STATUS(job.status),
+    const [topTab, setTopTab] = useState<TopTab>('results');
+    const [resultsSubTab, setResultsSubTab] = useState<ResultsSubTab>(() =>
+        DEFAULT_RESULTS_TAB_FOR_STATUS(job.status),
     );
+    const [runSubTab, setRunSubTab] = useState<RunSubTab>('logs');
 
     const isCompleted = job.status === 'completed';
     const isRunning = job.status === 'running' || job.status === 'pending';
@@ -62,15 +62,24 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
         navigate('/');
     }, [navigate]);
 
+    const goResults = useCallback((sub: ResultsSubTab) => {
+        setTopTab('results');
+        setResultsSubTab(sub);
+    }, []);
+    const goRun = useCallback((sub: RunSubTab) => {
+        setTopTab('run');
+        setRunSubTab(sub);
+    }, []);
+
     useKeyboardShortcuts(
         {
             escape: () => setSelectedColumn(null),
-            '1': () => setActiveTab(TAB_BY_HOTKEY['1']),
-            '2': () => setActiveTab(TAB_BY_HOTKEY['2']),
-            '3': () => setActiveTab(TAB_BY_HOTKEY['3']),
-            '4': () => setActiveTab(TAB_BY_HOTKEY['4']),
-            '5': () => setActiveTab(TAB_BY_HOTKEY['5']),
-            '6': () => setActiveTab(TAB_BY_HOTKEY['6']),
+            '1': () => goResults('overview'),
+            '2': () => goResults('visual'),
+            '3': () => goResults('code'),
+            '4': () => goResults('data'),
+            '5': () => goRun('logs'),
+            '6': () => goRun('events'),
             'cmd+enter': handleRerun,
             'ctrl+enter': handleRerun,
         },
@@ -78,7 +87,7 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
     );
 
     const codeStreaming = !isCompleted;
-    const tabs = TAB_DEFS.map((t) => {
+    const resultsTabsWithBadges: PreviewTabDef[] = RESULTS_TABS.map((t) => {
         if (t.id === 'code') {
             return {
                 ...t,
@@ -86,7 +95,7 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
                     <span
                         className={`inline-flex items-center gap-1 px-1 py-px text-[11px] uppercase tracking-[0.04em] rounded ${
                             codeStreaming
-                                ? 'bg-[rgba(76,201,240,0.12)] text-[var(--accent)]'
+                                ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
                                 : 'bg-[rgba(52,211,153,0.12)] text-[var(--ok)]'
                         }`}
                     >
@@ -103,6 +112,10 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
                 ),
             };
         }
+        return t;
+    });
+
+    const runTabsWithBadges: PreviewTabDef[] = RUN_TABS.map((t) => {
         if (t.id === 'events' && events.length > 0) {
             return {
                 ...t,
@@ -128,30 +141,87 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
             {isRunning && <TrafficRow history={history} />}
 
             <div className="flex-1 min-h-0 min-w-0 border border-[var(--rule)] rounded-lg bg-[var(--surface-1)] overflow-hidden flex flex-col">
-                <PreviewTabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab}>
-                    {{
-                        overview: (
-                            <OverviewPanel
-                                job={job}
-                                phases={phases}
-                                selectedColumn={selectedColumn}
-                                onSelectColumn={setSelectedColumn}
-                            />
-                        ),
-                        visual: <VisualPanel job={job} />,
-                        code: <CodePanel job={job} events={events} />,
-                        data: <DataPanel jobId={job.id} />,
-                        logs: <LogsPanel logs={logs} />,
-                        events: (
-                            <div className="h-full p-2">
-                                <EventStream events={events} />
-                            </div>
-                        ),
-                    }}
-                </PreviewTabs>
+                {/* Top-level tabs — bigger, bolder than the sub-tabs underneath. */}
+                <div
+                    role="tablist"
+                    aria-label="Command center sections"
+                    className="shrink-0 flex items-center gap-1 px-3 pt-2 border-b border-[var(--rule)]"
+                >
+                    <TopTabButton
+                        label="Results"
+                        active={topTab === 'results'}
+                        onClick={() => setTopTab('results')}
+                    />
+                    <TopTabButton
+                        label="Run"
+                        active={topTab === 'run'}
+                        onClick={() => setTopTab('run')}
+                    />
+                </div>
+
+                <div className="flex-1 min-h-0 min-w-0">
+                    {topTab === 'results' ? (
+                        <PreviewTabs
+                            tabs={resultsTabsWithBadges}
+                            activeTab={resultsSubTab}
+                            onChange={(id) => setResultsSubTab(id as ResultsSubTab)}
+                        >
+                            {{
+                                overview: (
+                                    <OverviewPanel
+                                        job={job}
+                                        phases={phases}
+                                        selectedColumn={selectedColumn}
+                                        onSelectColumn={setSelectedColumn}
+                                    />
+                                ),
+                                visual: <VisualPanel job={job} />,
+                                code: <CodePanel job={job} events={events} />,
+                                data: <DataPanel jobId={job.id} />,
+                            }}
+                        </PreviewTabs>
+                    ) : (
+                        <PreviewTabs
+                            tabs={runTabsWithBadges}
+                            activeTab={runSubTab}
+                            onChange={(id) => setRunSubTab(id as RunSubTab)}
+                        >
+                            {{
+                                logs: <LogsPanel logs={logs} />,
+                                events: (
+                                    <div className="h-full p-2">
+                                        <EventStream events={events} />
+                                    </div>
+                                ),
+                            }}
+                        </PreviewTabs>
+                    )}
+                </div>
             </div>
 
             <StatusBar isConnected={isConnected} phases={phases} />
         </div>
     );
 };
+
+interface TopTabButtonProps {
+    label: string;
+    active: boolean;
+    onClick: () => void;
+}
+
+const TopTabButton: FC<TopTabButtonProps> = ({ label, active, onClick }) => (
+    <button
+        type="button"
+        role="tab"
+        aria-selected={active}
+        onClick={onClick}
+        className={`px-4 py-2 text-[14px] font-semibold rounded-t-md transition-colors ${
+            active
+                ? 'bg-[var(--surface-2)] text-[var(--text-primary)]'
+                : 'bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+        }`}
+    >
+        {label}
+    </button>
+);
