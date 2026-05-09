@@ -60,7 +60,9 @@ export const StatusBar: FC<StatusBarProps> = ({ isConnected, phases }) => {
 
             <div className="flex-1" />
 
-            <ul className="flex items-center gap-3 m-0 p-0 list-none">
+            {/* Shortcut hints — hidden below lg so the bar doesn't wrap when
+                the offline / retries chips appear at narrow widths. */}
+            <ul className="hidden lg:flex items-center gap-3 m-0 p-0 list-none">
                 {SHORTCUT_HINTS.map((h) => (
                     <li key={h.keys} className="flex items-center gap-1.5">
                         <kbd className="font-mono px-1 py-px bg-[rgba(255,255,255,0.05)] rounded text-[var(--text-secondary)]">
