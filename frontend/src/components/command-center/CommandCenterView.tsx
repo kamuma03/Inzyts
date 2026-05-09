@@ -87,7 +87,7 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
     );
 
     const codeStreaming = !isCompleted;
-    const resultsTabsWithBadges: PreviewTabDef[] = RESULTS_TABS.map((t) => {
+    const resultsTabsWithBadges: PreviewTabDef<ResultsSubTab>[] = RESULTS_TABS.map((t) => {
         if (t.id === 'code') {
             return {
                 ...t,
@@ -115,7 +115,7 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
         return t;
     });
 
-    const runTabsWithBadges: PreviewTabDef[] = RUN_TABS.map((t) => {
+    const runTabsWithBadges: PreviewTabDef<RunSubTab>[] = RUN_TABS.map((t) => {
         if (t.id === 'events' && events.length > 0) {
             return {
                 ...t,
@@ -174,7 +174,7 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
                         <PreviewTabs
                             tabs={resultsTabsWithBadges}
                             activeTab={resultsSubTab}
-                            onChange={(id) => setResultsSubTab(id as ResultsSubTab)}
+                            onChange={setResultsSubTab}
                         >
                             {{
                                 overview: (
@@ -195,7 +195,7 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
                         <PreviewTabs
                             tabs={runTabsWithBadges}
                             activeTab={runSubTab}
-                            onChange={(id) => setRunSubTab(id as RunSubTab)}
+                            onChange={setRunSubTab}
                         >
                             {{
                                 logs: <LogsPanel logs={logs} />,

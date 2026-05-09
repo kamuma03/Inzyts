@@ -2,28 +2,34 @@ import { type FC, type ReactNode } from 'react';
 
 export type PreviewTabId = 'overview' | 'visual' | 'code' | 'data' | 'logs' | 'events';
 
-export interface PreviewTabDef {
-    id: PreviewTabId;
+export interface PreviewTabDef<T extends PreviewTabId = PreviewTabId> {
+    id: T;
     label: string;
     /** Optional badge content (e.g. status pill on the Code tab while streaming). */
     badge?: ReactNode;
 }
 
-interface PreviewTabsProps {
-    tabs: PreviewTabDef[];
-    activeTab: PreviewTabId;
-    onChange: (id: PreviewTabId) => void;
-    children: Partial<Record<PreviewTabId, ReactNode>>;
+interface PreviewTabsProps<T extends PreviewTabId> {
+    tabs: PreviewTabDef<T>[];
+    activeTab: T;
+    onChange: (id: T) => void;
+    children: Partial<Record<T, ReactNode>>;
 }
 
-/** Tabbed preview surface with per-tab scroll preservation.
+/** Tabbed preview surface, generic over the subset of PreviewTabIds that a
+ *  given group renders. Results uses the four-id subset; Run uses the
+ *  two-id subset. The generic stops callers from passing an activeTab id
+ *  that isn't part of the supplied tabs[].
  *
- *  All four tabs are rendered into the DOM at once and toggled with a
- *  ``hidden`` attribute. That way each tab keeps its native scroll position
- *  when the user switches away and back — required by the spec (R10) and
- *  cheaper than re-rendering large panels on every tab switch.
- */
-export const PreviewTabs: FC<PreviewTabsProps> = ({ tabs, activeTab, onChange, children }) => {
+ *  All tabs are rendered into the DOM at once and toggled with `hidden`
+ *  so each panel keeps its native scroll position when toggled out and
+ *  back in — cheaper than re-rendering large panels on every switch. */
+export const PreviewTabs = <T extends PreviewTabId>({
+    tabs,
+    activeTab,
+    onChange,
+    children,
+}: PreviewTabsProps<T>) => {
     return (
         <div className="flex flex-col h-full min-h-0">
             <div
