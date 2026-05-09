@@ -1,6 +1,5 @@
 import { type FC } from 'react';
 import type { PhaseStatus } from '../../api';
-import { Activity } from 'lucide-react';
 
 interface StatusBarProps {
     isConnected: boolean;
@@ -37,7 +36,6 @@ export const StatusBar: FC<StatusBarProps> = ({ isConnected, phases }) => {
                 <>
                     {!isConnected && (
                         <span className="flex items-center gap-1.5">
-                            <Activity size={11} className="text-[var(--text-dim)]" />
                             <span
                                 className="inline-block w-1.5 h-1.5 rounded-full"
                                 style={{ backgroundColor: 'var(--bad)' }}
