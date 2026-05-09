@@ -2,76 +2,128 @@
 
 **Comprehensive Multi-Perspective Product Roadmap**
 
-**Version**: 5.0.0
-**Last Updated**: 2026-03-10
+**Version**: 6.0.0
+**Last Updated**: 2026-04-28
 **Status**: Strategic Planning Document
+**Horizon**: 12 months (rolling)
+**Baseline**: v0.10.0
 
 ---
 
 ## Table of Contents
 
 1. [Executive Summary](#executive-summary)
-2. [Product Context](#product-context)
-3. [Perspective 1: Product Manager](#perspective-1--product-manager)
-4. [Perspective 2: UI/UX Designer](#perspective-2--uiux-designer)
-5. [Perspective 3: Software Architect](#perspective-3--software-architect)
-6. [Perspective 4: End User Voices](#perspective-4--end-user-voices)
-7. [Perspective 5: Innovation & Growth Strategist](#perspective-5--innovation--growth-strategist)
-8. [Perspective 6: Data Engineer](#perspective-6--data-engineer)
-9. [Perspective 7: Data Scientist / ML Engineer](#perspective-7--data-scientist--ml-engineer)
-10. [Perspective 8: Security Engineer](#perspective-8--security-engineer)
-11. [Unified Roadmap Synthesis](#unified-roadmap-synthesis)
-12. [Implementation Details](#implementation-details)
+2. [Product Context (Current State)](#product-context-current-state)
+3. [Strategic Bets](#strategic-bets)
+4. [Perspective 1: Product Manager](#perspective-1--product-manager)
+5. [Perspective 2: UI/UX Designer](#perspective-2--uiux-designer)
+6. [Perspective 3: Software Architect](#perspective-3--software-architect)
+7. [Perspective 4: End User Voices](#perspective-4--end-user-voices)
+8. [Perspective 5: Innovation & Growth Strategist](#perspective-5--innovation--growth-strategist)
+9. [Perspective 6: Data Engineer](#perspective-6--data-engineer)
+10. [Perspective 7: Data Scientist / ML Engineer](#perspective-7--data-scientist--ml-engineer)
+11. [Perspective 8: Security Engineer](#perspective-8--security-engineer)
+12. [Unified 12-Month Plan](#unified-12-month-plan)
+13. [Dependencies, Gates, Risks, Metrics](#dependencies-gates-risks-metrics)
+14. [Parking Lot](#parking-lot)
+15. [Appendix: Perspective Interaction Map](#appendix-perspective-interaction-map)
 
 ---
 
 ## Executive Summary
 
-Inzyts v0.10.0 is a **27-agent autonomous data analysis system** with 7-mode pipeline execution, smart caching, self-correcting validation loops, JWT authentication, SQL database integration, conversational follow-up, interactive cell editing, and hardened Docker deployment. This roadmap outlines the evolution to **v3.0.0**, transforming Inzyts from a powerful analysis tool into a complete **enterprise-grade data science platform**.
+Inzyts v0.10.0 is a **27-agent autonomous data analysis system** with a 7-mode pipeline, smart caching, self-correcting validators, JWT + RBAC + audit logging, multi-source ingestion (CSV / SQL / cloud storage / REST APIs / cloud DWH), report export (PDF / HTML / PPTX / Markdown) with executive summaries and PII detection, an interactive notebook viewer, conversational follow-up, and a hardened Docker deployment. The work to make Inzyts an *individually credible analysis tool* is largely done.
 
-### Strategic Goals Summary
+The next 12 months are about making Inzyts **trustworthy at team scale, distributable through ecosystems, and architecturally ready for the modes that come after the current 7**. This roadmap collapses the prior four-quarter / four-version plan (v2.0 → v3.0) into **three rolling phases**, each ~3–4 months. Items that shipped in v0.10.0 are no longer roadmap items — they are baseline.
 
-| Goal | Description | Target Release | Status |
-|------|-------------|----------------|--------|
-| **Enterprise Security** | Authentication, RBAC, audit logging, compliance | v2.0.0 | ✅ Complete — JWT auth, RBAC (Admin/Analyst/Viewer), audit logging, rate limiting, hardened Docker. PII masking & SSO remain for v3.0.0 |
-| **Stakeholder Communication** | Dashboards, reports, PowerPoint export | v2.0.0 - v2.1.0 | ✅ Partial — PDF/HTML/PPTX/Markdown export, Executive Summary, PII Detection shipped. Dashboards remain |
-| **Team Collaboration** | Workspaces, sharing, comments, notifications | v2.1.0 | Not started |
-| **Data Scientist Productivity** | Experiment tracking, model registry, deployment | v2.2.0 - v3.0.0 | Cost tracking ✅ — MLflow & model registry remain |
-| **Advanced Analytics** | NLP, deep learning, anomaly detection | v2.2.0 - v3.0.0 | Not started |
-| **Enterprise Scale** | Multi-tenancy, SSO, compliance dashboards | v3.0.0 | Not started |
+### What changed since the previous roadmap (v5.0.0, 2026-03-10)
 
-### Critical Gap Analysis
+- No new features merged in 7 weeks; effort went to test-suite consolidation, doc refresh, and removing dead Jupyter references.
+- Stale-risk on the v2.1.0 → v3.0.0 critical path (dashboards, workspaces, MLflow, SSO) is rising.
+- New highest-leverage opportunities surfaced from the codebase audit: **SSE-streamed agent reasoning**, **cost budgets per user**, **dataset-as-first-class-object**, **MCP server integration**, **plugin/agent SDK with versioned handoffs**, **confidence scoring on conclusions**.
 
-| Area | Current State (v0.10.0) | Gap Severity | Target State |
-|------|--------------------------|--------------|--------------|
-| **Authentication** | JWT auth + bcrypt + rate limiting + RBAC + audit logging | ✅ Done | OAuth2 + SSO + MFA |
-| **Reporting** | PDF, HTML, PPTX, Markdown + Executive Summary + PII Detection | ✅ Done | Word export, Dashboard builder |
-| **Dashboards** | None | 🔴 Critical | Interactive builder |
-| **Collaboration** | Single-user | 🟡 Important | Team workspaces |
-| **Data Sources** | CSV, SQL, Cloud Storage, REST APIs | ✅ Done (Streaming remains) | S3, GCS, Azure, REST APIs done; Streaming remains |
-| **ML Ops** | Cost tracking per job | 🟡 Important | MLflow, Registry, Deployment |
-| **Advanced AI** | Traditional ML | 🟡 Important | Deep Learning, NLP |
+### Three bets that unlock the rest
+
+1. **Trust** — SSE streaming + confidence scoring + cost budgets. Converts "feels slow / feels mysterious / feels risky" into "feels intelligent and bounded."
+2. **Sellability** — Dashboards + team workspaces + SSO. Without these, the Team-tier monetization story doesn't close.
+3. **Leverage** — Plugin/agent SDK with versioned handoffs + MCP server. Turns Inzyts from a fixed 27-agent monolith into a platform; places it inside the Claude / IDE ecosystems for distribution.
+
+### Critical Gap Snapshot
+
+| Area | Current State (v0.10.0) | Gap | Target State |
+|------|--------------------------|-----|--------------|
+| Authentication | JWT + bcrypt + RBAC + audit logging + rate limiting | 🟡 Important | SSO (OIDC/SAML) + MFA + secrets manager |
+| Reporting | PDF / HTML / PPTX / MD + Executive Summary + PII detection | 🟢 Mature | Word + dashboards |
+| Dashboards | None | 🔴 Critical | Interactive builder on top of existing notebook outputs |
+| Collaboration | Single-user | 🔴 Critical | Team workspaces + share-by-link + comments |
+| Data Sources | CSV + SQL (PG/MySQL/MSSQL/BQ/Snowflake/Redshift/Databricks) + S3/GCS/Azure + REST APIs | 🟢 Mature | Delta/Iceberg + dataset-as-object |
+| MLOps | Cost tracking per job | 🟡 Important | MLflow + registry + confidence/fairness gates |
+| Advanced AI | Traditional ML (7 modes) | 🟡 Important | Anomaly + NLP modes; RAG over past runs |
+| Trust UX | Black-box during run | 🔴 Critical | Streamed reasoning + confidence scores |
+| Cost guardrails | Tracked per job, not capped | 🔴 Critical | Hard per-user/team budgets |
+| Distribution | Web UI + REST API | 🟡 Important | MCP server, embedded mode, agent marketplace |
 
 ---
 
-## Product Context
+## Product Context (Current State)
 
 | Attribute | Details |
 |-----------|---------|
 | **Product Name** | Inzyts |
 | **Current Version** | v0.10.0 (Beta) |
-| **Core Problem Solved** | Eliminates tedious manual data exploration; transforms raw CSV/SQL data into comprehensive, executable Jupyter notebooks autonomously |
+| **Core Problem Solved** | Eliminates manual data exploration; transforms raw CSV/SQL/cloud data into comprehensive, executable Jupyter notebooks autonomously |
 | **Target Users** | Data Analysts, Data Scientists, Business Analysts, Product Managers, Enterprise Teams |
-| **Architecture** | 27-agent LangGraph orchestration with 7-mode pipeline execution |
-| **Tech Stack** | Python/FastAPI/PostgreSQL/Redis/Celery + React/TypeScript |
-| **LLM Support** | Claude (primary), OpenAI, Google Gemini, Ollama |
-| **Test Coverage** | 95%+ (800+ tests) |
-| **Data Sources** | CSV + SQL databases (PostgreSQL, MySQL, MSSQL) |
-| **Authentication** | JWT + bcrypt + rate limiting + prompt injection prevention |
-| **Interactive Features** | Conversational follow-up, cell-level editing, live notebook execution |
-| **Security Hardening** | Non-root Docker, network isolation, credential masking, read-only SQL, DOMPurify XSS prevention, error sanitization |
-| **Compliance** | Not implemented (target: SOC 2, GDPR, HIPAA) |
-| **Deployment** | Docker Compose (7 services) with network isolation and resource limits |
+| **Architecture** | 27-agent LangGraph orchestration with 7-mode pipeline |
+| **Tech Stack** | Python / FastAPI / PostgreSQL / Redis / Celery + React / TypeScript / Vite |
+| **LLM Support** | Anthropic Claude (primary), OpenAI, Google Gemini, Ollama |
+| **Test Coverage** | ~108 test files across unit / integration / e2e / security / safety / performance / contract / accessibility / UI |
+| **Data Sources** | CSV, JSON, Excel, Parquet · PG / MySQL / MSSQL · BigQuery / Snowflake / Redshift / Databricks · S3 / GCS / Azure Blob · REST APIs |
+| **Authentication** | JWT (bcrypt) + 3-tier RBAC (Admin / Analyst / Viewer) + per-job ownership + audit logging + rate limiting (slowapi) |
+| **Sandbox** | KernelSandbox: process-group SIGKILL, network egress block, secret stripping, allowlist imports, 60s/cell timeout |
+| **Interactive** | Conversational follow-up agent, cell-level natural-language editing, live notebook execution via WebSocket |
+| **Reporting** | PDF (WeasyPrint), HTML (Jinja2), PPTX (python-pptx), Markdown — with LLM-generated executive summary and regex PII detection/masking |
+| **Observability** | Phase tracker + Redis-backed timing + Socket.IO progress events + per-job cost tracking |
+| **Compliance** | None certified; controls in place align toward SOC 2 Type 1 / GDPR readiness |
+| **Deployment** | Docker Compose (7 services) — non-root containers, network isolation, resource limits |
+
+---
+
+## Strategic Bets
+
+Three commitments that should drive prioritization for the next 12 months.
+
+### Bet 1 — "Trust"
+**Hypothesis:** Inzyts already produces good answers; the bottleneck for adoption is whether users *trust them and feel in control*.
+
+**Initiatives that count:**
+- Stream agent reasoning live (SSE) — collapsible thought panel during runs.
+- Confidence scoring on every conclusion (self-consistency + agreement).
+- Hard cost budgets per user/team (default-on, configurable by admins).
+- Fairness / bias audit module on Phase 2 outputs.
+
+**Win condition:** median user reports "I know what's happening, what it cost me, and how confident the conclusion is" by end of Phase 1.
+
+### Bet 2 — "Sellability"
+**Hypothesis:** Every paid tier above Pro requires a team-shaped artifact (dashboards, share-by-link, SSO). Without these, Inzyts is a single-seat product.
+
+**Initiatives that count:**
+- Dashboard builder on top of pinned notebook cells (don't try to rebuild Tableau).
+- Team workspaces with role-based sharing.
+- SSO (OIDC + SAML) and secrets manager replacing `.env`.
+- SOC 2 Type 1 audit prep started by end of Phase 2.
+
+**Win condition:** ≥10 design-partner orgs on Team tier by end of Phase 2.
+
+### Bet 3 — "Leverage"
+**Hypothesis:** A 27-agent monolith doesn't scale to verticals. Inzyts wins long-term if external developers can extend it and if it lives inside other tools' workflows.
+
+**Initiatives that count:**
+- Plugin / agent SDK with versioned handoff schemas.
+- MCP server exposing Inzyts as a tool to Claude Desktop / IDE clients.
+- Dataset-as-first-class-object (precondition for cross-run memory and templates).
+- RAG over past runs ("we've analyzed this before — here's what changed").
+
+**Win condition:** ≥5 third-party plugins published and ≥1 named Anthropic-ecosystem placement by end of Phase 3.
 
 ---
 
@@ -79,74 +131,91 @@ Inzyts v0.10.0 is a **27-agent autonomous data analysis system** with 7-mode pip
 
 **Focus:** Market fit, user value, business impact
 
-### Gap Analysis vs Competitors
+### Gap Analysis vs Competitors (Dataiku, DataRobot, Hex, Mode)
 
-| Area | Inzyts (v0.10.0) | Competitors (Dataiku, DataRobot, etc.) | Gap Severity |
-|------|------------------|---------------------------------------|--------------|
-| Data Sources | CSV, SQL, Cloud Storage (S3/GCS/Azure), REST APIs | SQL, Cloud, APIs, Streaming | ✅ Core done (Streaming remains) |
-| Authentication | JWT + RBAC + audit logging + rate limiting | SSO, MFA | ✅ Core done (SSO + MFA remain) |
-| Reporting | PDF, HTML, PPTX, Markdown + Exec Summary + PII | Word, Dashboards | ✅ Core done |
-| Collaboration | Single-user | Teams, Sharing, Comments | 🟡 Important |
-| MLOps | Cost tracking per job | MLflow, Registry, Deployment | 🟡 Important |
-| NLP/Advanced AI | Traditional ML | Deep Learning, LLMs, NLP | 🟡 Important |
+| Area | Inzyts v0.10.0 | Competitors | Gap |
+|------|----------------|-------------|-----|
+| Data Sources | CSV / SQL / cloud DWH / cloud storage / REST | + streaming (Kafka/CDC) | 🟢 Streaming only |
+| Authentication | JWT + RBAC + audit + rate limit | + SSO + MFA | 🟡 SSO/MFA |
+| Reporting | PDF / HTML / PPTX / MD + Exec Summary + PII | + Word + Dashboards | 🟡 Dashboards |
+| Collaboration | Single-user | Workspaces / sharing / comments | 🔴 Critical |
+| MLOps | Cost tracking | MLflow / registry / serving | 🟡 Important |
+| Trust UX | Phase progress only | Streamed reasoning, confidence | 🔴 Critical |
+| Cost Guardrails | Tracked, uncapped | Per-user budgets | 🔴 Critical |
 | Autonomous Agents | ✅ 27-agent system | Limited automation | 🟢 Advantage |
-| Self-Correction | ✅ Recursive loops | Manual iteration | 🟢 Advantage |
 | Profile Lock | ✅ Anti-hallucination | Not common | 🟢 Advantage |
 | Conversational AI | ✅ Follow-up + cell editing | Limited chat | 🟢 Advantage |
-| Security Hardening | ✅ Docker isolation, credential masking | Standard | 🟢 Advantage |
+| Distribution | Web UI + REST | + Embedded + marketplace | 🟡 Important |
 
 ### User Jobs-to-be-Done (Unmet)
 
 | User Type | Unmet Need | Impact |
 |-----------|------------|--------|
-| Data Analyst | "I need to share polished reports with stakeholders" | High |
-| Data Scientist | "I want to track experiments and version models" | High |
-| Business User | "I want to ask questions in plain English" | High |
-| Enterprise Admin | "I need to control who accesses what data" | Critical |
-| Team Lead | "I need visibility into team's analysis work" | Medium |
+| Data Analyst | "I need to share polished, interactive dashboards with stakeholders." | High |
+| Data Scientist | "I want to track experiments and compare runs over time." | High |
+| Data Scientist | "I want to know how confident the LLM is in this conclusion." | Critical |
+| Business User | "I want to embed an Inzyts dashboard in our internal portal." | Medium |
+| Enterprise Admin | "I need SSO and per-user cost budgets before procurement signs." | Critical |
+| Team Lead | "I need visibility into what my team has analyzed and what changed." | Medium |
+| Power User | "I want to schedule weekly refreshes and diff against last week's run." | Medium |
 
-### Feature Prioritization (RICE Framework)
+### Feature Prioritization (RICE — refreshed for 2026-04-28)
 
-| Feature | Reach | Impact | Confidence | Effort | Score | Priority | Status |
-|---------|-------|--------|------------|--------|-------|----------|--------|
-| JWT Authentication + RBAC | 10K | 10 | 95% | M | 475 | **P0** | ✅ Done (JWT + RBAC + audit logging shipped) |
-| PDF/HTML Report Export | 8K | 8 | 90% | S | 576 | **P0** | ✅ Done (PDF, HTML, PPTX, Markdown export + Executive Summary + PII Detection) |
-| Chat with Data (NL Interface) | 7K | 9 | 85% | M | 267 | **P1** | ✅ Done (FollowUpAgent) |
-| Dashboard Builder | 6K | 8 | 80% | L | 128 | **P1** | Not started |
-| SQL Connectors | 5K | 7 | 90% | M | 157 | **P1** | ✅ Done (PG, MySQL, MSSQL) |
-| MLflow Integration | 3K | 6 | 85% | M | 76 | **P2** | Not started |
-| NLP/Text Mode | 3K | 7 | 75% | L | 52 | **P2** | Not started |
-| Enterprise SSO | 2K | 8 | 90% | M | 72 | **P2** | Not started |
-| Model Deployment | 2K | 7 | 80% | L | 37 | **P3** | Not started |
+| Feature | Reach | Impact | Confidence | Effort | Score | Priority |
+|---------|-------|--------|------------|--------|-------|----------|
+| SSE-streamed agent reasoning | 8K | 6 | 90% | S | 432 | **P0** |
+| Cost budgets per user/team | 4K | 8 | 90% | S | 576 | **P0** |
+| Dashboard builder (pinned cells) | 6K | 9 | 75% | L | 405 | **P0** |
+| Team workspaces + share-by-link | 5K | 8 | 80% | M | 320 | **P0** |
+| MCP server (Inzyts as a tool) | 5K | 6 | 90% | S | 270 | **P0** |
+| Confidence scoring on conclusions | 7K | 8 | 80% | M | 373 | **P0** |
+| SSO (OIDC/SAML via WorkOS / Authentik) | 2K | 9 | 85% | M | 153 | **P1** |
+| Webhook notifications (Slack/Teams/HTTP) | 6K | 5 | 95% | S | 285 | **P1** |
+| MLflow auto-logging | 2K | 7 | 80% | M | 112 | **P1** |
+| Anomaly detection mode (8th) | 3K | 7 | 80% | M | 168 | **P1** |
+| Dataset-as-object + library | 8K | 6 | 85% | M | 408 | **P0** |
+| Plugin / agent SDK | 3K | 8 | 70% | L | 168 | **P1** |
+| NLP / text mode (9th) | 3K | 7 | 75% | L | 52 | **P2** |
+| Geospatial mode | 2K | 7 | 60% | L | 42 | **P3** |
+| Word (.docx) export | 4K | 4 | 95% | S | 304 | **P1** quick win |
+| Notebook → Python script export | 4K | 4 | 95% | S | 304 | **P1** quick win |
+| Scheduled runs (cron) + diff view | 3K | 7 | 75% | M | 79 | **P2** |
 
-### Monetization Opportunities
+### Monetization Tiers (refined)
 
-| Tier | Features | Target Users | Price Model |
-|------|----------|--------------|-------------|
-| **Free** | Exploratory mode, 10 analyses/month | Individual analysts | $0 |
-| **Pro** | All 7 modes, unlimited analyses, PDF export | Power users | $49/month |
-| **Team** | Collaboration, dashboards, SQL connectors | Small teams | $199/month |
-| **Enterprise** | SSO, RBAC, audit logs, compliance, SLA | Large orgs | Custom |
+| Tier | Differentiator | Target | Price |
+|------|----------------|--------|-------|
+| **Free** | Exploratory mode, 10 runs/mo, single user | Individual analysts | $0 |
+| **Pro** | All 7 modes, unlimited runs, all exports, SSE streaming, cost budget | Power users | $49/mo |
+| **Team** | Workspaces, dashboards, share-by-link, SQL/cloud DWH, webhooks | Small teams (5–20 seats) | $199/mo |
+| **Enterprise** | SSO, RBAC + audit, secrets manager, SOC 2 evidence, SLA, BAA option | Large orgs | Custom |
+
+**Critical:** Team tier is unsellable today. Phase 2 must close *all three* of dashboards / workspaces / SSO to unlock it.
 
 ### KPIs to Track
 
-| Feature | KPI | Target |
-|---------|-----|--------|
-| Auth System | User activation rate | >60% |
-| Report Export | Report downloads/week | 500+ |
-| Chat Interface | Questions asked/session | 5+ |
-| Dashboards | Dashboard shares/month | 100+ |
-| SQL Connectors | DB-connected analyses | 40% of runs |
+| Feature | KPI | Target by end of Phase |
+|---------|-----|------------------------|
+| SSE streaming | Median perceived time-to-first-output | < 30 s (Phase 1) |
+| Cost budgets | Cost-overrun incidents | 0 (Phase 1) |
+| Dashboards | Dashboard creations / month | 100+ (Phase 2) |
+| Workspaces | Active team workspaces | 50+ (Phase 2) |
+| SSO | Enterprise prospects unblocked | 5+ (Phase 2) |
+| Confidence scoring | Median conclusion confidence shown | ≥0.7 displayed (Phase 1) |
+| Plugin SDK | 3rd-party plugins published | 5+ (Phase 3) |
+| MCP server | Active MCP-connected sessions | 200+/mo (Phase 1) |
 
-### Quick Wins (<2 weeks effort)
+### Quick Wins (<2 weeks)
 
-| Feature | Business Value | Effort |
+| Feature | Business Value | Status |
 |---------|---------------|--------|
-| PII Detection Warning | High (compliance) | ✅ Done |
-| Markdown Report Export | Medium | ✅ Done |
-| Analysis Run History | Medium | 1 week |
-| Email Notification on Completion | Medium | 4 days |
-| Keyboard Shortcuts in UI | Low | 3 days |
+| SSE-streamed reasoning | High (perceived speed + trust) | Phase 1 |
+| Cost budgets per user | High (risk mitigation) | Phase 1 |
+| Webhook notifications | Medium (integration) | Phase 1 |
+| Word (.docx) export | Medium (audience parity with PPTX) | Phase 1 |
+| Notebook → Python script export | Medium (DS productionization path) | Phase 1 |
+| Cmd-K command palette | Medium (power-user retention) | Phase 1 |
+| Run history with diff | Medium (cross-run continuity) | Phase 2 |
 
 ---
 
@@ -154,60 +223,60 @@ Inzyts v0.10.0 is a **27-agent autonomous data analysis system** with 7-mode pip
 
 **Focus:** Usability, accessibility, delight
 
-### UX Friction Points Identified
+### UX Friction Points (current → proposed)
 
-| UX Improvement | Current Pain | Proposed Solution | User Impact | Complexity | Status |
-|----------------|--------------|-------------------|-------------|------------|--------|
-| Mode Selection Confusion | Users unsure which mode to pick | Smart mode suggestion with preview | High | Medium | ✅ Done (suggest-mode API + debounced frontend hook + ModeSelector suggestions) |
-| Analysis Progress Unclear | Generic progress bar, no ETA | Phase-aware timeline with agent status | High | Low | ✅ Done (ProgressTracker + Redis timing/ETA + AgentTrace progress bar + structured events) |
-| Results Interpretation | Raw notebook output, no summary | Executive summary card + key findings | High | Medium | ✅ Done (LLM-powered executive summary card in NotebookViewer) |
-| File Upload Experience | Single CSV only, no preview | Multi-file drag-drop with schema preview | Medium | Medium | ✅ Done (multi-file + preview endpoint) |
-| Error Messages | Technical errors, no guidance | Contextual help with fix suggestions | High | Low | ✅ Partial (sanitized errors, no guidance yet) |
-| Mobile Experience | Not responsive, unusable on mobile | Mobile-first redesign for viewing | Medium | High | Not started |
-| Onboarding Flow | No guidance for new users | Interactive tutorial + sample datasets | High | Medium | Not started |
-| Dark Mode Toggle | Only dark theme, no light option | Theme switcher for accessibility | Low | Low | Not started |
-| Keyboard Navigation | Mouse-only interactions | Full keyboard accessibility (WCAG 2.1) | Medium | Medium | Not started |
-| Chart Interactions | Static charts in notebooks | Interactive hover, zoom, pan | High | Medium | ✅ Partial (inline chart rendering in interactive mode) |
+| Friction | Current | Proposed | Impact | Cx |
+|----------|---------|----------|--------|----|
+| Long-running job feedback | Phase progress bar; no token-by-token visibility | Stream agent reasoning via SSE; collapsible thought panel | High | S |
+| First-run confusion | Smart Mode Suggestion exists but post-question | 30-second onboarding tour + sample dataset gallery | High | S |
+| Notebook viewer density | Flat cell list | Collapsible sections per phase + pinned TL;DR card | Med | M |
+| Error messages | Sanitized, no remediation | "What to try next" + copy-debug-bundle button | Med | S |
+| Mobile / tablet | Desktop-only effectively | Read-only mobile view (history + share links + report download) | Med | M |
+| WCAG 2.1 audit | Tests scaffolded; depth unknown | Color contrast on Ink Black + keyboard nav across InteractiveCell + ARIA labels on charts | High | M |
+| PII warning UX | Banner exists | Inline highlight in preview; click-to-mask | Med | S |
+| Keyboard shortcuts | Mostly absent | Cmd-K palette: jump to job, re-run, ask follow-up, switch mode | Med | M |
+| Cost visibility | Per-job cost in metadata only | Real-time cost meter during run; budget bar per user | High | S |
+| Confidence indicator | None | Confidence chip on each conclusion card (Low / Med / High + tooltip) | High | M |
 
-### Information Architecture Improvements
+### Information Architecture (proposed)
 
 ```
-Current:
-Home → Upload → Configure → Wait → Download
-
-Proposed:
-Home → [Dashboard OR Upload]
-      ↓                 ↓
-   My Work          New Analysis
-      ↓                 ↓
-   History           Configure
-   Reports             ↓
-   Dashboards       Progress (Live)
-                       ↓
-                   Results View
-                       ↓
-                   [Export | Share | Dashboard]
+Home
+├── My Workspace
+│   ├── Datasets (NEW — first-class object)
+│   ├── Runs (history + diff)
+│   ├── Dashboards (NEW)
+│   └── Shared with me (NEW)
+├── New Analysis
+│   ├── Pick dataset (or upload / connect)
+│   ├── Configure (mode + question, with smart suggest)
+│   └── Run (SSE-streamed reasoning + cost meter)
+└── Admin (RBAC-gated)
+    ├── Users · Roles
+    ├── Audit logs
+    ├── Cost budgets
+    └── Connectors (SSO, secrets manager)
 ```
 
 ### Accessibility Gaps (WCAG 2.1)
 
-| Issue | Current State | Fix Required |
-|-------|---------------|--------------|
-| Color Contrast | Some text <4.5:1 ratio | Increase contrast in dark theme |
-| Screen Reader | Charts not labelled | Add ARIA labels to all visualizations |
-| Keyboard Nav | Focus traps in modals | Implement proper focus management |
-| Motion | Animations not reduceable | Respect `prefers-reduced-motion` |
-| Alt Text | Images in notebooks lack alt | Auto-generate chart descriptions |
+| Issue | Current | Fix |
+|-------|---------|-----|
+| Color contrast | Some text < 4.5:1 in Ink Black | Audit with axe-core; bump non-compliant tokens |
+| Screen reader on charts | Charts unlabelled | Auto-generate alt text from LLM cell metadata |
+| Keyboard nav focus traps | Modals trap focus poorly | Standardize Radix focus management |
+| Motion | Animations not reducible | Respect `prefers-reduced-motion` globally |
+| Notebook chart alt-text | Missing | Augment cell render with chart description string |
 
-### Data Visualization UX Improvements
+### Data Visualization UX
 
-| Improvement | Current State | Proposed |
-|-------------|---------------|----------|
-| Chart Export | Not available | PNG/SVG download buttons |
-| Chart Annotations | None | Click-to-annotate for reports |
-| Dashboard Filters | None | Interactive filter controls |
-| Color Blindness | Default palette | Colorblind-safe palettes |
-| Chart Accessibility | No descriptions | AI-generated chart summaries |
+| Improvement | Current | Proposed |
+|-------------|---------|----------|
+| Chart export | Embedded only | PNG/SVG download per chart |
+| Chart annotations | None | Click-to-annotate; annotations persist with run |
+| Dashboard filters | None (no dashboards) | Cross-cell filter controls in dashboard builder |
+| Color blindness | Default matplotlib | Colorblind-safe defaults; per-user preference |
+| Chart accessibility | None | LLM-generated chart summaries surfaced to screen readers |
 
 ---
 
@@ -217,109 +286,116 @@ Home → [Dashboard OR Upload]
 
 ### Technical Debt Inventory
 
-| Technical Initiative | Problem Addressed | Architecture Impact | Risk | Effort | Status |
-|---------------------|-------------------|---------------------|------|--------|--------|
-| Auth Layer Addition | No access control | Adds middleware to all routes | Medium | L | ✅ Done (JWT + bcrypt) |
-| Database Optimization | No indexes on jobs table | Query performance at scale | Low | S | Not started |
-| Cache Layer Upgrade | File-based cache fragile | Redis-based distributed cache | Medium | M | Not started |
-| API Rate Limiting | No abuse protection | Add rate limiter middleware | Low | S | ✅ Done (slowapi) |
-| Secret Management | Keys in .env file | Vault/AWS Secrets integration | High | M | Not started |
-| Async LLM Calls | Blocking LLM requests | Streaming + async handlers | Medium | M | Not started |
-| Multi-tenancy Prep | Single-tenant DB | Schema isolation or separate DBs | High | XL | Not started |
-| Container Security | Root user in Docker | Non-root containers, image scanning | Medium | S | ✅ Done (non-root, network isolation, resource limits) |
-| Observability Stack | Basic logging only | OpenTelemetry + Prometheus + Grafana | Medium | L | Not started |
-| Test Database Isolation | Shared test DB | Per-test isolated databases | Low | M | Not started |
+| Initiative | Problem | Architecture Impact | Risk | Effort |
+|------------|---------|---------------------|------|--------|
+| Sandbox upgrade to gVisor / Firecracker | Current `KernelSandbox` is process-group based; LLM-generated code escape blast radius is the host container | Strong isolation; enables "code-execution-as-a-service" sale | Med (perf, packaging) | L |
+| Plugin / agent SDK | All 27 agents hardcoded in `graph.py`; new modes require core edits | External agents loadable via manifest; community plugins | Med (interface stability) | L |
+| Versioned handoff schemas (`v1`, `v2`) | Single-version Pydantic models; future agent changes break | Migration path; backward compat | Low | M |
+| Structured event log + tail API | Progress is emitted via Socket.IO but not stored | Replayable runs, post-hoc debug, audit-friendly | Low | M |
+| Multi-LLM router with fallback + per-task routing | `agent_factory` returns one LLM globally | Cost optimization (cheap model for routing, premium for codegen) | Low | M |
+| OpenTelemetry tracing across agents | Per-job logs; no per-agent spans | Find slow agents; SLO-able | Low | M |
+| Postgres row-level security | Per-job ownership in Python only | Defense in depth; multi-tenant precondition | Med | M |
+| Worker autoscaling (Celery → KEDA) | Static concurrency | Cost-aware scaling; Phase 2 jobs are spiky | Low | M |
+| Centralized retry policy object | Each validator hand-codes retry budget | Consistent semantics, observable | Low | S |
+| Secrets manager integration | `.env` proliferation; JWT secret in plaintext | Required for SOC 2; drop-in for Vault / AWS Secrets | Low | M |
+| API v3 with explicit deprecation contract | v2 grew organically | Reduce SDK breakage | Low | M |
+| Cache layer hardening | Mixed file + Redis cache | Single Redis-backed cache with TTL policy + hash-based invalidation | Low | M |
+
+**Architectural keystone for the next 12 months:** the **plugin SDK + versioned handoffs + structured event log** triad. Without them, every new mode (anomaly, NLP, geospatial, deep learning) is a fork in `src/workflow/graph.py`, and every audit / replay request is a forensic exercise.
 
 ### Scalability Bottlenecks
 
-| Component | Current Limit | At 10x Scale | At 100x Scale | Fix Required |
-|-----------|---------------|--------------|---------------|--------------|
-| Celery Workers | 1 worker | Queue backlog | System failure | Auto-scaling workers |
-| PostgreSQL | Single instance | Connection pool exhaustion | DB crashes | Read replicas + PgBouncer |
-| Redis Cache | Single instance | Memory overflow | Cache misses | Redis Cluster |
-| LLM API Calls | Sequential | Rate limits hit | Cost explosion | Request batching + caching |
-| File Storage | Local disk | Disk full | Not scalable | S3/GCS object storage |
+| Component | Current Limit | At 10× | At 100× | Fix |
+|-----------|---------------|--------|---------|-----|
+| Celery workers | Static concurrency | Queue backlog | System failure | KEDA autoscaling |
+| PostgreSQL | Single instance | Connection-pool exhaustion | DB crashes | PgBouncer + read replicas |
+| Redis | Single instance | Memory overflow | Cache misses | Redis Cluster + LRU eviction |
+| LLM API calls | Sequential per-agent | Rate limits | Cost explosion | Cost budgets + batching + cheap-model routing |
+| File storage | Local disk | Disk full | Not scalable | Object storage (S3/GCS) for uploads + outputs |
+| Sandbox kernels | Per-process limit | Memory pressure | OOM kills | Microvm-per-run with pooled warm pool |
 
-### Architecture Evolution Plan
+### Architecture Evolution
 
 ```
-Current (v0.10.0) - Monolith
-┌─────────────────────────────────┐
-│  FastAPI + Celery + Agents      │
-│  (Single process orchestration) │
-└─────────────────────────────────┘
+Phase 1 (now → 3mo)              — Modular Monolith Hardening
+┌──────────────────────────────────────────────────────────────┐
+│ FastAPI + Celery + 27 Agents                                 │
+│  + SSE streaming layer                                       │
+│  + structured event log (replaces ad-hoc Socket.IO emit)     │
+│  + cost budget middleware                                    │
+│  + secrets manager adapter                                   │
+└──────────────────────────────────────────────────────────────┘
 
-Phase 2 (v2.1.0) - Service Split
-┌─────────────┐ ┌─────────────┐ ┌─────────────┐
-│ Auth Service│ │Analysis Svc │ │ Report Svc  │
-└─────────────┘ └─────────────┘ └─────────────┘
-        ↓              ↓              ↓
-      ┌─────────────────────────────────┐
-      │          Message Queue          │
-      │          (Redis/RabbitMQ)       │
-      └─────────────────────────────────┘
+Phase 2 (3 → 6mo)                — Tenant-Ready Service Boundaries
+┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐
+│ Auth + SSO │ │ Analysis   │ │ Reports +  │ │ Workspaces │
+│            │ │ + Agents   │ │ Dashboards │ │ + Sharing  │
+└─────┬──────┘ └─────┬──────┘ └─────┬──────┘ └─────┬──────┘
+      └──── Postgres (RLS) + Redis (Cluster) + OTEL traces ────┘
 
-Phase 3 (v3.0.0) - Microservices
-┌─────┐┌─────┐┌─────┐┌─────┐┌─────┐┌─────┐
-│Auth ││Analy││Reprt││Dashb││MLOps││Conn.│
-└─────┘└─────┘└─────┘└─────┘└─────┘└─────┘
-    ↓      ↓      ↓      ↓      ↓      ↓
-   ┌──────────────────────────────────────┐
-   │         Service Mesh (Istio)         │
-   └──────────────────────────────────────┘
+Phase 3 (6 → 12mo)               — Platform & Plugin
+┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐
+│ Core API   │ │ Plugin SDK │ │ MCP Server │ │ Embedded   │
+│ (versioned)│ │ + Registry │ │            │ │ Mode       │
+└─────┬──────┘ └─────┬──────┘ └─────┬──────┘ └─────┬──────┘
+      └─── Sandbox (gVisor) + Lineage (OpenLineage) ─────────┘
 ```
 
 ### API Improvements
 
-| Improvement | Current | Proposed | Status |
-|-------------|---------|----------|--------|
-| Versioning | `/api/v2/` | Add `/api/v3/` with breaking changes | Not started |
-| GraphQL | REST only | GraphQL for dashboard queries | Not started |
-| Rate Limiting | slowapi (10/min analyze, 30/min jobs) | Tiered limits: 100 req/min (free), 1000 (pro) | ✅ Basic done |
-| Pagination | Inconsistent | Cursor-based pagination | Not started |
-| Error Format | Generic sanitized messages | RFC 7807 Problem Details | ✅ Partial (sanitized, not RFC 7807) |
-| OpenAPI Spec | Auto-generated | Manually curated + examples | Not started |
-| Webhooks | None | Job completion webhooks | Not started |
+| Improvement | Current | Proposed | Phase |
+|-------------|---------|----------|-------|
+| Versioning | `/api/v2/` | Add `/api/v3/` with versioned handoff schemas | P3 |
+| Streaming | WebSocket for cell exec | + SSE for agent reasoning | P1 |
+| Rate limiting | slowapi (10/min analyze, 30/min jobs) | Tiered: 100/min (Pro), 1000/min (Team) | P2 |
+| Pagination | Inconsistent | Cursor-based across history endpoints | P2 |
+| Error format | Sanitized strings | RFC 7807 Problem Details | P2 |
+| OpenAPI spec | Auto-generated | Curated + examples + SDK gen | P2 |
+| Webhooks | None | Job lifecycle webhooks (Slack/Teams/HTTP) | P1 |
+| MCP | None | MCP server exposing analysis + follow-up + reports as tools | P1 |
 
-### DevOps/Infrastructure Improvements
+### DevOps / Infrastructure
 
-| Initiative | Current | Proposed |
-|------------|---------|----------|
-| CI/CD | Manual docker build | GitHub Actions + ArgoCD |
-| Monitoring | Basic logs | Prometheus + Grafana + AlertManager |
-| Tracing | None | Jaeger/OpenTelemetry |
-| Log Aggregation | Docker logs | ELK/Loki stack |
-| Infrastructure as Code | Docker Compose | Terraform + Kubernetes manifests |
-| Backup/Recovery | Manual | Automated daily backups + PITR |
-| Canary Deployments | None | Argo Rollouts |
+| Initiative | Current | Proposed | Phase |
+|------------|---------|----------|-------|
+| CI/CD | GitHub Actions (test workflow) | + SAST (Semgrep) + dep-scan (pip-audit, npm audit) + container scan | P1 |
+| Monitoring | Basic logs | Prometheus + Grafana + AlertManager | P2 |
+| Tracing | None | OpenTelemetry → Tempo / Jaeger | P2 |
+| Log aggregation | Docker logs | Loki / ELK | P2 |
+| Backup / recovery | Manual | Automated daily backups + PITR | P2 |
+| IaC | Docker Compose | + Terraform module + Helm chart for K8s | P3 |
+| Canary deployments | None | Argo Rollouts (when on K8s) | P3 |
 
 ---
 
 ## Perspective 4: 👤 End User Voices
 
-### Power User Feedback
+### Power User
 
-| Verbatim Feedback | Underlying Need | Feature Implication |
-|-------------------|-----------------|---------------------|
-| "I wish I could connect to my Snowflake warehouse directly" | Database connectivity | SQL connectors (P1) | ✅ Done (PG, MySQL, MSSQL, BigQuery, Snowflake, Redshift, Databricks) |
-| "It's annoying that I have to download and re-upload the notebook to edit it" | In-place editing | Live notebook editing | ✅ Done (interactive cell editing + follow-up chat) |
-| "I have to work around the CSV limitation by exporting from our BI tool first" | Direct integrations | Cloud storage + DB connectors | ✅ Done (S3, GCS, Azure Blob + REST APIs + Cloud DWH) |
-| "If only it integrated with MLflow, I could track my experiments properly" | Experiment management | MLflow integration (P2) | Not started |
-| "I need to share results with my team, but they don't have accounts" | Collaboration & sharing | Share with link + public dashboards | Not started |
-| "The agent traces are cool but I wish I could see the actual prompts being used" | Transparency | Prompt logging/debugging mode | Not started |
-| "I run the same analysis weekly - wish I could schedule it" | Automation | Scheduled runs (P2) | Not started |
+| Verbatim | Underlying Need | Feature Implication |
+|----------|-----------------|---------------------|
+| "I wish I could pin a baseline run and diff next week's run against it." | Run versioning + diff | Run history with diff view (P2) |
+| "I have to re-upload the same CSV every time." | Persistence | Dataset-as-object + library (P1) |
+| "It's annoying that the SQL agent picks columns I don't want." | Constrained autonomy | Column-level allow/deny per connection (P2) |
+| "If only it integrated with my dbt project." | Modeling-tier integration | dbt manifest import → templates (P3) |
+| "I want to schedule weekly refreshes." | Automation | Scheduled runs (cron) (P2) |
+| "I run the same analysis on 50 datasets every Monday." | Bulk | Batch analysis API (P2) |
+| "I want to use my own prompts for the strategy agent." | Customization | Custom agent prompt overrides (P3) |
+| "I need to know if the LLM is just guessing." | Trust | Confidence scoring (P1) |
 
-### New User Feedback
+### New User
 
-| Verbatim Feedback | Underlying Need | Feature Implication |
-|-------------------|-----------------|---------------------|
-| "I don't understand how to choose between exploratory and predictive" | Guidance | ✅ Smart mode suggestion (done) + tutorial (pending) |
-| "It took me too long to realize I needed to specify a target column" | Clarity | Interactive form with hints |
-| "I expected it to explain what the results mean in plain English" | Interpretation | Executive summary generator |
-| "I almost gave up when I got a validation error with no explanation" | Error handling | Contextual error messages |
-| "I didn't know what a 'profile lock' meant" | Jargon reduction | Simpler terminology in UI |
-| "I wish there were sample datasets to try before uploading my own" | Safe exploration | Preloaded demo datasets |
-| "The waiting time felt long with no indication of what's happening" | Feedback | ✅ Phase-by-phase progress with ETA (done) |
+| Verbatim | Underlying Need | Feature Implication |
+|----------|-----------------|---------------------|
+| "I expected it to read all sheets in my Excel file." | Multi-sheet | Multi-sheet picker (P1 quick win) |
+| "I almost gave up when the job ran 4 minutes with no output." | Transparency | SSE-streamed reasoning (P1) |
+| "I don't understand the difference between Diagnostic and Comparative." | Education | Mode picker with worked examples + smart suggest (P1) |
+| "It took me too long to find the report download." | Discoverability | Persistent Export button on every completed job (P1 quick win) |
+| "I expected it to explain results in plain English." | Interpretation | Executive summary (✅ shipped) — surface more prominently |
+| "I didn't know what a 'profile lock' meant." | Jargon reduction | Plain-language UI copy review (P2) |
+| "There's no sample dataset to try before uploading my own." | Safe exploration | Demo dataset gallery on first run (P1) |
+
+→ Three underlying themes cluster: **persistence** (datasets / runs / templates as first-class), **transparency** (streaming, diffs, confidence), **integration** (dbt, schedules, MCP, exports).
 
 ---
 
@@ -327,56 +403,59 @@ Phase 3 (v3.0.0) - Microservices
 
 **Focus:** Differentiation, emerging tech, market expansion
 
-### AI/ML Opportunities
+### High-Leverage Innovations
 
-| Innovation | Opportunity Description | Differentiation Score | Time to Value |
-|------------|------------------------|----------------------|---------------|
-| LLM-Powered Chat Interface | "Chat with your data" - natural language questions | 5/5 | 3 months |
-| Auto-ML Feature Selection | LLM recommends features based on domain knowledge | 4/5 | 4 months |
-| Insight Summarization | Automatic executive summary generation | 5/5 | 2 months |
-| Anomaly Narration | LLM explains why anomalies are significant | 4/5 | 3 months |
-| Code Explanation | Natural language explanations of generated code | 4/5 | 2 months |
-| RAG for Domain Knowledge | Retrieve domain templates based on data patterns | 4/5 | 4 months |
-| Agentic Debugging | Agents that debug their own failed code | 5/5 | 5 months |
+| Innovation | Description | Differentiation | TTV | Phase |
+|------------|-------------|-----------------|-----|-------|
+| **MCP server** | Expose Inzyts as an MCP tool so Claude Desktop / IDE clients can drive it | 5/5 (positions in Anthropic ecosystem) | 1 mo | P1 |
+| **Conversational dataset onboarding** | "Upload + describe in one sentence" → agent picks mode + question | 5/5 | 1 mo | P1 |
+| **Cross-run pattern memory** | "We've analyzed this dataset before — here's what changed" via RAG over past runs | 5/5 (data moat) | 3 mo | P3 |
+| **Agent / extension marketplace** | Community-contributed extension agents (vertical templates: SaaS churn, e-comm cohort, healthcare DRG) | 5/5 (network effect) | 6 mo | P3 |
+| **Embedded mode (white-label widget)** | Drop Inzyts inside customer apps via iframe + JWT exchange | 4/5 (B2B2C) | 4 mo | P3 |
+| **Auto-generated narrated video summaries** | TTS over Executive Summary + chart fly-throughs | 4/5 | 2 mo | P3 |
+| **Voice-first follow-up** | Whisper STT → follow-up agent → TTS | 3/5 | 3 mo | P3 |
+| **Agentic debugging** | Agents that debug their own failed validator output | 4/5 | 3 mo | P2 |
 
-### Platform/Ecosystem Play
+### Platform / Ecosystem Plays
 
 | Strategy | Description | Potential |
 |----------|-------------|-----------|
-| Plugin Marketplace | Third-party mode plugins (industry-specific) | High |
-| Public API | Let developers build on Inzyts | High |
-| Embedded Analytics | White-label dashboards in other products | Medium |
-| Template Library | Community-contributed analysis templates | High |
-| Integration Hub | Pre-built connectors (Salesforce, HubSpot, etc.) | High |
+| Plugin marketplace | Third-party mode and extension agents | High |
+| Public API + SDK gen | Let developers build on Inzyts | High |
+| Embedded analytics | White-label dashboards | Medium |
+| Template library | Community-contributed analysis templates per vertical | High |
+| MCP server | Inzyts inside Claude Code / Desktop / Cursor / Cline | High (distribution) |
+| Integration hub | Pre-built connectors (Salesforce, HubSpot, Stripe) | Medium |
 
 ### New Market Segments
 
 | Segment | Current Fit | Adaptation Required |
 |---------|-------------|---------------------|
-| Healthcare Analytics | Low | HIPAA compliance, PHI handling |
-| Financial Services | Low | SOC 2, PCI-DSS compliance |
-| Education/Academia | Medium | Free tier, collaboration features |
-| Startups/SMBs | High | Affordable pricing, easy setup |
-| Enterprise | Low | SSO, multi-tenancy, SLAs |
+| Healthcare analytics | Low | HIPAA / BAA, PHI handling, envelope encryption |
+| Financial services | Low | SOC 2, audit retention SLA, PCI awareness |
+| Education / academia | Medium | Free academic tier + collaboration |
+| Startups / SMBs | High | Affordable Pro tier + low-friction onboarding |
+| Enterprise | Low | SSO, multi-tenancy, SOC 2 evidence package |
 
-### Viral/Network Effects Features
+### Viral / Network Effects
 
 | Feature | Mechanism | Growth Potential |
 |---------|-----------|------------------|
-| "Share Analysis" public links | Organic discovery | High |
-| Embedded dashboards | Viral distribution | High |
-| Template marketplace | Community building | Medium |
-| "Powered by Inzyts" badges | Brand awareness | Medium |
-| Referral program | User acquisition | High |
+| Share-by-link (read-only) public dashboards | Organic discovery + branded view | High |
+| Embedded "Analyzed by Inzyts" badge | Brand reach | Medium |
+| Template marketplace | Community building | High |
+| Referral credits | Acquisition | Medium |
+| MCP placement in Claude ecosystem | Inbound from existing user base | High |
 
-### Data Moat Opportunities
+### Data Moats
 
-| Data Asset | How to Build | Competitive Advantage |
-|------------|--------------|----------------------|
-| Analysis Pattern Library | Log successful analysis patterns | Better mode suggestions |
-| Domain-Specific Templates | User-contributed templates | Industry expertise |
-| Error Resolution Database | Track error → fix patterns | Self-healing system |
-| LLM Prompt Optimization | A/B test prompts, measure quality | Better agent performance |
+| Asset | Build Path | Advantage |
+|-------|-----------|-----------|
+| Analysis pattern library (anonymized) | Log successful analysis patterns | Better mode suggestions |
+| Vertical templates | User-contributed + curated | Industry depth |
+| Error → fix corpus | Track failed-cell remediation | Self-healing system |
+| Prompt A/B corpus | Measure quality per prompt variant | Continuously improving agents |
+| Cross-run memory per dataset | Embed conclusions in pgvector | Compound user value over time |
 
 ---
 
@@ -386,440 +465,375 @@ Phase 3 (v3.0.0) - Microservices
 
 ### Data Pipeline & Infrastructure
 
-| Initiative | Current Gap/Pain | Proposed Solution | Data Impact | Effort | Priority |
-|------------|-----------------|-------------------|-------------|--------|----------|
-| SQL Connectors | CSV only, no live data | PostgreSQL, MySQL, Snowflake connectors | High | M | P1 | ✅ Done (PG, MySQL, MSSQL, BigQuery, Snowflake, Redshift, Databricks + SQLAgent) |
-| Cloud Storage | No S3/GCS support | boto3/gcloud/azure integration | High | M | P2 | ✅ Done (S3, GCS, Azure Blob with auto format conversion) |
-| Streaming Ingestion | Batch only | Kafka consumer for real-time | Medium | L | P3 | Not started |
-| Data Catalog | No metadata management | Column descriptions, tags, lineage | High | M | P2 | ✅ Partial (data dictionary integration) |
-| Schema Evolution | Fixed schema at upload | Detect schema drift, alert user | Medium | S | P2 | Not started |
-| Multi-file Joins | Manual specification | Auto-detect foreign keys | High | M | P1 | ✅ Done (JoinDetector with fuzzy matching) |
+| Initiative | Gap | Solution | Effort | Priority |
+|------------|-----|----------|--------|----------|
+| Dataset-as-object + library | Each upload re-loaded; no dedup | First-class `datasets` table; dedupe by content hash (CSV hashing exists) | M | **P0** |
+| Parquet / Delta / Iceberg ingestion | Parquet via cloud only; no Delta / Iceberg | `deltalake` + `pyiceberg` adapters in `data_ingestion.py` | M | **P0** |
+| Data lineage capture | None emitted | OpenLineage events from `engine.py` per agent step | M | **P1** |
+| Source freshness checks | Cached profile assumes static data | Hash-poll upstream; invalidate cache on drift | S | **P1** |
+| SQL agent query optimization | `SELECT *` then truncate is wasteful | Push LIMIT into prompt + `EXPLAIN`-then-confirm | M | **P1** |
+| Reverse ETL | None | Push notebook conclusions → Slack / Sheets / webhook | S | **P1** (overlaps webhooks) |
+| Streaming / CDC source | Batch-only | Kafka / Debezium consumer → micro-batch into Phase 1 | L | **P3** |
+| Partitioned cloud reads | Whole-file reads | Range-read / column projection on Parquet | M | **P3** |
+| Multi-sheet Excel support | First sheet only | Sheet picker + per-sheet ingestion | S | **P1** quick win |
+| Data contracts on outputs | Informal | Publish Phase 1 profile as JSON Schema; validate consumers | M | **P2** |
 
 ### Data Quality & Observability
 
-| Initiative | Current Gap/Pain | Proposed Solution | Data Impact | Effort | Priority |
-|------------|-----------------|-------------------|-------------|--------|----------|
-| Data Validation | Basic type detection | Great Expectations integration | High | M | P1 |
-| Data Lineage | No tracking | OpenLineage integration | Medium | L | P2 |
-| Quality Scoring | Manual thresholds | Automated quality alerts | High | S | P1 |
-| Freshness Monitoring | None | Staleness detection + alerts | Medium | S | P2 |
-| Data Contracts | Informal handoffs | Schema registry for agent communication | Medium | M | P2 |
+| Initiative | Current | Proposed | Priority |
+|------------|---------|----------|----------|
+| Data validation | Type detection + heuristics | Great Expectations integration, optional | **P1** |
+| Quality scoring | Manual thresholds | Automated quality alerts → audit log | **P1** |
+| Freshness monitoring | None | Staleness detection + alerts (per-dataset SLA) | **P2** |
+| Pipeline observability | Per-job phase events | OpenTelemetry traces per agent step | **P1** |
 
 ### Governance & Compliance
 
-| Initiative | Current Gap/Pain | Proposed Solution | Data Impact | Effort | Priority |
-|------------|-----------------|-------------------|-------------|--------|----------|
-| PII Detection | Manual | Presidio/spaCy NER scanning | High | M | P0 |
-| Data Masking | None | Automated PII masking before LLM | Critical | M | P0 |
-| Audit Logging | ✅ Done | Full access log with user, timestamp, IP, action | ✅ Shipped | M | P0 |
-| Retention Policies | Manual cache clearing | Automated TTL + configurable retention | Medium | S | P2 |
-| GDPR Right to Delete | Not implemented | User data deletion workflow | Critical | M | P1 |
-| Data Catalog | None | Metadata registry with discoverability | Medium | L | P2 |
+| Initiative | Current | Proposed | Priority |
+|------------|---------|----------|----------|
+| PII detection | Regex-based, post-hoc | Presidio / spaCy NER pre-LLM masking option | **P1** |
+| Data masking | At export only | At ingestion-to-LLM boundary (configurable) | **P1** |
+| Audit logging | ✅ API actions | + LLM prompt/response hash logging | **P1** |
+| Retention policies | Manual | Automated TTL + per-dataset retention class | **P2** |
+| GDPR right-to-delete | Not implemented | DSAR endpoint + cascade-delete workflow | **P1** |
+| Data catalog | Partial (data dictionary) | Metadata registry with discoverability + tags | **P2** |
 
 ### Performance & Cost
 
-| Initiative | Current Gap/Pain | Proposed Solution | Data Impact | Effort | Priority |
-|------------|-----------------|-------------------|-------------|--------|----------|
-| Query Caching | LLM-level only | Result caching for repeated queries | High | S | P1 |
-| Sampling Strategy | Fixed 10K rows | Adaptive stratified sampling | Medium | M | P2 |
-| Compression | None | Parquet/Delta Lake for large files | High | M | P2 |
-| Cost Tracking | Basic token count | Detailed cost attribution per job | High | S | P1 |
-| Resource Pooling | Per-job resources | Shared compute pool with priorities | Medium | L | P3 |
+| Initiative | Current | Proposed | Priority |
+|------------|---------|----------|----------|
+| Result caching | Phase 1 cached | Phase 2 result cache keyed by (profile_hash, mode, question) | **P1** |
+| Sampling | Fixed 10K rows for >100K | Adaptive stratified sampling (configurable per mode) | **P2** |
+| Compression | None on uploads | Parquet conversion option for CSVs > 100MB | **P2** |
+| Cost tracking | Per-job token count + price | Per-user / per-team rolling spend; budget enforcement | **P0** |
+| Resource pooling | Per-job kernel | Warm-pool kernels with cgroup limits | **P3** |
+
+**Data Engineer anchor initiatives (Phase 1):** Dataset-as-object + Delta/Iceberg + lineage. These convert Inzyts from "tool that runs on a CSV" into "tool that lives in a data platform."
 
 ---
 
 ## Perspective 7: 🧪 Data Scientist / ML Engineer
 
-**Focus:** Analytics capabilities, ML features, model lifecycle
+**Focus:** Analytics capabilities, ML features, model lifecycle, trust
 
-### Analytics & Insights Gaps
+### Analytics & Insight Gaps
 
-| ML/Analytics Feature | Use Case | Algorithm/Approach | Data Requirements | Complexity | Business Value |
-|---------------------|----------|-------------------|-------------------|------------|----------------|
-| Natural Language Queries | Text-to-SQL, conversational | LLM + SQL generation | Structured data | Medium | High | ✅ Done (SQLAgent + FollowUpAgent) |
-| Automated Insights | Pattern detection | Statistical tests + LLM narration | Any tabular data | Low | High | ✅ Done (Exploratory Conclusions Agent) |
-| What-If Analysis | Scenario simulation | Monte Carlo, sensitivity | Feature ranges | Medium | Medium | Not started |
-| Cohort Analysis | User lifecycle | Time-based segmentation | User events + dates | Medium | High | Not started |
-| Survival Analysis | Time-to-event | Kaplan-Meier, Cox regression | Event + duration data | Medium | Medium | Not started |
+| Capability | Use Case | Approach | Complexity | Value |
+|------------|----------|----------|------------|-------|
+| What-If analysis | Scenario simulation | Monte Carlo + sensitivity | M | M |
+| Cohort analysis | User lifecycle | Time-based segmentation | M | H |
+| Survival analysis | Time-to-event | Kaplan-Meier, Cox | M | M |
+| Counterfactual explanations | "What would have changed the outcome?" | DiCE / Alibi | M | H |
 
-### Machine Learning Feature Gaps
+### Mode Expansion
 
-| ML/Analytics Feature | Use Case | Algorithm/Approach | Data Requirements | Complexity | Business Value |
-|---------------------|----------|-------------------|-------------------|------------|----------------|
-| NLP/Text Classification | Sentiment, categorization | BERT, spaCy, LLMs | Text columns | High | High |
-| Anomaly Detection Mode | Fraud, outliers | Isolation Forest, Autoencoders | Numeric features | Medium | High |
-| Recommendation Engine | Product suggestions | Collaborative filtering | User-item interactions | High | High |
-| Deep Learning Mode | Complex patterns | PyTorch/TensorFlow | Large datasets | High | Medium |
-| AutoML Integration | Model selection | Auto-sklearn, FLAML | Target + features | Medium | High |
+| Mode | Use Case | Approach | Complexity | Value | Phase |
+|------|----------|----------|------------|-------|-------|
+| Anomaly Detection (8th) | "Find weird stuff" | IsolationForest + DBSCAN outliers + LLM narration | M | H | **P2** |
+| NLP / text (9th) | Free-text columns | Embeddings + BERTopic + classifier | L | H | **P3** |
+| Geospatial (10th) | Geographic data | Folium / Plotly + spatial joins | L | M | parking |
+| Deep Learning | Tabular DNN, image, sequence | PyTorch / Keras backends, TabNet | L | M | parking |
 
-### Model Lifecycle & MLOps
+### Model Lifecycle (MLOps)
 
-| ML/Analytics Feature | Use Case | Algorithm/Approach | Data Requirements | Complexity | Business Value |
-|---------------------|----------|-------------------|-------------------|------------|----------------|
-| Experiment Tracking | Compare runs | MLflow integration | Model params + metrics | Medium | High |
-| Model Registry | Version control | MLflow Model Registry | Trained models | Medium | High |
-| Feature Store | Feature reuse | Feast integration | Computed features | High | Medium |
-| Model Monitoring | Drift detection | Evidently, WhyLabs | Predictions + ground truth | Medium | High |
-| One-Click Deployment | Serve models | FastAPI + Docker | Trained model | Medium | High |
+| Capability | Current | Proposed | Phase |
+|------------|---------|----------|-------|
+| Experiment tracking | None | MLflow auto-logging hooked into Phase 2 validators | **P2** |
+| Model registry | None | MLflow Registry + per-tenant namespace | **P2** |
+| Feature store | None | Lightweight Feast or homemade keyed table | **P3** |
+| Model monitoring | None | Evidently for drift on registered models | **P3** |
+| One-click serving | None | FastAPI serving endpoint per registered model + scoring API | **P3** |
+| Retraining pipelines | None | Triggered by scheduler when drift threshold breached | **P3** |
+| AutoML strategy backend | Manual algo selection | FLAML or AutoGluon as opt-in strategy | **P3** |
 
-### Explainability & Trust
+### Explainability & Trust (highest-ROI in this perspective)
 
-| Feature | Current State | Proposed Enhancement |
-|---------|---------------|---------------------|
-| SHAP Values | Diagnostic mode only | All predictive modes |
-| Feature Importance | Random Forest only | Model-agnostic (LIME, SHAP) |
-| Confidence Scores | Binary output | Probability calibration |
-| Bias Detection | None | Fairlearn integration |
-| Model Cards | None | Auto-generated documentation |
+| Feature | Current | Proposed | Phase |
+|---------|---------|----------|-------|
+| Confidence scoring on conclusions | None | Self-consistency sampling + agreement score → UI chip | **P1** |
+| SHAP everywhere | Diagnostic mode only | Explainer agent runs after every Phase 2 mode | **P2** |
+| Feature importance | RF only | Model-agnostic (LIME / SHAP) | **P2** |
+| Bias / fairness audit | None | `fairlearn` audit when sensitive cols flagged | **P2** |
+| Model cards | None | Auto-generated for each predictive run | **P3** |
+| LLM call audit (prompt/response) | Cost only | Hash + retention-policied log | **P1** |
 
-### Advanced Capabilities
+### Advanced AI Capabilities
 
-| Feature | Description | Complexity | Value |
-|---------|-------------|------------|-------|
-| LLM-Powered Agents | Claude/GPT for reasoning | Already implemented | ✅ |
-| RAG for Domain Knowledge | Context-aware analysis | Medium | High |
-| Multi-Agent Collaboration | 27-agent system | Already implemented | ✅ |
-| Active Learning | Learn from user corrections | High | High |
-| Ensemble Methods | Model combination | Medium | Medium |
+| Capability | Current | Proposed | Phase |
+|------------|---------|----------|-------|
+| RAG over past runs | None | Embed conclusions + chart captions in pgvector; retrieve on similar runs | **P3** |
+| Active learning from corrections | None | Capture user edits to LLM outputs; re-rank prompts | **P3** |
+| Multi-LLM router | Single global LLM | Per-task routing: cheap for routing/extraction, premium for codegen | **P2** |
+| Agentic debugging | Validator retry only | Dedicated debug agent with tool access | **P2** |
+| Edge / ONNX export | None | Export sklearn → ONNX, ship via /predict | parking |
+
+**DS/ML anchor initiatives:** **Confidence scoring + LLM call audit + multi-LLM router** in Phase 1–2. These are the trust + cost levers; everything else (NLP mode, MLflow, model registry) is downstream of them.
 
 ---
 
 ## Perspective 8: 🛡️ Security Engineer
 
-**Focus:** Threat mitigation, compliance, secure development
+**Focus:** Threat mitigation, compliance, secure development, AI/ML security
 
 ### Security Maturity Assessment
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│ Security Domain              │ Current │ Target │ Gap     │
-├──────────────────────────────┼─────────┼────────┼─────────┤
-│ Authentication & AuthZ       │   4     │   4    │   0     │  ← JWT + RBAC (3-tier) + audit logging done
-│ Application Security         │   4     │   4    │   0     │  ← XSS, error sanitization, input validation done
-│ Data Security                │   3     │   4    │   1     │  ← Credential masking, read-only SQL; PII masking remains
-│ Infrastructure Security      │   4     │   4    │   0     │  ← Non-root, network isolation, resource limits done
-│ Threat Detection & Response  │   1     │   3    │   2     │
-│ Compliance & Governance      │   1     │   4    │   3     │
-│ Secure Development Lifecycle │   4     │   4    │   0     │  ← Prompt injection prevention, code sandbox done
-│ AI/ML Security               │   3     │   4    │   1     │  ← Prompt sanitization done; PII masking before LLM remains
-└────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────┬─────────┬────────┬─────┐
+│ Domain                          │ Current │ Target │ Gap │
+├─────────────────────────────────┼─────────┼────────┼─────┤
+│ Authentication & AuthZ          │   3     │   5    │  2  │  ← SSO + MFA + secrets manager
+│ Application Security            │   3     │   4    │  1  │  ← SAST/DAST + dependency scan
+│ Data Security                   │   2     │   4    │  2  │  ← envelope encryption + per-tenant keys
+│ Infrastructure Security         │   3     │   4    │  1  │  ← gVisor / Firecracker sandbox
+│ Threat Detection & Response     │   1     │   3    │  2  │  ← SIEM + alert rules + IR playbooks
+│ Compliance & Governance        │   1     │   3    │  2  │  ← SOC 2 Type 1 evidence
+│ Secure Development Lifecycle    │   2     │   4    │  2  │  ← threat modeling, security training
+│ AI/ML Security                  │   3     │   4    │  1  │  ← LLM output validation + injection corpus
+└─────────────────────────────────┴─────────┴────────┴─────┘
 ```
 
-### Critical Security Initiatives
+### Top Security Initiatives (next 12 months)
 
-| Security Initiative | Threat/Risk Addressed | Severity | Compliance Impact | Complexity | Priority | Status |
-|---------------------|----------------------|----------|-------------------|------------|----------|--------|
-| JWT Authentication | Unauthorized access to all data | Critical | SOC 2, GDPR | M | **P0** | ✅ Done |
-| RBAC Implementation | Privilege escalation, data leakage | Critical | SOC 2, HIPAA | M | **P0** | ✅ Done (Admin/Analyst/Viewer hierarchy, require_role dependency) |
-| Audit Logging | No accountability, compliance failure | High | SOC 2, GDPR | M | **P0** | ✅ Done (audit_logs table, AuditMiddleware, record_audit helper) |
-| PII Detection & Masking | Sensitive data sent to LLMs | Critical | GDPR, CCPA | M | **P0** | ✅ Done (regex-based PII scanner + optional masking in exports) |
-| Secret Management | API keys in .env exposed | High | All frameworks | S | **P0** | Not started |
-| Input Validation (LLM) | Prompt injection attacks | High | - | M | **P0** | ✅ Done (prompt_sanitizer.py) |
-| TLS 1.3 Enforcement | Man-in-the-middle attacks | High | PCI-DSS | S | **P1** | Not started |
-| Container Security | Privilege escalation in Docker | Medium | SOC 2 | S | **P1** | ✅ Done (non-root, network isolation, resource limits) |
-| Dependency Scanning | Vulnerable packages | High | All frameworks | S | **P1** | Not started |
-| Rate Limiting | DoS, abuse, cost explosion | Medium | - | S | **P1** | ✅ Done (slowapi) |
-| SIEM Integration | No threat visibility | Medium | SOC 2 | L | **P2** | Not started |
-| Penetration Testing | Unknown vulnerabilities | High | SOC 2, PCI | External | **P2** | Not started |
-| SSO (SAML/OIDC) | Enterprise identity requirements | Medium | Enterprise | M | **P2** | Not started |
-| Model Security | Model extraction, poisoning | Medium | - | L | **P3** | Not started |
+| Initiative | Threat | Severity | Compliance | Cx | Priority |
+|------------|--------|----------|------------|----|----------|
+| SSO (OIDC / SAML) + MFA enforcement | Account takeover, weak passwords | High | SOC 2 / ISO 27001 | M | **P0** |
+| Secrets manager integration (Vault / AWS SM) | `.env` proliferation; JWT secret in plaintext | Med | SOC 2 | M | **P0** |
+| SAST (Semgrep) + dependency scan in CI | Supply chain | Med | SOC 2 | S | **P0** quick win |
+| Cost budgets per user (already in PM list) | Cost-explosion via prompt abuse | High | — | S | **P0** |
+| Prompt injection regression corpus | Indirect injection escalation | High | — | S | **P0** |
+| LLM output validation layer | Code/SQL injection via data | High | — | M | **P0** |
+| LLM call audit log (prompt/response hash) | Trace AI decisions for compliance | Med | SOC 2 | S | **P1** |
+| Per-tenant envelope encryption for uploads | Cross-tenant data leak | High | GDPR | M | **P1** |
+| TLS 1.3 enforcement | MITM | High | PCI-DSS | S | **P1** |
+| DAST against staging (OWASP ZAP) weekly | Injection / auth bypass regressions | Med | SOC 2 | S | **P1** |
+| Centralized SIEM (Loki+Grafana or Datadog) | Detection gap | High | SOC 2 | M | **P1** |
+| Postgres row-level security on jobs/notebooks/datasets | AuthZ bypass | Med | GDPR | M | **P1** |
+| Sandbox upgrade to gVisor / Firecracker | LLM-generated code escape | High | — | L | **P2** |
+| Threat model (STRIDE) per new feature in PR template | Unmodeled risk | Med | SOC 2 | S | **P1** |
+| GDPR DSAR endpoints (delete + export) | Subject rights | High | GDPR | M | **P1** |
+| Bug bounty / responsible disclosure | Unknown vulns | Med | — | S | **P2** |
+| Penetration test (external) | Unknown vulns | High | SOC 2 | External | **P2** |
+| SOC 2 Type 1 audit | Procurement gating | High | SOC 2 | External | **P2** |
 
-### AI/ML Security (Critical for Inzyts)
+### AI/ML Security (Inzyts-specific)
 
-| Initiative | Threat/Risk | Mitigation | Priority |
-|------------|-------------|------------|----------|
-| Prompt Injection Prevention | Malicious user prompts hijack agents | Input sanitization, output validation | ✅ Done (prompt_sanitizer.py) |
-| LLM Output Filtering | Harmful/incorrect code generation | Code sandbox, validation loops | ✅ Done |
-| Agent Action Validation | Rogue agent behavior | Action allowlists, capability restrictions | **P1** |
-| Training Data Provenance | Data poisoning | Audit templates, domain templates | **P2** |
-| Prompt/Response Logging | Audit trail for AI decisions | Immutable logs with retention | **P1** | Partial — API audit logging ✅; LLM prompt/response logging remains |
-| Rate Limiting for LLMs | Cost explosion attacks | Per-user token budgets | ✅ Partial (cost tracking done; budgets remain) |
+| Initiative | Threat | Mitigation | Priority |
+|------------|--------|------------|----------|
+| Prompt injection corpus in `tests/security/` | Known-bad inputs as regression tests | PromptInjection-Bench harness | **P0** |
+| LLM output schema + denylist | Malicious code/SQL emitted | Pydantic + regex denylist on agent outputs | **P0** |
+| Sandbox escape adversarial CI test | Bypass via `import os`, file write, network | Add expected-fail test to CI | **P0** |
+| Agent action allowlist | Rogue tool use | Per-agent tool capability declaration | **P1** |
+| LLM prompt/response retention | Auditability of AI decisions | Hash + retention class | **P1** |
+| Model extraction protection (when serving) | Stealing trained models | Rate limit + watermarking | **P3** |
 
 ### Compliance Roadmap
 
-| Framework | Current State | Required Actions | Target Date |
-|-----------|---------------|------------------|-------------|
-| **SOC 2 Type II** | In progress | ✅ Auth, audit logs, access controls done — policies, monitoring remain | Q3 2026 |
-| **GDPR** | In progress | ✅ Auth + audit done — consent, deletion, data portability remain | Q2 2026 |
-| **HIPAA** | Not started | PHI handling, encryption, BAA | Q4 2026 |
-| **ISO 27001** | Not started | ISMS, risk assessment | Q4 2026 |
+| Framework | Current | Required Actions | Target |
+|-----------|---------|------------------|--------|
+| **SOC 2 Type 1** | Controls partial | SSO, secrets manager, SIEM, SDL/SAST, IR playbook | End of Phase 2 (~6mo) |
+| **SOC 2 Type II** | Not started | 6-month evidence period after Type 1 | End of Phase 3 (~12mo) |
+| **GDPR** | Partial (audit + RBAC + per-job ownership) | DSAR endpoints, masking-at-LLM-boundary, retention policy | End of Phase 1 |
+| **HIPAA** | Not started | BAA, envelope encryption, PHI handling, audit retention SLA | Defer to demand |
+| **ISO 27001** | Not started | ISMS, risk register, policies | Phase 3+ |
+
+### Security Gates Between Phases
+
+| Gate | Required before proceeding |
+|------|----------------------------|
+| **P1 → P2** | SAST + dep-scan green; prompt-injection regression suite green; cost budgets enforced; LLM output validation live; sandbox-escape adversarial test green |
+| **P2 → P3** | SSO live; secrets manager replacing `.env`; RLS on jobs/notebooks/datasets; OTEL tracing in prod; SIEM operational |
+| **Exit P3** | SOC 2 Type 1 audit started; sandbox hardened (gVisor/Firecracker); lineage capture on >90% of runs; incident response tested |
 
 ---
 
-## Unified Roadmap Synthesis
+## Unified 12-Month Plan
 
-### Release Timeline Overview
+Three rolling phases of ~3–4 months. Each item has an owner perspective (🎯 PM, 🎨 UX, 🏗️ Arch, 👤 User, 🚀 Growth, 🔧 Data, 🧪 ML, 🛡️ Security).
 
-```
-┌────────────────────────────────────────────────────────────────────────────────┐
-│                           INZYTS RELEASE ROADMAP                               │
-├────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                │
-│  CURRENT: v0.10.0 (March 2026) ✅                                              │
-│  └─ 27-agent system, 7 modes, caching, data quality remediation,              │
-│     JWT auth, RBAC (Admin/Analyst/Viewer), audit logging, SQL connectors,     │
-│     conversational follow-up, interactive editing, Docker hardening,          │
-│     rate limiting, prompt injection prevention, cost tracking, credential      │
-│     masking, DOMPurify XSS prevention, read-only SQL, LRU session eviction    │
-│                                                                                │
-│  ════════════════════════════════════════════════════════════════════════════ │
-│                                                                                │
-│  v2.0.0 (Q2 2026) - "Reporting & Access Control" 📄🔒                         │
-│  ├─ ✅ Authentication (JWT + bcrypt) — SHIPPED in v0.10.0                      │
-│  ├─ ✅ Natural Language Chat Interface — SHIPPED (FollowUpAgent)               │
-│  ├─ ✅ Prompt Injection Prevention — SHIPPED (prompt_sanitizer.py)             │
-│  ├─ ✅ Role-Based Access Control (RBAC) — SHIPPED (Admin/Analyst/Viewer)       │
-│  ├─ ✅ Audit Logging — SHIPPED (audit_logs table + middleware)                 │
-│  ├─ ✅ PDF/HTML/PPTX/Markdown Report Export — SHIPPED                           │
-│  ├─ ✅ Executive Summary Generator (LLM-powered) — SHIPPED                     │
-│  └─ ✅ PII Detection & Masking — SHIPPED                                       │
-│                                                                                │
-│  v2.1.0 (Q3 2026) - "Dashboard & Collaboration" 📊👥                          │
-│  ├─ ✅ SQL Database Connectors — SHIPPED (PG, MySQL, MSSQL + SQLAgent)        │
-│  ├─ Interactive Dashboard Builder                                              │
-│  ├─ Dashboard Templates (Executive, KPI, Operational)                          │
-│  ├─ Team Workspaces                                                            │
-│  ├─ Share with Link (Public/Private)                                           │
-│  ├─ PowerPoint (PPTX) Export                                                  │
-│  ├─ ✅ Snowflake + Cloud DB Connectors (Done — BigQuery, Snowflake, Redshift)  │
-│  ├─ SAST/DAST in CI/CD                                                        │
-│  └─ Data Catalog (Metadata Management)                                        │
-│                                                                                │
-│  v2.2.0 (Q3 2026) - "Data Scientist Productivity" 🔬⚡                        │
-│  ├─ MLflow Experiment Tracking Integration                                     │
-│  ├─ Model Registry & Versioning                                               │
-│  ├─ NLP/Text Analysis Mode                                                    │
-│  ├─ Anomaly Detection Mode (Enhanced)                                         │
-│  ├─ ✅ Cloud Storage Connectors (Done — S3, GCS, Azure Blob)                  │
-│  ├─ Scheduled Reports & Data Refresh                                           │
-│  ├─ SOC 2 Type II Certification                                               │
-│  └─ SHAP for All Predictive Modes                                             │
-│                                                                                │
-│  v3.0.0 (Q4 2026) - "Enterprise & Advanced AI" 🏢🤖                           │
-│  ├─ Enterprise SSO (SAML, OIDC, Active Directory)                             │
-│  ├─ Multi-tenancy with Isolated Environments                                  │
-│  ├─ Deep Learning Mode (TensorFlow/PyTorch)                                   │
-│  ├─ Model Deployment (One-click REST API)                                     │
-│  ├─ Feature Store Integration                                                 │
-│  ├─ Compliance Dashboard (SOC2, HIPAA, GDPR)                                  │
-│  ├─ Plugin Marketplace                                                        │
-│  └─ Active Learning from User Corrections                                      │
-│                                                                                │
-└────────────────────────────────────────────────────────────────────────────────┘
-```
+### Phase 1 — Trust & Quick Wins (months 0–3)
+**Theme:** Stop the bleed; ship the perception/safety wins; preserve cache on bigger work.
 
-### Phase 1: Foundation (0-3 months) - v2.0.0
+| Initiative | Owner | Pri | Effort |
+|------------|-------|-----|--------|
+| SSE-streamed agent reasoning | 🎨 🏗️ | P0 | S |
+| Cost budgets per user/team (default-on) | 🎯 🛡️ | P0 | S |
+| Confidence scoring on conclusions (chip + tooltip) | 🧪 👤 | P0 | M |
+| Dataset-as-object + library (dedup by hash) | 🔧 | P0 | M |
+| MCP server exposing Inzyts | 🚀 | P0 | S |
+| LLM output validation layer | 🛡️ 🧪 | P0 | M |
+| Prompt-injection regression corpus | 🛡️ 🧪 | P0 | S |
+| SAST (Semgrep) + dep-scan in CI | 🛡️ | P0 | S |
+| Webhook notifications (Slack / Teams / HTTP) | 🎯 | P1 | S |
+| Word (.docx) + Notebook → Python script export | 🎯 | P1 | S |
+| Cmd-K command palette | 🎨 | P1 | M |
+| Demo dataset gallery + onboarding tour | 🎨 | P1 | S |
+| Multi-sheet Excel ingestion | 🔧 | P1 | S |
+| LLM call audit log (prompt/response hash) | 🛡️ 🧪 | P1 | S |
+| Result cache on Phase 2 (profile_hash + mode + question) | 🔧 | P1 | M |
+| Sandbox escape adversarial CI test | 🛡️ | P0 | S |
+| Threat-model section in PR template | 🛡️ | P1 | S |
 
-**Theme:** Security Foundation & Stakeholder Communication
+**Phase 1 success criteria:**
+- Median perceived time-to-first-output < 30s (via SSE).
+- 0 cost-overrun incidents post-budget rollout.
+- Confidence chip visible on ≥90% of conclusions.
+- MCP server has ≥200 active sessions/mo.
+- All P0 security items shipped; SAST + dep-scan green in CI.
 
-| Initiative | Owner | Priority | Effort | Dependencies | Status |
-|------------|-------|----------|--------|--------------|--------|
-| JWT Authentication + OAuth2 | 🛡️ Security | P0 | M | None | ✅ JWT done; OAuth2 remains |
-| RBAC (3-tier: Admin/Analyst/Viewer) | 🛡️ Security | P0 | M | Auth | ✅ Done |
-| Audit Logging | 🛡️ Security | P0 | M | Auth | ✅ Done |
-| PII Detection & Masking | 🛡️🔧 Security/Data | P0 | M | None | ✅ Done (regex-based PII scanner + masking in report export) |
-| Secret Management (Vault) | 🛡️🏗️ Security/Arch | P0 | S | None | Not started |
-| PDF/HTML Report Export | 🎯 Product | P1 | S | None | ✅ Done (PDF, HTML, PPTX, Markdown) |
-| Executive Summary Generator | 🎯🧪 Product/ML | P1 | M | Report Export | ✅ Done (LLM-powered with fallback) |
-| Chat with Data Interface | 🎯🎨 Product/UX | P1 | M | None | ✅ Done (FollowUpAgent + FollowUpChat) |
-| Prompt Injection Prevention | 🛡️ Security | P0 | M | None | ✅ Done (prompt_sanitizer.py) |
-| Error Message Improvements | 🎨 UX | P1 | S | None | ✅ Done (sanitized error responses) |
-| Onboarding Tutorial | 🎨 UX | P1 | S | None | Not started |
+### Phase 2 — Sellability (months 3–6)
+**Theme:** Make it Team-tier sellable; pass the procurement filter.
 
-**Security Gate:** All P0 security items must be resolved before Phase 2.
+| Initiative | Owner | Pri | Effort |
+|------------|-------|-----|--------|
+| Dashboard builder (pinned cells → widgets) | 🎯 🎨 | P0 | L |
+| Team workspaces + role-based sharing | 🎯 🛡️ | P0 | L |
+| Share-by-link (read-only public/private) | 🎯 | P0 | M |
+| SSO (OIDC + SAML via WorkOS / Authentik) + MFA | 🛡️ 🎯 | P0 | M |
+| Secrets manager integration (Vault / AWS SM) | 🛡️ 🏗️ | P0 | M |
+| MLflow auto-logging on Phase 2 validators | 🧪 | P1 | M |
+| Anomaly detection mode (8th) | 🧪 | P1 | M |
+| OpenTelemetry tracing across all agents | 🏗️ | P1 | M |
+| Versioned handoff schemas (`v1`, `v2`) | 🏗️ | P1 | M |
+| Postgres RLS on jobs / notebooks / datasets | 🛡️ 🏗️ | P1 | M |
+| GDPR DSAR endpoints (delete + export) | 🛡️ | P1 | M |
+| SHAP-everywhere explainer agent | 🧪 | P1 | M |
+| Multi-LLM router with per-task model | 🧪 🏗️ | P1 | M |
+| TLS 1.3 enforcement + DAST weekly | 🛡️ | P1 | S |
+| SIEM (Loki + Grafana or Datadog) | 🛡️ | P1 | M |
+| Pre-LLM PII masking option (Presidio) | 🔧 🛡️ | P1 | M |
+| Run history with diff view | 👤 🎯 | P1 | M |
+| Scheduled runs (cron) | 👤 🎯 | P1 | M |
+| Agentic debugging | 🧪 🚀 | P2 | M |
 
-### Phase 2: Enhancement (3-6 months) - v2.1.0
+**Phase 2 success criteria:**
+- ≥10 design-partner orgs on Team tier.
+- ≥50 active team workspaces.
+- SSO unblocks ≥5 enterprise prospects.
+- SOC 2 Type 1 audit prep started; ≥80% controls have evidence.
+- DSAR endpoints live; pre-LLM PII masking opt-in available.
 
-**Theme:** Collaboration & Data Connectivity
+### Phase 3 — Leverage & Platform (months 6–12)
+**Theme:** Turn the 27-agent system into a platform; place inside ecosystems; certify.
 
-| Initiative | Owner | Priority | Effort | Dependencies |
-|------------|-------|----------|--------|--------------|
-| Interactive Dashboard Builder | 🎯🎨 Product/UX | P1 | L | Auth | Not started |
-| Dashboard Templates | 🎨 UX | P2 | M | Dashboard Builder | Not started |
-| Team Workspaces | 🎯 Product | P2 | M | Auth, RBAC | Not started |
-| Share with Link (Public/Private) | 🎯 Product | P2 | S | Auth | Not started |
-| PowerPoint Export | 🎯 Product | P2 | S | Report System | ✅ Done (python-pptx with branded slides) |
-| SQL Connectors (PG, MySQL, Snowflake) | 🔧 Data | P1 | M | None | ✅ Done (PG, MySQL, MSSQL, BigQuery, Snowflake, Redshift, Databricks) |
-| Data Catalog (Metadata) | 🔧 Data | P2 | M | SQL Connectors | ✅ Partial (data dictionary) |
-| SAST/DAST in CI/CD | 🛡️ Security | P1 | M | None | Not started |
-| Container Security Hardening | 🛡️🏗️ Security/Arch | P1 | S | None | ✅ Done (non-root, network isolation, resource limits) |
-| Rate Limiting | 🛡️🏗️ Security/Arch | P1 | S | None | ✅ Done (slowapi) |
-| TLS 1.3 Enforcement | 🛡️ Security | P1 | S | None | Not started |
+| Initiative | Owner | Pri | Effort |
+|------------|-------|-----|--------|
+| Plugin / agent SDK (manifests + capability decls) | 🏗️ 🚀 | P0 | L |
+| NLP / text mode (9th) | 🧪 | P1 | L |
+| RAG over past runs (cross-run memory in pgvector) | 🧪 🚀 | P1 | M |
+| OpenLineage emission per agent step | 🔧 | P1 | M |
+| Delta / Iceberg ingestion adapters | 🔧 | P1 | M |
+| Sandbox upgrade to gVisor / Firecracker | 🛡️ 🏗️ | P1 | L |
+| SOC 2 Type 1 audit (external) | 🛡️ 🎯 | P1 | External |
+| Fairness / bias audit module | 🧪 🛡️ | P2 | M |
+| Embedded mode (white-label widget + JWT exchange) | 🚀 | P1 | M |
+| Model registry + serving (MLflow + FastAPI scoring) | 🧪 🏗️ | P2 | L |
+| Worker autoscaling (Celery → KEDA) | 🏗️ | P2 | M |
+| Plugin marketplace (browse / install / submit) | 🚀 | P2 | L |
+| Reverse ETL (push conclusions to webhooks/Sheets) | 🔧 | P2 | S |
+| API v3 with deprecation contract | 🏗️ | P2 | M |
+| Compliance dashboard (SOC 2 / GDPR / HIPAA evidence) | 🛡️ | P2 | M |
+| Custom agent prompt overrides | 👤 | P3 | S |
+| SOC 2 Type II evidence period started | 🛡️ | P2 | External |
 
-**Security Gate:** SAST/DAST operational, security logging active.
-
-### Phase 3: Growth (6-12 months) - v2.2.0
-
-**Theme:** Data Science Productivity & Scale
-
-| Initiative | Owner | Priority | Effort | Dependencies |
-|------------|-------|----------|--------|--------------|
-| MLflow Experiment Tracking | 🧪 ML | P2 | M | None |
-| Model Registry & Versioning | 🧪 ML | P2 | M | MLflow |
-| NLP/Text Analysis Mode | 🧪 ML | P2 | L | None |
-| Anomaly Detection Mode | 🧪 ML | P2 | M | None |
-| Cloud Storage Connectors (S3, GCS) | 🔧 Data | P2 | M | None | ✅ Done (S3, GCS, Azure Blob + REST API extraction) |
-| Scheduled Reports & Refresh | 🔧🎯 Data/Product | P2 | M | Report System |
-| SHAP for All Modes | 🧪 ML | P2 | M | None |
-| Advanced Threat Detection (SIEM) | 🛡️ Security | P2 | L | Audit Logs |
-| Penetration Testing | 🛡️ Security | P2 | External | Phase 2 complete |
-| SOC 2 Type II Audit | 🛡️ Security | P2 | External | All security gates |
-| Database Read Replicas | 🏗️ Arch | P2 | M | None |
-| Auto-scaling Workers | 🏗️ Arch | P2 | M | None |
-
-**Security Gate:** SOC 2 audit passed, incident response tested.
-
-### Phase 4: Innovation (12-24 months) - v3.0.0
-
-**Theme:** Enterprise & Advanced AI
-
-| Initiative | Owner | Priority | Effort | Dependencies |
-|------------|-------|----------|--------|--------------|
-| Enterprise SSO (SAML/OIDC) | 🛡️ Security | P3 | M | Auth System |
-| Multi-tenancy with Isolation | 🏗️ Arch | P3 | XL | SSO |
-| Deep Learning Mode | 🧪 ML | P3 | L | None |
-| One-Click Model Deployment | 🧪🏗️ ML/Arch | P3 | L | Model Registry |
-| Feature Store Integration | 🧪🔧 ML/Data | P3 | L | MLflow |
-| Compliance Dashboard | 🛡️ Security | P3 | M | Audit Logs |
-| Active Learning from Corrections | 🧪🚀 ML/Growth | P3 | L | All modes stable |
-| Plugin Marketplace | 🚀 Growth | P3 | L | API Stable |
-| Zero-Trust Architecture | 🛡️ Security | P3 | XL | SSO, Multi-tenancy |
-| HIPAA/PCI-DSS Compliance | 🛡️ Security | P3 | L | All prior compliance |
+**Phase 3 success criteria:**
+- ≥5 third-party plugins published.
+- ≥1 named placement in Anthropic / IDE ecosystem (MCP-driven).
+- SOC 2 Type 1 certified.
+- Sandbox running on gVisor/Firecracker in prod.
+- Lineage emission on ≥90% of runs.
 
 ---
 
-## Implementation Details
+## Dependencies, Gates, Risks, Metrics
 
-### Final Roadmap Summary Table
-
-```
-┌───────────────────────────────────────────────────────────────────────────────────┐
-│                              INZYTS ROADMAP v2.0-v3.0                             │
-├───────────────────────────────────────────────────────────────────────────────────┤
-│ Phase │ Initiative                       │ Owner      │ Priority │ Effort        │
-├───────┼──────────────────────────────────┼────────────┼──────────┼───────────────┤
-│ P1    │ JWT Authentication + OAuth2      │ 🛡️ Security│ P0       │ M    ✅ JWT   │
-│ ✅    │ RBAC (3-tier)                    │ 🛡️ Security│ P0       │ M  ✅ DONE    │
-│ ✅    │ Audit Logging                    │ 🛡️ Security│ P0       │ M  ✅ DONE    │
-│ ✅    │ PII Detection & Masking          │ 🛡️🔧       │ P0       │ M  ✅ DONE    │
-│ P1    │ Prompt Injection Prevention      │ 🛡️ Security│ P0       │ M    ✅ Done  │
-│ ✅    │ PDF/HTML Report Export           │ 🎯 Product │ P1       │ S  ✅ DONE    │
-│ ✅    │ Executive Summary Generator      │ 🎯🧪       │ P1       │ M  ✅ DONE    │
-│ P1    │ Chat with Data Interface         │ 🎯🎨       │ P1       │ M    ✅ Done  │
-├───────┼──────────────────────────────────┼────────────┼──────────┼───────────────┤
-│ P2    │ Interactive Dashboard Builder    │ 🎯🎨       │ P1       │ L             │
-│ P2    │ SQL Connectors                   │ 🔧 Data    │ P1       │ M    ✅ Done  │
-│ P2    │ Team Workspaces                  │ 🎯 Product │ P2       │ M             │
-│ P2    │ Share with Link                  │ 🎯 Product │ P2       │ S             │
-│ P2    │ SAST/DAST in CI/CD               │ 🛡️ Security│ P1       │ M             │
-│ ✅    │ PowerPoint Export                │ 🎯 Product │ P2       │ S  ✅ DONE    │
-├───────┼──────────────────────────────────┼────────────┼──────────┼───────────────┤
-│ P3    │ MLflow Integration               │ 🧪 ML      │ P2       │ M             │
-│ P3    │ NLP/Text Analysis Mode           │ 🧪 ML      │ P2       │ L             │
-│ P3    │ Anomaly Detection Mode           │ 🧪 ML      │ P2       │ M             │
-│ P3    │ ✅ Cloud Storage Connectors      │ 🔧 Data    │ P2       │ M (Done)      │
-│ P3    │ Scheduled Reports                │ 🔧🎯       │ P2       │ M             │
-│ P3    │ SOC 2 Type II Certification      │ 🛡️ Security│ P2       │ External      │
-├───────┼──────────────────────────────────┼────────────┼──────────┼───────────────┤
-│ P4    │ Enterprise SSO                   │ 🛡️ Security│ P3       │ M             │
-│ P4    │ Multi-tenancy                    │ 🏗️ Arch    │ P3       │ XL            │
-│ P4    │ Deep Learning Mode               │ 🧪 ML      │ P3       │ L             │
-│ P4    │ One-Click Model Deployment       │ 🧪🏗️       │ P3       │ L             │
-│ P4    │ Feature Store                    │ 🧪🔧       │ P3       │ L             │
-│ P4    │ Compliance Dashboard             │ 🛡️ Security│ P3       │ M             │
-│ P4    │ Plugin Marketplace               │ 🚀 Growth  │ P3       │ L             │
-└───────────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Cross-Perspective Dependency Matrix
+### Cross-Perspective Dependency Chain
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────────────────────┐
-│  🛡️ Auth Framework ──► 🛡️ RBAC ──► 🛡️ Audit Logs ──► 🎯 Workspaces ──► 🎯 Share Links     │
-│         │                  │              │                                                  │
-│         └──────────────────┼──────────────┼──────────────────────────────────────────────── │
-│                            │              │                                                  │
-│  🛡️ PII Detection ────────┼──────────────┼──► 🔧 Data Catalog ──► 🧪 NLP Mode              │
-│                            │              │                                                  │
-│  🔧 SQL Connectors ────────┼──────────────┼──► 🎯 Dashboards ──► 📊 Scheduled Reports       │
-│                            │              │                                                  │
-│  🧪 MLflow ───────────────►🧪 Model Registry ──► 🧪 Model Deployment ──► 🎯 Feature Store  │
-│                            │              │                                                  │
-│  🛡️ SAST/DAST ────────────►🛡️ Pen Test ──► 🛡️ SOC 2 ──► 🛡️ Enterprise SSO ──► Multi-tenant│
-└──────────────────────────────────────────────────────────────────────────────────────────────┘
+🛡️ SSO + Secrets Mgr ──► 🏗️ RLS + Versioned Schemas ──► 🎯 Workspaces ──► 🎯 Dashboards
+        │                                                                         │
+        └──► 🛡️ SIEM ──► 🛡️ SOC 2 Type 1 audit ◄───────── Enterprise sale ────────┘
+
+🏗️ Plugin SDK ──► 🧪 NLP / Anomaly modes ──► 🚀 Agent marketplace
+🔧 Dataset-as-object ──► 🔧 Lineage ──► 🧪 RAG over past runs ──► 🚀 Cross-run memory
+🎨 SSE streaming + 🧪 Confidence scoring  ──► 👤 Trust  ──► 🎯 Conversion
+🛡️ LLM output validation ──► 🛡️ Sandbox escape test ──► 🛡️ gVisor sandbox ──► HIPAA option
 ```
 
-### Security Gate Requirements
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ Phase Gate │ Security Requirements Before Proceeding            │
-├────────────┼────────────────────────────────────────────────────┤
-│ P1 → P2    │ JWT + RBAC + Audit Logs ✅ + PII Detection ✅ + Report Export ✅ deployed │
-│ P2 → P3    │ SAST/DAST in CI/CD, rate limiting, TLS enforced    │
-│ P3 → P4    │ SOC 2 audit passed, incident response tested       │
-│ P4 Exit    │ Zero-trust architecture, HIPAA/ISO 27001 ready     │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Risk Register (Top 3 per Phase)
+### Top Risks per Phase
 
 | Phase | Risk | Likelihood | Impact | Mitigation |
 |-------|------|------------|--------|------------|
-| P1 | Auth implementation delays MVP | Medium | High | Start auth in parallel with reports |
-| P1 | LLM prompt injection exploits | High | Critical | Implement input sanitization first |
-| P1 | PII accidentally sent to LLMs | High | Critical | Block LLM calls until masking works |
-| P2 | Dashboard complexity underestimated | High | Medium | Use existing chart library (Plotly) |
-| P2 | SQL injection via connectors | Medium | High | Parameterized queries only |
-| P2 | Database scaling issues at growth | Medium | High | Implement read replicas early |
-| P3 | MLflow integration complexity | Medium | Medium | Start with experiment logging only |
-| P3 | SOC 2 audit findings | Medium | High | Engage auditor early for pre-audit |
-| P3 | Cost explosion from LLM usage | Medium | Medium | Implement hard token budgets |
-| P4 | Multi-tenancy data leakage | Medium | Critical | Schema isolation + extensive testing |
-| P4 | SSO integration with diverse IdPs | Medium | Medium | Start with top 3 (Okta, Azure AD, Google) |
-| P4 | Scope creep on advanced AI | High | Medium | Timebox each mode to fixed sprints |
+| P1 | SSE refactor regresses progress events | Med | Med | Contract tests on `progress_tracker`; feature flag |
+| P1 | Dataset dedup migration loses upload references | Med | High | Dual-write window + content-hash backfill |
+| P1 | MCP server exposes unauthenticated path | Med | High | Same JWT gating as REST; CI test for unauth |
+| P1 | LLM output validation breaks existing agents | Med | Med | Schema versioned; opt-in per-agent; canary |
+| P2 | Dashboard scope creep ("just like Tableau") | High | Med | MVP = pin existing cells; explicit non-goals |
+| P2 | SSO admin lockout | Med | High | Local-auth fallback for at least 1 admin |
+| P2 | MLflow disk growth | Med | Med | Retention policy from day 1 |
+| P2 | Pre-LLM PII masking degrades analysis quality | Med | Med | Opt-in; per-column control; A/B against unmasked |
+| P3 | Plugin SDK ABI break | High | High | Version handoffs first; schemas before plugins |
+| P3 | gVisor perf regression on Phase 2 | Med | Med | Benchmark suite; flag-flip per environment |
+| P3 | SOC 2 evidence collection chews engineer time | High | Med | Start trail capture in P2 (passive logging) |
 
-### Success Metrics by Phase
+### KPIs by Phase
 
 | Phase | Metric | Target |
 |-------|--------|--------|
-| P1 | User registration completion | >70% |
-| P1 | Report exports/week | 200+ |
-| P1 | Security vulnerabilities (P0/P1) | 0 |
-| P2 | Dashboard creations/month | 100+ |
-| P2 | SQL connector usage | 40% of analyses |
-| P2 | Team workspace adoption | 50+ teams |
-| P3 | MLflow experiments tracked | 500+/month |
-| P3 | SOC 2 audit result | Type II certified |
-| P3 | NLP mode usage | 15% of analyses |
-| P4 | Enterprise customers | 25+ |
-| P4 | Multi-tenant organizations | 10+ |
-| P4 | Model deployments | 100+/month |
+| P1 | Time-to-first-output (perceived) | < 30s |
+| P1 | Cost-overrun incidents | 0 |
+| P1 | Confidence chip coverage | ≥90% of conclusions |
+| P1 | MCP active sessions / mo | 200+ |
+| P1 | P0 security items shipped | 100% |
+| P2 | Team-tier design partners | 10+ |
+| P2 | Active team workspaces | 50+ |
+| P2 | Dashboard creations / mo | 100+ |
+| P2 | SSO-unblocked enterprise prospects | 5+ |
+| P2 | DSAR turnaround SLA | <30 days |
+| P3 | 3rd-party plugins published | 5+ |
+| P3 | RAG-augmented runs / mo | 500+ |
+| P3 | Lineage coverage | ≥90% of runs |
+| P3 | SOC 2 Type 1 controls evidenced | ≥80% |
 
 ### Resource Implications
 
 | Phase | Engineering FTEs | Skills Needed |
-|-------|-----------------|---------------|
-| P1 | 3-4 | Security, Backend, Frontend |
-| P2 | 4-5 | Data Engineering, Full-stack, UX |
-| P3 | 5-6 | ML Engineering, DevOps, Security |
-| P4 | 6-8 | Distributed Systems, Enterprise Sales, ML Ops |
+|-------|------------------|---------------|
+| P1 | 3 | Backend (Python/FastAPI), Frontend (React/SSE), Security generalist |
+| P2 | 4–5 | + Frontend-heavy (dashboards/workspaces), DS/ML (confidence + SHAP), Part-time IT/SecOps for SSO + SOC 2 |
+| P3 | 5–6 | + Distributed systems (plugin SDK, gVisor), MLOps (registry/serving), DevRel (plugins + MCP ecosystem) |
 
 ### Threat Model Summary (Top Threats per Phase)
 
-| Phase | Top Threat | Attack Vector | Priority Control |
-|-------|-----------|---------------|------------------|
-| P1 | Unauthorized Access | ✅ Mitigated | JWT + RBAC (Admin/Analyst/Viewer) + audit logging |
-| P1 | Prompt Injection | Malicious user prompts | Input sanitization |
-| P1 | PII Exposure | Sensitive data to LLMs | PII masking |
-| P2 | SQL Injection | Database connectors | Parameterized queries |
-| P2 | Session Hijacking | Token theft | Secure session management |
-| P3 | Model Theft | Exported model extraction | Rate limiting + watermarking |
-| P3 | Data Exfiltration | Bulk download abuse | Download quotas |
-| P4 | Tenant Data Leakage | Multi-tenant isolation failure | Row-level security |
-| P4 | Supply Chain Attack | Compromised dependencies | SCA + signature verification |
+| Phase | Top Threat | Vector | Priority Control |
+|-------|-----------|--------|------------------|
+| P1 | Prompt injection escalation | Malicious data → agent tool abuse | Output validation + injection corpus |
+| P1 | Cost explosion | LLM abuse via prompt loops | Per-user budgets |
+| P1 | Cross-tenant leak via dataset dedup | Hash collision / weak keying | Per-user namespace + content-hash + ACL |
+| P2 | Workspace privilege escalation | Misconfigured share | RLS + share-link scopes + audit |
+| P2 | SSO IdP misconfiguration | Wrong claim mapping | Test suite per IdP; staged rollout |
+| P3 | Sandbox escape via novel exploit | LLM-generated payload | gVisor / Firecracker + adversarial CI |
+| P3 | Plugin supply-chain attack | Malicious 3rd-party plugin | Signed manifests + capability allowlist + review |
 
-### Perspective Interaction Map
+---
+
+## Parking Lot
+
+Items considered but explicitly deferred beyond the 12-month horizon. Re-evaluate at next refresh.
+
+| Item | Why deferred |
+|------|--------------|
+| Streaming / CDC ingestion (Kafka, Debezium) | Niche until enterprise volume; batch + dataset-as-object covers 95% |
+| Geospatial mode (10th) | Large effort, ~2K reach; defer until vertical demand surfaces |
+| Deep Learning mode | Distinct skill set; FLAML via AutoML is cheaper first step |
+| Voice-first follow-up (Whisper STT/TTS) | Differentiator score 3/5; revisit after MCP traction |
+| Edge / ONNX export | Niche; defer until model-serving demand exists |
+| HIPAA / PCI compliance | Demand-driven; only after 1+ paying healthcare/fin customer |
+| Active learning from corrections | Requires sustained user-correction telemetry; defer until P3 baseline established |
+| Multi-tenancy with hard isolation | RLS in P2 covers most cases; full schema-per-tenant only if enterprise procurement requires |
+
+---
+
+## Appendix: Perspective Interaction Map
 
 ```
                          ┌─────────────┐
@@ -860,67 +874,46 @@ Phase 3 (v3.0.0) - Microservices
                          └─────────────┘
 ```
 
-### Security Touchpoints Across Perspectives
+### Security Touchpoints
 
 ```
 🛡️ Security Engineer interfaces with:
-├── 🎯 Product Manager    → Security as feature (SSO, audit logs, compliance badges)
-├── 🎨 UI/UX Designer     → Secure UX patterns (auth flows, error messages, PII handling)
-├── 🏗️ Software Architect → Security architecture, threat modeling
-├── 🔧 Data Engineer      → Data encryption, access control, audit logging
-├── 🧪 Data Scientist     → ML security, prompt injection, model protection
-└── 🚀 Growth Strategist  → Security as differentiator, enterprise readiness
+├── 🎯 Product Manager    → Security as feature (SSO, audit, compliance badges, cost budgets)
+├── 🎨 UI/UX Designer     → Secure UX (auth flows, error sanitization, PII handling, confidence chip)
+├── 🏗️ Software Architect → Threat modeling, RLS, sandbox, secrets manager
+├── 🔧 Data Engineer      → Encryption, access control, audit logging, lineage
+├── 🧪 Data Scientist     → ML security (prompt injection, output validation, model protection)
+└── 🚀 Growth Strategist  → Security as differentiator (enterprise readiness, MCP gating)
 ```
 
 ---
 
 ## Conclusion
 
-This comprehensive multi-perspective roadmap positions Inzyts for enterprise-scale growth while maintaining its unique 27-agent autonomous analysis capabilities. Significant security and infrastructure hardening has been completed in v0.10.0, establishing a strong foundation for enterprise adoption. The phased feature rollout balances user value with technical sustainability.
+Inzyts has done the hard work of becoming a credible *individual* analysis tool: 27 agents, 7 modes, multi-source ingestion, hardened auth, hardened sandbox, full report stack. The next 12 months are about making it **trustworthy at team scale (Phase 1)**, **sellable to teams (Phase 2)**, and **leveraged as a platform (Phase 3)**.
 
-Key strategic differentiators to maintain:
-- **27-Agent Autonomous System** - Unique in the market
-- **Profile Lock Anti-Hallucination** - Trust and reliability
-- **7-Mode Pipeline** - Comprehensive analysis coverage
-- **Self-Correcting Validation** - Quality assurance built-in
-- **Smart Caching** - Cost efficiency and speed
-- **Conversational Follow-Up** - Ask questions against generated notebooks
-- **Interactive Cell Editing** - Natural language notebook modifications
-- **SQL Database Integration** - Direct database connectivity with autonomous SQL agent
-- **Hardened Security Posture** - JWT auth, Docker isolation, credential masking, XSS prevention
+Three commitments dominate:
 
-The roadmap prioritizes:
-1. **Reporting & Access Control** (v2.0.0) - ✅ RBAC + audit logging shipped; PDF/PPTX export remains
-2. **Stakeholder Value** (v2.1.0) - Dashboards, collaboration, ✅ cloud connectors (done)
-3. **Data Scientist Productivity** (v2.2.0) - MLflow, NLP mode, anomaly detection
-4. **Enterprise Scale** (v3.0.0) - Multi-tenant, SSO, compliance dashboards
+1. **Trust** — SSE streaming + confidence scoring + cost budgets in Phase 1.
+2. **Sellability** — Dashboards + workspaces + SSO in Phase 2.
+3. **Leverage** — Plugin SDK + MCP + dataset-as-object + RAG over past runs across Phase 1 → 3.
 
----
+Strategic differentiators to maintain throughout:
 
-## Appendix: New Feature Ideas (Not Yet in Roadmap)
+- **27-agent autonomous system** — unique in the market.
+- **Profile lock anti-hallucination** — trust and reliability.
+- **7+ mode pipeline** — comprehensive coverage, growing to 9+.
+- **Self-correcting validation loops** — quality assurance built-in.
+- **Smart caching + cost tracking** — efficiency.
+- **Conversational follow-up + cell-level editing** — interactive analysis surface.
+- **Multi-source ingestion** — CSV / SQL / cloud DWH / object storage / REST.
+- **Hardened security posture** — JWT + RBAC + audit + sandbox + Docker isolation.
 
-The following features have emerged from recent development work and user patterns, and are candidates for inclusion in future releases:
-
-| Feature | Description | Value | Complexity |
-|---------|-------------|-------|------------|
-| **Notebook Version History** | Track changes to notebooks over interactive editing sessions, with diff view and rollback | High | Medium |
-| **Analysis Templates from Past Runs** | Auto-generate reusable templates from successful past analyses for similar datasets | High | Medium |
-| **Webhook Notifications** | Send job completion/failure events to Slack, Teams, or custom HTTP endpoints | Medium | Small |
-| **Batch Analysis API** | Submit multiple datasets/questions in one request for parallel processing | Medium | Medium |
-| **Custom Agent Prompts** | Allow users to override default system prompts for individual agents via the UI | Medium | Small |
-| **Data Freshness Monitoring** | Alert when cached profiles are stale relative to upstream data source changes | Medium | Small |
-| **Notebook Collaboration (Comments)** | Add inline comments to notebook cells for team review workflows | High | Large |
-| **API Key Rotation Tooling** | CLI/API for rotating JWT secrets and API tokens with zero-downtime | Medium | Small |
-| **Parquet/Delta Lake Support** | Native ingestion of columnar formats for faster loading of large datasets | High | Medium |
-| **Streaming LLM Responses** | Stream agent reasoning to the UI in real-time (SSE) for better progress feedback | High | Medium |
-| **Cost Budgets per User** | Hard token limits per user/team to prevent LLM cost overruns | High | Medium |
-| **Notebook Export to Python Script** | Convert generated notebooks to clean `.py` scripts for production deployment | Medium | Small |
-| **Geospatial Analysis Mode** | 8th pipeline mode for geographic data with map visualizations (Folium/Plotly) | Medium | Large |
-| **Time-Windowed Caching** | Cache profiles that auto-refresh when source data changes (via hash polling) | Medium | Medium |
+Re-evaluate this roadmap quarterly. Drop items the moment evidence says they aren't load-bearing.
 
 ---
 
-**Document Version**: 5.0.0
-**Last Updated**: 2026-03-10
-**Authors**: Inzyts Architecture Team (Multi-Perspective Analysis)
+**Document Version**: 6.0.0
+**Last Updated**: 2026-04-28
+**Supersedes**: v5.0.0 (2026-03-10)
 **Status**: Approved for Implementation

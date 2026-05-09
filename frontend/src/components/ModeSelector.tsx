@@ -341,10 +341,10 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
                                         : 'border-[var(--border-color)] bg-[var(--bg-surface-hi)] hover:border-[var(--text-dim)]'
                             }`}
                         >
-                            {/* Top row: icon-in-box on the left, suggested marker on the right. */}
-                            <div className="flex items-start justify-between">
+                            {/* Top row: icon-in-box and label on the same line, suggested marker / info on the right. */}
+                            <div className="flex items-center gap-2">
                                 <span
-                                    className={`flex items-center justify-center w-7 h-7 rounded-md ${
+                                    className={`flex items-center justify-center w-7 h-7 rounded-md shrink-0 ${
                                         isSelected
                                             ? 'bg-[rgba(76,201,240,0.16)]'
                                             : 'bg-[rgba(0,0,0,0.25)]'
@@ -359,8 +359,15 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
                                         }
                                     />
                                 </span>
+                                <div
+                                    className={`text-[13px] font-semibold tracking-tight truncate ${
+                                        isSelected ? 'text-[var(--bg-turquoise-surf)]' : 'text-[var(--text-primary)]'
+                                    }`}
+                                >
+                                    {mode.label}
+                                </div>
                                 {isSuggested && (
-                                    <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-[1px] text-[var(--bg-turquoise-surf)]">
+                                    <span className="ml-auto flex items-center gap-1 text-[9px] font-bold uppercase tracking-[1px] text-[var(--bg-turquoise-surf)] shrink-0">
                                         <span
                                             className="inline-block w-1.5 h-1.5 rounded-full"
                                             style={{ backgroundColor: 'var(--bg-turquoise-surf)' }}
@@ -370,19 +377,10 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
                                     </span>
                                 )}
                                 {!isSuggested && (
-                                    <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <span className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                                         <InfoTooltip text={mode.detailedDesc} />
                                     </span>
                                 )}
-                            </div>
-
-                            {/* Label */}
-                            <div
-                                className={`text-[13px] font-semibold tracking-tight ${
-                                    isSelected ? 'text-[var(--bg-turquoise-surf)]' : 'text-[var(--text-primary)]'
-                                }`}
-                            >
-                                {mode.label}
                             </div>
 
                             {/* One-line action description */}
