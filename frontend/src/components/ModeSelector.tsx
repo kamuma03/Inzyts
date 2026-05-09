@@ -243,15 +243,17 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
     const dismissed = dismissedSuggestion === suggestedMode;
 
     // Collapse the seven-tile grid when a confident suggestion is active so
-    // analysts see one tile + reasoning instead of six tiles of noise. The
-    // user can still flip the disclosure to override.
-    const [showAllModes, setShowAllModes] = useState<boolean>(!suggestedMode);
+    // analysts see one tile + reasoning instead of six tiles of noise. Once
+    // the user explicitly opens the grid via "Choose a different mode" we
+    // stop fighting them — even if the heuristic later flips the suggestion
+    // (e.g. forecasting → predictive while they keep typing), the grid stays
+    // open until the suggestion clears or is dismissed.
+    const [userOverrode, setUserOverrode] = useState(false);
     useEffect(() => {
-        if (suggestedMode && !dismissed) setShowAllModes(false);
-        if (!suggestedMode || dismissed) setShowAllModes(true);
+        if (!suggestedMode || dismissed) setUserOverrode(false);
     }, [suggestedMode, dismissed]);
 
-    const collapsed = !showAllModes && !!suggestedMeta && !dismissed;
+    const collapsed = !!suggestedMeta && !dismissed && !userOverrode;
 
     return (
         <div>
@@ -322,7 +324,7 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
                     />
                     <button
                         type="button"
-                        onClick={() => setShowAllModes(true)}
+                        onClick={() => setUserOverrode(true)}
                         className="mt-3 flex items-center gap-1.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-transparent border-none cursor-pointer transition-colors"
                     >
                         <ChevronDown size={14} />
