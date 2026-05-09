@@ -356,9 +356,9 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
                 <button
                     onClick={handleSubmit}
                     disabled={loading}
-                    className="py-3 px-6 bg-[var(--rule-strong)] text-white font-bold text-base border-none rounded-lg cursor-pointer flex justify-center items-center gap-3 shadow-[0_4px_6px_rgba(0,0,0,0.2)] transition-[transform,box-shadow] duration-100 hover:-translate-y-px hover:shadow-[0_6px_12px_rgba(0,0,0,0.3)]"
+                    className="py-3 px-6 bg-[var(--accent)] text-[var(--surface-0)] font-semibold text-[15px] rounded-md flex justify-center items-center gap-2 shadow-sm hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition"
                 >
-                    {loading ? 'Processing...' : <><Play size={20} /> START ANALYSIS</>}
+                    {loading ? 'Starting analysis…' : <><Play size={16} /> Start analysis</>}
                 </button>
 
                 {error && (

@@ -31,13 +31,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ jobs, onSelectJob, activeJobId
 
             {/* Sidebar Content */}
             <div className={`${isCollapsed ? 'opacity-0 pointer-events-none hidden' : 'opacity-100 pointer-events-auto flex'} transition-opacity duration-200 ease-in-out p-6 pt-14 flex-col h-full overflow-hidden`}>
-                {/* New Analysis Button (Req UI Refactor) */}
                 <button
                     onClick={onNewAnalysis}
-                    aria-label="New Analysis"
-                    className="w-full p-4 bg-[var(--accent)] text-white border-none rounded-lg cursor-pointer flex items-center justify-center gap-3 text-base font-bold mb-4 shadow-[0_4px_6px_rgba(0,0,0,0.2)] transition-transform duration-100 ease-in-out hover:-translate-y-0.5"
+                    aria-label="New analysis"
+                    className="w-full flex items-center gap-2 px-3 py-2.5 rounded-md text-[var(--text-primary)] hover:bg-white/[0.04] text-sm font-medium border border-[var(--rule)] mb-4 transition-colors"
                 >
-                    <Plus size={20} fontWeight={800} /> NEW ANALYSIS
+                    <Plus size={16} />
+                    <span>New analysis</span>
                 </button>
 
 
@@ -49,12 +49,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ jobs, onSelectJob, activeJobId
             {/* Collapsed Icons View */}
             <div className={`${isCollapsed ? 'flex opacity-100' : 'hidden opacity-0'} flex-col items-center pt-[60px] gap-5 transition-opacity duration-300 ease-in-out delay-100`}>
                 <button
-                    title="New Analysis"
+                    title="New analysis"
                     onClick={onNewAnalysis}
-                    aria-label="New Analysis"
-                    className="cursor-pointer bg-[var(--accent)] p-2 rounded-full border-none flex items-center justify-center"
+                    aria-label="New analysis"
+                    className="cursor-pointer p-2 rounded-md border border-[var(--rule)] flex items-center justify-center text-[var(--text-primary)] hover:bg-white/[0.04] transition-colors"
                 >
-                    <Plus size={24} color="#fff" />
+                    <Plus size={20} />
                 </button>
                 <div title="Job History">
                     <History size={24} color="var(--text-secondary)" />

@@ -1,6 +1,6 @@
 import React from 'react';
 import { JobSummary } from '../api';
-import { Calendar, CheckCircle, XCircle, PlayCircle, AlertCircle, Clock, Loader2, Inbox } from 'lucide-react';
+import { Calendar, CheckCircle, XCircle, PlayCircle, AlertCircle, Clock, Loader2, Inbox, Zap } from 'lucide-react';
 import { getFileName } from '../utils/formatters';
 
 interface JobHistoryProps {
@@ -92,9 +92,10 @@ export const JobHistory: React.FC<JobHistoryProps> = ({ jobs, onSelectJob, activ
                                         onUpgradeJob(job);
                                     }}
                                     title="Upgrade to Predictive using Cached Profile"
-                                    className="bg-transparent border border-[var(--accent)] text-[var(--accent)] rounded-sm px-1.5 py-px text-[0.7rem] cursor-pointer font-semibold hover:bg-[rgba(56,161,105,0.1)]"
+                                    className="bg-transparent border border-[var(--accent)] text-[var(--accent)] rounded-sm px-1.5 py-px text-[11px] cursor-pointer font-semibold hover:bg-[var(--accent-soft)] flex items-center gap-1"
                                 >
-                                    UPGRADE ⚡
+                                    <Zap size={12} />
+                                    Upgrade
                                 </button>
                             )}
                         </div>
