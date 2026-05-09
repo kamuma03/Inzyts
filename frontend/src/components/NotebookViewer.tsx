@@ -286,12 +286,27 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                                 The notebook will appear here once the analysis completes.
                             </div>
                         </div>
-                        {/* Skeleton preview */}
+                        {/* Skeleton preview — mirrors the executive-summary card
+                            (header line, summary paragraph, then two columns of
+                            bullets) so the page doesn't visibly snap on load. */}
                         <div className="w-4/5 max-w-[500px] flex flex-col gap-2 mt-2">
-                            <div className="skeleton h-3.5 w-3/5" />
-                            <div className="skeleton h-[60px]" />
-                            <div className="skeleton h-3.5 w-2/5" />
-                            <div className="skeleton h-20" />
+                            <div className="skeleton h-4 w-2/5" />
+                            <div className="skeleton h-3 w-full" />
+                            <div className="skeleton h-3 w-11/12" />
+                            <div className="grid grid-cols-2 gap-3 mt-2">
+                                <div className="flex flex-col gap-1.5">
+                                    <div className="skeleton h-2.5 w-1/2" />
+                                    <div className="skeleton h-2.5 w-full" />
+                                    <div className="skeleton h-2.5 w-5/6" />
+                                    <div className="skeleton h-2.5 w-3/4" />
+                                </div>
+                                <div className="flex flex-col gap-1.5">
+                                    <div className="skeleton h-2.5 w-1/2" />
+                                    <div className="skeleton h-2.5 w-full" />
+                                    <div className="skeleton h-2.5 w-2/3" />
+                                    <div className="skeleton h-2.5 w-5/6" />
+                                </div>
+                            </div>
                         </div>
                     </>
                 ) : status === 'failed' ? (
@@ -302,12 +317,17 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                         </div>
                     </>
                 ) : (
-                    <>
-                        <FileCode size={40} color="var(--text-secondary)" className="opacity-40" />
-                        <div className="text-[var(--text-secondary)] text-[0.9rem]">
-                            No notebook available yet.
+                    <div className="flex flex-col items-center gap-3 text-center">
+                        <FileCode size={40} className="text-[var(--text-secondary)] opacity-40" />
+                        <div>
+                            <div className="text-[var(--text-primary)] text-base font-medium mb-1">
+                                No notebook yet
+                            </div>
+                            <div className="text-[var(--text-secondary)] text-[12px] opacity-80">
+                                The analysis hasn't produced a notebook for this job.
+                            </div>
                         </div>
-                    </>
+                    </div>
                 )}
             </div>
         );

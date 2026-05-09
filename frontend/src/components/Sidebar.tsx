@@ -16,7 +16,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ jobs, onSelectJob, activeJobId
 
     return (
         <div
-            className={`${isCollapsed ? 'w-[60px] min-w-[60px]' : 'w-[350px] min-w-[350px]'} transition-all duration-300 ease-in-out bg-[var(--surface-0)] border-r border-[var(--rule)] text-[var(--text-primary)] flex flex-col h-auto min-h-fit relative overflow-hidden rounded-xl`}
+            className={`${isCollapsed ? 'w-[60px] min-w-[60px]' : 'w-[350px] min-w-[350px]'} transition-all duration-300 ease-in-out bg-[var(--surface-0)] border-r border-[var(--rule)] text-[var(--text-primary)] flex flex-col h-auto min-h-fit relative overflow-hidden rounded-none`}
         >
             {/* Toggle Button */}
             <button
