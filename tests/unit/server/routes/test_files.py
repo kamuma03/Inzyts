@@ -34,7 +34,7 @@ def test_upload_file_empty():
         files={"file": ("test.csv", b"")}
     )
     assert response.status_code == 400
-    assert "Empty files" in response.json()["detail"]
+    assert "Empty file not allowed" in response.json()["detail"]
 
 def test_upload_file_success(tmp_path):
     """Test successful upload of a CSV file."""

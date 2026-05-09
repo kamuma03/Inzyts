@@ -78,53 +78,51 @@ def _validate_upload(file_size: int, header: bytes, filename: str) -> None:
                 detail=f"Invalid file type for {filename}: {mime_type}. Allowed: CSV, Parquet, Excel (.xlsx/.xls), and JSON.",
             )
 
+async def _save_upload(file: UploadFile) -> dict:
+    """Validate + persist one upload, return the response payload.
+
+    Reads the first 2 KiB for MIME detection, runs ``_validate_upload`` (size
+    + mime + extension fallbacks), then writes the file to ``UPLOAD_DIR``
+    under a UUID name. Raises ``HTTPException(400)`` for empty files.
+    """
+    filename = file.filename or "unknown"
+    header = await file.read(2048)
+    await file.seek(0)
+
+    if len(header) == 0:
+        logger.warning(f"Rejected empty file upload: {filename}")
+        raise HTTPException(status_code=400, detail=f"Empty file not allowed: {filename}")
+
+    file.file.seek(0, 2)
+    file_size = file.file.tell()
+    file.file.seek(0)
+    _validate_upload(file_size, header, filename)
+
+    unique_filename = f"{uuid.uuid4()}{Path(werkzeug_secure_filename(filename)).suffix}"
+    file_path = Path(UPLOAD_DIR) / unique_filename
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    return {
+        "filename": filename,
+        "saved_path": unique_filename,  # relative; never expose UPLOAD_DIR
+        "size": file_path.stat().st_size,
+    }
+
+
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
     _user: User = Depends(require_role(UserRole.ANALYST)),
 ):
-    """
-    Upload a CSV/Parquet file to the server with MIME type validation.
-    """
+    """Upload a single CSV/Parquet/Excel/JSON with MIME validation."""
     try:
-        filename = file.filename or "unknown"
-        # Read first 2048 bytes for MIME detection
-        header = await file.read(2048)
-        await file.seek(0)
-
-        if len(header) == 0:
-            logger.warning(f"Rejected empty file upload: {filename}")
-            raise HTTPException(status_code=400, detail="Empty files are not allowed")
-
-        # Check file size
-        file.file.seek(0, 2)
-        file_size = file.file.tell()
-        file.file.seek(0)
-        
-        _validate_upload(file_size, header, filename)
-
-        # Generate unique filename to prevent overwrite clashes
-        # Sanitize filename to prevent path traversal
-        safe_filename = werkzeug_secure_filename(filename)
-        file_ext = Path(safe_filename).suffix
-        unique_filename = f"{uuid.uuid4()}{file_ext}"
-        file_path = Path(UPLOAD_DIR) / unique_filename
-
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-        return {
-            "filename": file.filename,
-            "saved_path": unique_filename,  # Return only relative filename
-            "size": file_path.stat().st_size,
-        }
+        return await _save_upload(file)
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"File upload failed: {e}")
-        raise HTTPException(
-            status_code=500, detail="Internal server error during file upload"
-        )
+        raise HTTPException(status_code=500, detail="Internal server error during file upload")
 
 
 
@@ -135,54 +133,14 @@ async def upload_batch(
     files: List[UploadFile] = File(...),
     _user: User = Depends(require_role(UserRole.ANALYST)),
 ):
-    """
-    Upload multiple CSV/Parquet files with MIME type validation.
-    """
-    results = []
+    """Upload multiple files with MIME validation. Stops on first failure."""
     try:
-        for file in files:
-            filename = file.filename or "unknown"
-            # MIME validation (mirrors single upload)
-            header = await file.read(2048)
-            await file.seek(0)
-
-            if len(header) == 0:
-                logger.warning(f"Rejected empty file in batch: {filename}")
-                raise HTTPException(
-                    status_code=400, detail=f"Empty file not allowed: {filename}"
-                )
-
-            # Check file size
-            file.file.seek(0, 2)
-            file_size = file.file.tell()
-            file.file.seek(0)
-            
-            _validate_upload(file_size, header, filename)
-
-            # Sanitize filename and generate unique path
-            safe_filename = werkzeug_secure_filename(filename)
-            file_ext = Path(safe_filename).suffix
-            unique_filename = f"{uuid.uuid4()}{file_ext}"
-            file_path = Path(UPLOAD_DIR) / unique_filename
-
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-
-            results.append(
-                {
-                    "filename": filename,
-                    "saved_path": unique_filename,
-                    "size": file_path.stat().st_size,
-                }
-            )
-        return results
+        return [await _save_upload(f) for f in files]
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Batch upload failed: {e}")
-        raise HTTPException(
-            status_code=500, detail="Internal server error during batch upload"
-        )
+        raise HTTPException(status_code=500, detail="Internal server error during batch upload")
 
 
 @router.get("/preview", response_model=FilePreview)

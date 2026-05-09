@@ -14,8 +14,9 @@ The workflow supports:
 """
 
 import time
+from contextlib import contextmanager
 from functools import lru_cache
-from typing import Any, Dict, Literal
+from typing import Any, Dict, Iterator, Literal
 
 from langgraph.graph import END, StateGraph
 
@@ -28,7 +29,7 @@ from src.workflow.routing import update_issue_frequency
 
 logger = get_logger()
 
-# Agent instances are now retrieved via AgentFactory to prevent global initialization cost
+Phase = Literal["phase1", "phase2", "extensions"]
 
 
 def _attribute_tokens(
@@ -37,32 +38,59 @@ def _attribute_tokens(
     total: int,
     prompt: int,
     completion: int,
-    phase: Literal["phase1", "phase2", "extensions"],
+    phase: Phase,
 ) -> None:
     """Add token deltas to the global counters and a phase-specific bucket.
 
-    Mutates ``updates`` in place. The sum of the three phase buckets equals
-    the global ``total_tokens_used`` (invariant verified by the cost endpoint).
-
-    Uses ``getattr(..., 0)`` for the new per-phase fields so the helper
-    is robust against partial test mocks that don't pre-populate every
-    bucket on the state.
+    The sum of the three phase buckets equals the global ``total_tokens_used``
+    (invariant verified by the cost endpoint). ``getattr(..., 0)`` keeps the
+    helper robust against partial test mocks.
     """
     updates["total_tokens_used"] = state.total_tokens_used + total
     updates["prompt_tokens_used"] = state.prompt_tokens_used + prompt
     updates["completion_tokens_used"] = state.completion_tokens_used + completion
-    if phase == "phase1":
-        updates["phase1_tokens_used"] = getattr(state, "phase1_tokens_used", 0) + total
-        updates["phase1_prompt_tokens"] = getattr(state, "phase1_prompt_tokens", 0) + prompt
-        updates["phase1_completion_tokens"] = getattr(state, "phase1_completion_tokens", 0) + completion
-    elif phase == "phase2":
-        updates["phase2_tokens_used"] = getattr(state, "phase2_tokens_used", 0) + total
-        updates["phase2_prompt_tokens"] = getattr(state, "phase2_prompt_tokens", 0) + prompt
-        updates["phase2_completion_tokens"] = getattr(state, "phase2_completion_tokens", 0) + completion
-    elif phase == "extensions":
-        updates["extensions_tokens_used"] = getattr(state, "extensions_tokens_used", 0) + total
-        updates["extensions_prompt_tokens"] = getattr(state, "extensions_prompt_tokens", 0) + prompt
-        updates["extensions_completion_tokens"] = getattr(state, "extensions_completion_tokens", 0) + completion
+    for suffix, delta in (
+        ("tokens_used", total),
+        ("prompt_tokens", prompt),
+        ("completion_tokens", completion),
+    ):
+        key = f"{phase}_{suffix}"
+        updates[key] = getattr(state, key, 0) + delta
+
+
+@contextmanager
+def _track(
+    agent: Any, state: AnalysisState, phase: Phase
+) -> Iterator[Dict[str, Any]]:
+    """Context manager: snapshot tokens, yield an updates dict, and on exit
+    attribute the delta to ``phase``.
+
+    Usage::
+
+        with _track(agent, state, "phase1") as updates:
+            result = agent.process(state, ...)
+            updates.update(result)  # caller decides what state changes survive
+        return updates
+
+    The caller mutates ``updates`` directly. On normal exit *and* on
+    exception, the token delta is recorded so failure paths still attribute
+    their LLM cost (matches the previous try/except behaviour).
+    """
+    a = agent.llm_agent
+    start_total, start_prompt, start_completion = (
+        a.total_tokens, a.prompt_tokens, a.completion_tokens,
+    )
+    updates: Dict[str, Any] = {}
+    try:
+        yield updates
+    finally:
+        _attribute_tokens(
+            updates, state,
+            a.total_tokens - start_total,
+            a.prompt_tokens - start_prompt,
+            a.completion_tokens - start_completion,
+            phase,
+        )
 
 
 # ============================================================================
@@ -71,546 +99,297 @@ def _attribute_tokens(
 
 
 def initialize_node(state: AnalysisState) -> Dict[str, Any]:
-    """
-    Initialize the workflow execution.
-
-    Role: Sets up the initial context, parses user intent, and prepares
-    the state for Phase 1.
-
-    Args:
-        state: The initial state object.
-
-    Returns:
-        State updates from the Orchestrator's initialization process.
-    """
+    """Initialize the workflow execution (Orchestrator setup → Phase 1)."""
     start_time = time.time()
     orchestrator = AgentFactory.get_agent("orchestrator")
-    start_tokens = orchestrator.llm_agent.total_tokens
-    start_prompt = orchestrator.llm_agent.prompt_tokens
-    start_completion = orchestrator.llm_agent.completion_tokens
-    result = orchestrator.process(
-        state,
-        action="initialize",
-        csv_path=state.csv_path,
-        user_intent=state.user_intent.model_dump() if state.user_intent else None,
-        mode=state.pipeline_mode,
-        use_cache=state.using_cached_profile,
-    )
-    tokens_used = orchestrator.llm_agent.total_tokens - start_tokens
-    prompt_used = orchestrator.llm_agent.prompt_tokens - start_prompt
-    completion_used = orchestrator.llm_agent.completion_tokens - start_completion
+    with _track(orchestrator, state, "phase1") as updates:
+        result = orchestrator.process(
+            state,
+            action="initialize",
+            csv_path=state.csv_path,
+            user_intent=state.user_intent.model_dump() if state.user_intent else None,
+            mode=state.pipeline_mode,
+            use_cache=state.using_cached_profile,
+        )
+        if isinstance(result, dict):
+            updates.update(result)
     logger.log_execution_time("initialize_node", time.time() - start_time)
-
-    # Attribute tokens to Phase 1 — orchestrator setup runs before phase 1 begins.
-    _attribute_tokens(result, state, tokens_used, prompt_used, completion_used, "phase1")
-    return result
+    return updates
 
 
 def restore_cache_node(state: AnalysisState) -> Dict[str, Any]:
     """Unlock the workflow using a cached profile."""
     start_time = time.time()
     orchestrator = AgentFactory.get_agent("orchestrator")
-    start_tokens = orchestrator.llm_agent.total_tokens
-    start_prompt = orchestrator.llm_agent.prompt_tokens
-    start_completion = orchestrator.llm_agent.completion_tokens
-    result = orchestrator.process(state, action="restore_cache")
-    tokens_used = orchestrator.llm_agent.total_tokens - start_tokens
-    prompt_used = orchestrator.llm_agent.prompt_tokens - start_prompt
-    completion_used = orchestrator.llm_agent.completion_tokens - start_completion
-
-    if isinstance(result, dict):
-        _attribute_tokens(result, state, tokens_used, prompt_used, completion_used, "phase1")
-
+    with _track(orchestrator, state, "phase1") as updates:
+        result = orchestrator.process(state, action="restore_cache")
+        if isinstance(result, dict):
+            updates.update(result)
     logger.log_execution_time("restore_cache_node", time.time() - start_time)
-    return result
-
-
-def create_phase1_handoff_node(state: AnalysisState) -> Dict[str, Any]:
-    """
-    Generate the initial handoff for the Data Profiler.
-
-    Role: Orchestrator invokes this to package the CSV preview, row counts,
-    and user intent into a structured format for the Profiler.
-    """
-    start_time = time.time()
-    orchestrator = AgentFactory.get_agent("orchestrator")
-    start_tokens = orchestrator.llm_agent.total_tokens
-    start_prompt = orchestrator.llm_agent.prompt_tokens
-    start_completion = orchestrator.llm_agent.completion_tokens
-    result = orchestrator.process(state, action="phase1_handoff")
-    tokens_used = orchestrator.llm_agent.total_tokens - start_tokens
-    prompt_used = orchestrator.llm_agent.prompt_tokens - start_prompt
-    completion_used = orchestrator.llm_agent.completion_tokens - start_completion
-
-    logger.log_execution_time("create_phase1_handoff_node", time.time() - start_time)
-
-    if isinstance(result, dict):
-        _attribute_tokens(result, state, tokens_used, prompt_used, completion_used, "phase1")
-
-    return result
-
-
-def data_profiler_node(state: AnalysisState) -> Dict[str, Any]:
-    """
-    Execute the Data Profiler Agent.
-
-    Role: Analyzes the raw CSV to identify types, quality issues, and
-    requirements for statistical analysis.
-
-    Input: Latest Orchestrator handoff or retry feedback.
-    Output: Profiler Specification (ProfilerToCodeGenHandoff).
-    """
-    start_time = time.time()
-    data_profiler = AgentFactory.get_agent("data_profiler")
-    handoff = state.profiler_outputs[-1] if state.profiler_outputs else None
-    start_tokens = data_profiler.llm_agent.total_tokens
-    start_prompt = data_profiler.llm_agent.prompt_tokens
-    start_completion = data_profiler.llm_agent.completion_tokens
-
-    try:
-        result = data_profiler.process(state, handoff=handoff)
-        tokens_used = data_profiler.llm_agent.total_tokens - start_tokens
-        prompt_used = data_profiler.llm_agent.prompt_tokens - start_prompt
-        completion_used = data_profiler.llm_agent.completion_tokens - start_completion
-
-        # Append the new result to the history of profiler outputs
-        profiler_outputs = list(state.profiler_outputs)
-        handoff = result.get("handoff")
-        if handoff:
-            profiler_outputs.append(handoff)
-
-        updates: Dict[str, Any] = {"profiler_outputs": profiler_outputs}
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
-
-        if result.get("updated_csv_path"):
-            updates["csv_path"] = result["updated_csv_path"]
-
-        logger.log_execution_time("data_profiler_node", time.time() - start_time)
-        return updates
-    except Exception as e:
-        # Capture tokens even on failure
-        tokens_used = data_profiler.llm_agent.total_tokens - start_tokens
-        prompt_used = data_profiler.llm_agent.prompt_tokens - start_prompt
-        completion_used = data_profiler.llm_agent.completion_tokens - start_completion
-        logger.log_execution_time(
-            "data_profiler_node (FAILED)", time.time() - start_time
-        )
-        logger.critical(f"DataProfiler Node crashed: {e}", exc_info=True)
-        updates = {"errors": state.errors + [f"DataProfiler Crash: {str(e)}"]}
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
-        return updates
-
-
-def profile_codegen_node(state: AnalysisState) -> Dict[str, Any]:
-    """
-    Execute the Profile Code Generator Agent.
-
-    Role: Converts the logical profile specification into executable
-    Jupyter notebook code (cells).
-
-    Input: Latest Profiler Specification.
-    Output: Generated Code (ProfileCodeToValidatorHandoff).
-    """
-    start_time = time.time()
-    # Use the most recent specification from the profiler
-    spec = state.profiler_outputs[-1] if state.profiler_outputs else None
-
-    profile_codegen = AgentFactory.get_agent("profile_codegen")
-    start_tokens = profile_codegen.llm_agent.total_tokens
-    start_prompt = profile_codegen.llm_agent.prompt_tokens
-    start_completion = profile_codegen.llm_agent.completion_tokens
-
-    try:
-        result = profile_codegen.process(state, specification=spec)
-        tokens_used = profile_codegen.llm_agent.total_tokens - start_tokens
-        prompt_used = profile_codegen.llm_agent.prompt_tokens - start_prompt
-        completion_used = profile_codegen.llm_agent.completion_tokens - start_completion
-
-        # Store the generated code
-        code_outputs = list(state.profile_code_outputs)
-        handoff = result.get("handoff")
-        if handoff:
-            code_outputs.append(handoff)
-
-        logger.log_execution_time("profile_codegen_node", time.time() - start_time)
-        updates: Dict[str, Any] = {
-            "profile_code_outputs": code_outputs,
-            "phase1_iteration": state.phase1_iteration + 1,
-        }
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
-        return updates
-    except Exception as e:
-        tokens_used = profile_codegen.llm_agent.total_tokens - start_tokens
-        prompt_used = profile_codegen.llm_agent.prompt_tokens - start_prompt
-        completion_used = profile_codegen.llm_agent.completion_tokens - start_completion
-        logger.log_execution_time(
-            "profile_codegen_node (FAILED)", time.time() - start_time
-        )
-        updates = {"errors": state.errors + [f"ProfileCodeGen Crash: {str(e)}"]}
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
-        return updates
-
-
-def profile_validator_node(state: AnalysisState) -> Dict[str, Any]:
-    """
-    Execute the Profile Validator Agent.
-
-    Role: Runs the generated code in a sandbox, checks for errors, and
-    calculates a quality score. Decides if the profile is 'Locked'.
-
-    Input: Latest generated code.
-    Output: Validation Report & Potential Lock Grant.
-    """
-
-    profile_validator = AgentFactory.get_agent("profile_validator")
-
-    code_handoff = (
-        state.profile_code_outputs[-1] if state.profile_code_outputs else None
-    )
-    start_tokens = profile_validator.llm_agent.total_tokens
-    start_prompt = profile_validator.llm_agent.prompt_tokens
-    start_completion = profile_validator.llm_agent.completion_tokens
-
-    try:
-        result = profile_validator.process(state, code_handoff=code_handoff)
-        tokens_used = profile_validator.llm_agent.total_tokens - start_tokens
-        prompt_used = profile_validator.llm_agent.prompt_tokens - start_prompt
-        completion_used = profile_validator.llm_agent.completion_tokens - start_completion
-
-        # Append validation report
-        validation_reports = list(state.profile_validation_reports)
-        report = result.get("report")
-        if report:
-            validation_reports.append(report)
-
-        # Update quality trajectory (for oscillation detection and rollback)
-        quality_trajectory = list(state.phase1_quality_trajectory)
-        quality_trajectory.append(result.get("quality_score", 0.0))
-
-        # Update issue frequency table (for systemic issue detection)
-        issue_frequency = update_issue_frequency(state, result.get("issues", []))
-
-        # Check if the validator explicitly approved locking the profile
-        profile_lock = state.profile_lock
-        if result.get("should_lock"):
-            # Grant the lock - this snapshots the profile state and makes it immutable
-            profile_lock.grant_lock(
-                cells=code_handoff.cells if code_handoff else [],
-                handoff=result.get("strategy_handoff"),
-                quality_score=result.get("quality_score", 0.0),
-                report=result.get("report"),
-                iteration=state.phase1_iteration,
-            )
-            # Cache is now saved in transition_to_phase2_node
-
-        updates: Dict[str, Any] = {
-            "profile_validation_reports": validation_reports,
-            "phase1_quality_trajectory": quality_trajectory,
-            "issue_frequency": issue_frequency,
-            "profile_lock": profile_lock,
-        }
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
-        return updates
-    except Exception as e:
-        tokens_used = profile_validator.llm_agent.total_tokens - start_tokens
-        prompt_used = profile_validator.llm_agent.prompt_tokens - start_prompt
-        completion_used = profile_validator.llm_agent.completion_tokens - start_completion
-        updates = {"errors": state.errors + [f"ProfileValidator Crash: {str(e)}"]}
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
-        return updates
-
-
-def extension_node(state: AnalysisState) -> Dict[str, Any]:
-    """
-    Execute Extension Agents based on Pipeline Mode.
-
-    Role: Runs specific pre-strategy analysis (forecasting, A/B testing checks)
-    to enrich the context for the Strategy Agent.
-    """
-    start_time = time.time()
-    mode = state.pipeline_mode
-    updates = {}
-    agent = None
-
-    if mode == PipelineMode.FORECASTING:
-        agent = AgentFactory.get_agent("forecasting_extension")
-    elif mode == PipelineMode.COMPARATIVE:
-        agent = AgentFactory.get_agent("comparative_extension")
-    elif mode == PipelineMode.DIAGNOSTIC:
-        agent = AgentFactory.get_agent("diagnostic_extension")
-
-    mode_val = mode.value if mode else "unknown"
-    if agent:
-        start_tokens = agent.llm_agent.total_tokens
-        start_prompt = agent.llm_agent.prompt_tokens
-        start_completion = agent.llm_agent.completion_tokens
-        try:
-            updates = agent.process(state)
-            tokens_used = agent.llm_agent.total_tokens - start_tokens
-            prompt_used = agent.llm_agent.prompt_tokens - start_prompt
-            completion_used = agent.llm_agent.completion_tokens - start_completion
-            _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "extensions")
-            logger.log_execution_time(
-                f"extension_node ({mode_val})", time.time() - start_time
-            )
-        except Exception as e:
-            tokens_used = agent.llm_agent.total_tokens - start_tokens
-            prompt_used = agent.llm_agent.prompt_tokens - start_prompt
-            completion_used = agent.llm_agent.completion_tokens - start_completion
-            logger.error(f"Extension Agent {mode_val} failed: {e}")
-            updates = {"errors": state.errors + [f"Extension {mode_val} failed: {e}"]}
-            _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "extensions")
-    else:
-        # No extension agent for this mode (e.g. Predictive, Exploratory, Segmentation).
-        # Log so that a missing registration for a new mode is immediately visible.
-        logger.debug(f"extension_node: no extension agent registered for mode '{mode_val}', skipping.")
-
     return updates
 
 
-def transition_to_phase2_node(state: AnalysisState) -> Dict[str, Any]:
-    """
-    Transition logic from Phase 1 to Phase 2.
+def create_phase1_handoff_node(state: AnalysisState) -> Dict[str, Any]:
+    """Orchestrator packages CSV preview + intent for the Data Profiler."""
+    start_time = time.time()
+    orchestrator = AgentFactory.get_agent("orchestrator")
+    with _track(orchestrator, state, "phase1") as updates:
+        result = orchestrator.process(state, action="phase1_handoff")
+        if isinstance(result, dict):
+            updates.update(result)
+    logger.log_execution_time("create_phase1_handoff_node", time.time() - start_time)
+    return updates
 
-    Role: Orchestrator updates the global phase state, saves the profile cache,
-    and prepares context for the Strategy Agent.
-    """
+
+def data_profiler_node(state: AnalysisState) -> Dict[str, Any]:
+    """Run the Data Profiler — type/quality EDA → ProfilerToCodeGenHandoff."""
+    start_time = time.time()
+    data_profiler = AgentFactory.get_agent("data_profiler")
+    in_handoff = state.profiler_outputs[-1] if state.profiler_outputs else None
+    with _track(data_profiler, state, "phase1") as updates:
+        try:
+            result = data_profiler.process(state, handoff=in_handoff)
+            outputs = list(state.profiler_outputs)
+            if result.get("handoff"):
+                outputs.append(result["handoff"])
+            updates["profiler_outputs"] = outputs
+            if result.get("updated_csv_path"):
+                updates["csv_path"] = result["updated_csv_path"]
+            logger.log_execution_time("data_profiler_node", time.time() - start_time)
+        except Exception as e:
+            logger.log_execution_time("data_profiler_node (FAILED)", time.time() - start_time)
+            logger.critical(f"DataProfiler Node crashed: {e}", exc_info=True)
+            updates["errors"] = state.errors + [f"DataProfiler Crash: {str(e)}"]
+    return updates
+
+
+def profile_codegen_node(state: AnalysisState) -> Dict[str, Any]:
+    """Run the Profile Code Generator — spec → notebook cells."""
+    start_time = time.time()
+    spec = state.profiler_outputs[-1] if state.profiler_outputs else None
+    profile_codegen = AgentFactory.get_agent("profile_codegen")
+    with _track(profile_codegen, state, "phase1") as updates:
+        try:
+            result = profile_codegen.process(state, specification=spec)
+            code_outputs = list(state.profile_code_outputs)
+            if result.get("handoff"):
+                code_outputs.append(result["handoff"])
+            updates["profile_code_outputs"] = code_outputs
+            updates["phase1_iteration"] = state.phase1_iteration + 1
+            logger.log_execution_time("profile_codegen_node", time.time() - start_time)
+        except Exception as e:
+            logger.log_execution_time("profile_codegen_node (FAILED)", time.time() - start_time)
+            updates["errors"] = state.errors + [f"ProfileCodeGen Crash: {str(e)}"]
+    return updates
+
+
+def profile_validator_node(state: AnalysisState) -> Dict[str, Any]:
+    """Run the Profile Validator — sandbox-execute, score, possibly lock."""
+    profile_validator = AgentFactory.get_agent("profile_validator")
+    code_handoff = state.profile_code_outputs[-1] if state.profile_code_outputs else None
+    with _track(profile_validator, state, "phase1") as updates:
+        try:
+            result = profile_validator.process(state, code_handoff=code_handoff)
+
+            reports = list(state.profile_validation_reports)
+            if result.get("report"):
+                reports.append(result["report"])
+
+            trajectory = list(state.phase1_quality_trajectory)
+            trajectory.append(result.get("quality_score", 0.0))
+
+            profile_lock = state.profile_lock
+            if result.get("should_lock"):
+                profile_lock.grant_lock(
+                    cells=code_handoff.cells if code_handoff else [],
+                    handoff=result.get("strategy_handoff"),
+                    quality_score=result.get("quality_score", 0.0),
+                    report=result.get("report"),
+                    iteration=state.phase1_iteration,
+                )
+
+            updates["profile_validation_reports"] = reports
+            updates["phase1_quality_trajectory"] = trajectory
+            updates["issue_frequency"] = update_issue_frequency(state, result.get("issues", []))
+            updates["profile_lock"] = profile_lock
+        except Exception as e:
+            updates["errors"] = state.errors + [f"ProfileValidator Crash: {str(e)}"]
+    return updates
+
+
+_EXTENSION_AGENTS = {
+    PipelineMode.FORECASTING: "forecasting_extension",
+    PipelineMode.COMPARATIVE: "comparative_extension",
+    PipelineMode.DIAGNOSTIC: "diagnostic_extension",
+}
+
+
+def extension_node(state: AnalysisState) -> Dict[str, Any]:
+    """Run mode-specific pre-strategy extension (forecasting / A-B / diagnostic)."""
+    start_time = time.time()
+    mode = state.pipeline_mode
+    mode_val = mode.value if mode else "unknown"
+    agent_name = _EXTENSION_AGENTS.get(mode)
+    if agent_name is None:
+        logger.debug(f"extension_node: no extension agent registered for mode '{mode_val}', skipping.")
+        return {}
+
+    agent = AgentFactory.get_agent(agent_name)
+    with _track(agent, state, "extensions") as updates:
+        try:
+            result = agent.process(state)
+            if isinstance(result, dict):
+                updates.update(result)
+            logger.log_execution_time(f"extension_node ({mode_val})", time.time() - start_time)
+        except Exception as e:
+            logger.error(f"Extension Agent {mode_val} failed: {e}")
+            updates["errors"] = state.errors + [f"Extension {mode_val} failed: {e}"]
+    return updates
+
+
+def _llm_delta(agent: Any, snapshot: tuple) -> tuple:
+    """Return (total, prompt, completion) deltas since `snapshot`."""
+    a = agent.llm_agent
+    return (a.total_tokens - snapshot[0], a.prompt_tokens - snapshot[1], a.completion_tokens - snapshot[2])
+
+
+def _llm_snapshot(agent: Any) -> tuple:
+    a = agent.llm_agent
+    return (a.total_tokens, a.prompt_tokens, a.completion_tokens)
+
+
+def transition_to_phase2_node(state: AnalysisState) -> Dict[str, Any]:
+    """Phase-1→2 transition. save_cache cost is phase1; transition cost is phase2."""
     start_time = time.time()
     orchestrator = AgentFactory.get_agent("orchestrator")
 
-    # Save the locked profile to cache before transitioning.
-    # Track its tokens separately so neither call's usage is lost.
-    save_tokens = 0
-    save_prompt = 0
-    save_completion = 0
+    # Phase-1 accounting: the save-cache call.
+    save_delta = (0, 0, 0)
     if state.profile_lock and state.profile_lock.is_locked():
-        save_start = orchestrator.llm_agent.total_tokens
-        save_prompt_start = orchestrator.llm_agent.prompt_tokens
-        save_completion_start = orchestrator.llm_agent.completion_tokens
+        snap = _llm_snapshot(orchestrator)
         orchestrator.process(state, action="save_cache")
-        save_tokens = orchestrator.llm_agent.total_tokens - save_start
-        save_prompt = orchestrator.llm_agent.prompt_tokens - save_prompt_start
-        save_completion = orchestrator.llm_agent.completion_tokens - save_completion_start
+        save_delta = _llm_delta(orchestrator, snap)
 
-    transition_start = orchestrator.llm_agent.total_tokens
-    transition_prompt_start = orchestrator.llm_agent.prompt_tokens
-    transition_completion_start = orchestrator.llm_agent.completion_tokens
+    # Phase-2 accounting: the transition itself.
+    snap = _llm_snapshot(orchestrator)
     result = orchestrator.process(state, action="transition_to_phase2")
-    transition_tokens = orchestrator.llm_agent.total_tokens - transition_start
-    transition_prompt = orchestrator.llm_agent.prompt_tokens - transition_prompt_start
-    transition_completion = orchestrator.llm_agent.completion_tokens - transition_completion_start
+    transition_delta = _llm_delta(orchestrator, snap)
+
+    updates: Dict[str, Any] = dict(result) if isinstance(result, dict) else {}
+    _attribute_tokens(updates, state, *save_delta, "phase1")
+    # _attribute_tokens has now written totals = state + save_delta; layer
+    # the transition delta on top and bucket it under phase2.
+    for key, delta in (
+        ("total_tokens_used", transition_delta[0]),
+        ("prompt_tokens_used", transition_delta[1]),
+        ("completion_tokens_used", transition_delta[2]),
+    ):
+        updates[key] = updates.get(key, getattr(state, key, 0)) + delta
+    for suffix, delta in (
+        ("tokens_used", transition_delta[0]),
+        ("prompt_tokens", transition_delta[1]),
+        ("completion_tokens", transition_delta[2]),
+    ):
+        key = f"phase2_{suffix}"
+        updates[key] = getattr(state, key, 0) + delta
+
+    # Prune Phase 1 iteration history — profile lock has everything Phase 2 needs.
+    for key in ("profiler_outputs", "profile_code_outputs", "profile_validation_reports"):
+        items = getattr(state, key, [])
+        if len(items) > 1:
+            updates[key] = items[-1:]
 
     logger.log_execution_time("transition_to_phase2_node", time.time() - start_time)
+    return updates
 
-    if isinstance(result, dict):
-        # Save-cache work belongs to phase 1; the transition itself opens phase 2.
-        _attribute_tokens(result, state, save_tokens, save_prompt, save_completion, "phase1")
-        # Re-read the now-updated globals so the transition delta is added on top.
-        # (We rebuild a phase-2 attribution from the updated totals.)
-        result["total_tokens_used"] = result["total_tokens_used"] + transition_tokens
-        result["prompt_tokens_used"] = result["prompt_tokens_used"] + transition_prompt
-        result["completion_tokens_used"] = result["completion_tokens_used"] + transition_completion
-        result["phase2_tokens_used"] = getattr(state, "phase2_tokens_used", 0) + transition_tokens
-        result["phase2_prompt_tokens"] = getattr(state, "phase2_prompt_tokens", 0) + transition_prompt
-        result["phase2_completion_tokens"] = getattr(state, "phase2_completion_tokens", 0) + transition_completion
 
-        # --- Token optimisation: prune Phase 1 iteration history ---
-        # The profile lock already snapshots everything Phase 2 needs
-        # (cells, handoff, quality score, validation report).  Keeping
-        # the full list of intermediate profiler/code/validation outputs
-        # only inflates serialisation cost on Celery without benefit.
-        # We retain the *latest* entry so rollback logging stays useful.
-        for key in ("profiler_outputs", "profile_code_outputs", "profile_validation_reports"):
-            items = getattr(state, key, [])
-            if len(items) > 1:
-                result[key] = items[-1:]
-
-    return result
+_STRATEGY_AGENTS = {
+    PipelineMode.FORECASTING: "forecasting_strategy",
+    PipelineMode.COMPARATIVE: "comparative_strategy",
+    PipelineMode.DIAGNOSTIC: "diagnostic_strategy",
+    PipelineMode.SEGMENTATION: "segmentation_strategy",
+    PipelineMode.DIMENSIONALITY: "dimensionality_strategy",
+}
 
 
 def strategy_node(state: AnalysisState) -> Dict[str, Any]:
-    """
-    Execute the Strategy Agent.
-
-    Role: Reads the LOCKED profile and designs a machine learning/analysis
-    strategy. It CANNOT modify the profile data.
-
-    Input: Locked Profile.
-    Output: Analysis Strategy (StrategyToCodeGenHandoff).
-    """
+    """Run the Strategy Agent (mode-specific) over the locked profile."""
     start_time = time.time()
-
-    # Select Agent based on Mode
-    mode = state.pipeline_mode
-    selected_agent = AgentFactory.get_agent("strategy")  # Default
-
-    if mode == PipelineMode.FORECASTING:
-        selected_agent = AgentFactory.get_agent("forecasting_strategy")
-    elif mode == PipelineMode.COMPARATIVE:
-        selected_agent = AgentFactory.get_agent("comparative_strategy")
-    elif mode == PipelineMode.DIAGNOSTIC:
-        selected_agent = AgentFactory.get_agent("diagnostic_strategy")
-    elif mode == PipelineMode.SEGMENTATION:
-        selected_agent = AgentFactory.get_agent("segmentation_strategy")
-    elif mode == PipelineMode.DIMENSIONALITY:
-        selected_agent = AgentFactory.get_agent("dimensionality_strategy")
-
-    # Retrieve the immutable locked profile
+    agent_name = _STRATEGY_AGENTS.get(state.pipeline_mode, "strategy")
+    agent = AgentFactory.get_agent(agent_name)
     profile_handoff = state.profile_lock.get_locked_handoff()
-
-    start_tokens = selected_agent.llm_agent.total_tokens
-    start_prompt = selected_agent.llm_agent.prompt_tokens
-    start_completion = selected_agent.llm_agent.completion_tokens
-
-    try:
-        result = selected_agent.process(state, profile_handoff=profile_handoff)
-        tokens_used = selected_agent.llm_agent.total_tokens - start_tokens
-        prompt_used = selected_agent.llm_agent.prompt_tokens - start_prompt
-        completion_used = selected_agent.llm_agent.completion_tokens - start_completion
-
-        # Store outputs
-        strategy_outputs = list(state.strategy_outputs)
-        handoff = result.get("handoff")
-        if handoff:
-            strategy_outputs.append(handoff)
-
-        logger.log_execution_time("strategy_node", time.time() - start_time)
-        updates: Dict[str, Any] = {
-            "strategy_outputs": strategy_outputs,
-            "phase2_iteration": state.phase2_iteration + 1,
-        }
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase2")
-        return updates
-    except Exception as e:
-        tokens_used = selected_agent.llm_agent.total_tokens - start_tokens
-        prompt_used = selected_agent.llm_agent.prompt_tokens - start_prompt
-        completion_used = selected_agent.llm_agent.completion_tokens - start_completion
-        logger.log_execution_time("strategy_node (FAILED)", time.time() - start_time)
-        updates = {"errors": state.errors + [f"Strategy Crash: {str(e)}"]}
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase2")
-        return updates
+    with _track(agent, state, "phase2") as updates:
+        try:
+            result = agent.process(state, profile_handoff=profile_handoff)
+            outputs = list(state.strategy_outputs)
+            if result.get("handoff"):
+                outputs.append(result["handoff"])
+            updates["strategy_outputs"] = outputs
+            updates["phase2_iteration"] = state.phase2_iteration + 1
+            logger.log_execution_time("strategy_node", time.time() - start_time)
+        except Exception as e:
+            logger.log_execution_time("strategy_node (FAILED)", time.time() - start_time)
+            updates["errors"] = state.errors + [f"Strategy Crash: {str(e)}"]
+    return updates
 
 
 def analysis_codegen_node(state: AnalysisState) -> Dict[str, Any]:
-    """
-    Execute the Analysis Code Generator Agent.
-
-    Role: Implements the strategy into executable code (model training,
-    evaluation, visualization) based on the Strategy.
-
-    Input: Latest Analysis Strategy.
-    Output: Generated Analysis Code.
-    """
+    """Run the Analysis Code Generator — strategy → executable code cells."""
     start_time = time.time()
     strategy = state.strategy_outputs[-1] if state.strategy_outputs else None
-
-    analysis_codegen = AgentFactory.get_agent("analysis_codegen")
-    start_tokens = analysis_codegen.llm_agent.total_tokens
-    start_prompt = analysis_codegen.llm_agent.prompt_tokens
-    start_completion = analysis_codegen.llm_agent.completion_tokens
-
-    try:
-        result = analysis_codegen.process(state, strategy=strategy)
-        tokens_used = analysis_codegen.llm_agent.total_tokens - start_tokens
-        prompt_used = analysis_codegen.llm_agent.prompt_tokens - start_prompt
-        completion_used = analysis_codegen.llm_agent.completion_tokens - start_completion
-
-        # Store output
-        code_outputs = list(state.analysis_code_outputs)
-        handoff = result.get("handoff")
-        if handoff:
-            code_outputs.append(handoff)
-
-        logger.log_execution_time("analysis_codegen_node", time.time() - start_time)
-        updates: Dict[str, Any] = {"analysis_code_outputs": code_outputs}
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase2")
-        return updates
-    except Exception as e:
-        tokens_used = analysis_codegen.llm_agent.total_tokens - start_tokens
-        prompt_used = analysis_codegen.llm_agent.prompt_tokens - start_prompt
-        completion_used = analysis_codegen.llm_agent.completion_tokens - start_completion
-        logger.log_execution_time(
-            "analysis_codegen_node (FAILED)", time.time() - start_time
-        )
-        updates = {"errors": state.errors + [f"AnalysisCodeGen Crash: {str(e)}"]}
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase2")
-        return updates
+    agent = AgentFactory.get_agent("analysis_codegen")
+    with _track(agent, state, "phase2") as updates:
+        try:
+            result = agent.process(state, strategy=strategy)
+            outputs = list(state.analysis_code_outputs)
+            if result.get("handoff"):
+                outputs.append(result["handoff"])
+            updates["analysis_code_outputs"] = outputs
+            logger.log_execution_time("analysis_codegen_node", time.time() - start_time)
+        except Exception as e:
+            logger.log_execution_time("analysis_codegen_node (FAILED)", time.time() - start_time)
+            updates["errors"] = state.errors + [f"AnalysisCodeGen Crash: {str(e)}"]
+    return updates
 
 
 def analysis_validator_node(state: AnalysisState) -> Dict[str, Any]:
-    """
-    Execute the Analysis Validator Agent.
-
-    Role: Validates the analysis code correctness, model performance, and
-    adherence to the strategy.
-
-    Input: Latest Analysis Code.
-    Output: Validation Report & completion decision.
-    """
+    """Run the Analysis Validator — sandbox-execute, score, route."""
     start_time = time.time()
-    code_handoff = (
-        state.analysis_code_outputs[-1] if state.analysis_code_outputs else None
-    )
-    analysis_validator = AgentFactory.get_agent("analysis_validator")
-    start_tokens = analysis_validator.llm_agent.total_tokens
-    start_prompt = analysis_validator.llm_agent.prompt_tokens
-    start_completion = analysis_validator.llm_agent.completion_tokens
-
-    try:
-        result = analysis_validator.process(state, code_handoff=code_handoff)
-        tokens_used = analysis_validator.llm_agent.total_tokens - start_tokens
-        prompt_used = analysis_validator.llm_agent.prompt_tokens - start_prompt
-        completion_used = analysis_validator.llm_agent.completion_tokens - start_completion
-
-        # Store outputs
-        validation_reports = list(state.analysis_validation_reports)
-        report = result.get("report")
-        if report:
-            validation_reports.append(report)
-
-        # Track quality for Phase 2
-        quality_trajectory = list(state.phase2_quality_trajectory)
-        quality_trajectory.append(result.get("quality_score", 0.0))
-
-        # Update issue frequency (for systemic issue detection in routing)
-        issue_frequency = update_issue_frequency(state, result.get("issues", []))
-
-        # --- Token optimisation: prune old Phase 2 iterations ---
-        # Keep only the latest strategy/code outputs plus the best (for
-        # rollback).  The validation reports list is kept to the last two
-        # so the retry prompt can reference the most recent failure while
-        # earlier reports (already consumed) are discarded.
-        if len(validation_reports) > 2:
-            validation_reports = validation_reports[-2:]
-
-        logger.log_execution_time("analysis_validator_node", time.time() - start_time)
-        updates: Dict[str, Any] = {
-            "analysis_validation_reports": validation_reports,
-            "phase2_quality_trajectory": quality_trajectory,
-            "issue_frequency": issue_frequency,
-        }
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase2")
-        # --- Token optimisation: prune old Phase 2 iterations ---
-        # Keep only the latest outputs.  The best state for rollback is
-        # stored separately in phase2_best_strategy / phase2_best_code.
+    code_handoff = state.analysis_code_outputs[-1] if state.analysis_code_outputs else None
+    agent = AgentFactory.get_agent("analysis_validator")
+    with _track(agent, state, "phase2") as updates:
         try:
-            if isinstance(state.strategy_outputs, list) and len(state.strategy_outputs) > 2:
-                updates["strategy_outputs"] = state.strategy_outputs[-1:]
-            if isinstance(state.analysis_code_outputs, list) and len(state.analysis_code_outputs) > 2:
-                updates["analysis_code_outputs"] = state.analysis_code_outputs[-1:]
-        except (TypeError, AttributeError):
-            pass
-        return updates
-    except Exception as e:
-        tokens_used = analysis_validator.llm_agent.total_tokens - start_tokens
-        prompt_used = analysis_validator.llm_agent.prompt_tokens - start_prompt
-        completion_used = analysis_validator.llm_agent.completion_tokens - start_completion
-        logger.log_execution_time(
-            "analysis_validator_node (FAILED)", time.time() - start_time
-        )
-        updates = {"errors": state.errors + [f"AnalysisValidator Crash: {str(e)}"]}
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase2")
-        return updates
+            result = agent.process(state, code_handoff=code_handoff)
+
+            reports = list(state.analysis_validation_reports)
+            if result.get("report"):
+                reports.append(result["report"])
+            # Keep only the last two so retry prompts can reference the most
+            # recent failure; older reports are already consumed.
+            if len(reports) > 2:
+                reports = reports[-2:]
+
+            trajectory = list(state.phase2_quality_trajectory)
+            trajectory.append(result.get("quality_score", 0.0))
+
+            updates["analysis_validation_reports"] = reports
+            updates["phase2_quality_trajectory"] = trajectory
+            updates["issue_frequency"] = update_issue_frequency(state, result.get("issues", []))
+
+            # Prune old phase-2 outputs — best state lives in phase2_best_*.
+            try:
+                if isinstance(state.strategy_outputs, list) and len(state.strategy_outputs) > 2:
+                    updates["strategy_outputs"] = state.strategy_outputs[-1:]
+                if isinstance(state.analysis_code_outputs, list) and len(state.analysis_code_outputs) > 2:
+                    updates["analysis_code_outputs"] = state.analysis_code_outputs[-1:]
+            except (TypeError, AttributeError):
+                pass
+
+            logger.log_execution_time("analysis_validator_node", time.time() - start_time)
+        except Exception as e:
+            logger.log_execution_time("analysis_validator_node (FAILED)", time.time() - start_time)
+            updates["errors"] = state.errors + [f"AnalysisValidator Crash: {str(e)}"]
+    return updates
 
 
 def assemble_notebook_node(state: AnalysisState) -> Dict[str, Any]:
@@ -668,79 +447,40 @@ def assemble_notebook_node(state: AnalysisState) -> Dict[str, Any]:
     # 4. Invoke Orchestrator to finalize and save
     start_time = time.time()
     orchestrator = AgentFactory.get_agent("orchestrator")
-    start_tokens = orchestrator.llm_agent.total_tokens
-    start_prompt = orchestrator.llm_agent.prompt_tokens
-    start_completion = orchestrator.llm_agent.completion_tokens
-    res = orchestrator.process(
-        state, action="assemble_notebook", assembly_handoff=assembly_handoff
-    )
-    tokens_used = orchestrator.llm_agent.total_tokens - start_tokens
-    prompt_used = orchestrator.llm_agent.prompt_tokens - start_prompt
-    completion_used = orchestrator.llm_agent.completion_tokens - start_completion
-
-    if isinstance(res, dict):
-        _attribute_tokens(res, state, tokens_used, prompt_used, completion_used, "phase2")
-
+    with _track(orchestrator, state, "phase2") as updates:
+        res = orchestrator.process(state, action="assemble_notebook", assembly_handoff=assembly_handoff)
+        if isinstance(res, dict):
+            updates.update(res)
     logger.log_execution_time("assemble_notebook_node", time.time() - start_time)
-    return res
+    return updates
 
 
 def exploratory_conclusions_node(state: AnalysisState) -> Dict[str, Any]:
     """Execute Exploratory Conclusions Agent."""
     start_time = time.time()
-    exploratory_agent = AgentFactory.get_agent("exploratory_conclusions")
-    start_tokens = exploratory_agent.llm_agent.total_tokens
-    start_prompt = exploratory_agent.llm_agent.prompt_tokens
-    start_completion = exploratory_agent.llm_agent.completion_tokens
-
-    try:
-        res = exploratory_agent.process(state)
-        tokens_used = exploratory_agent.llm_agent.total_tokens - start_tokens
-        prompt_used = exploratory_agent.llm_agent.prompt_tokens - start_prompt
-        completion_used = exploratory_agent.llm_agent.completion_tokens - start_completion
-
-        if isinstance(res, dict):
-            _attribute_tokens(res, state, tokens_used, prompt_used, completion_used, "phase2")
-
-        logger.log_execution_time(
-            "exploratory_conclusions_node", time.time() - start_time
-        )
-        return res
-    except Exception as e:
-        tokens_used = exploratory_agent.llm_agent.total_tokens - start_tokens
-        prompt_used = exploratory_agent.llm_agent.prompt_tokens - start_prompt
-        completion_used = exploratory_agent.llm_agent.completion_tokens - start_completion
-        logger.log_execution_time(
-            "exploratory_conclusions_node (FAILED)", time.time() - start_time
-        )
-        updates: Dict[str, Any] = {"errors": state.errors + [f"ExploratoryConclusions Crash: {str(e)}"]}
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase2")
-        return updates
+    agent = AgentFactory.get_agent("exploratory_conclusions")
+    with _track(agent, state, "phase2") as updates:
+        try:
+            res = agent.process(state)
+            if isinstance(res, dict):
+                updates.update(res)
+            logger.log_execution_time("exploratory_conclusions_node", time.time() - start_time)
+        except Exception as e:
+            logger.log_execution_time("exploratory_conclusions_node (FAILED)", time.time() - start_time)
+            updates["errors"] = state.errors + [f"ExploratoryConclusions Crash: {str(e)}"]
+    return updates
 
 
 def rollback_recovery_node(state: AnalysisState) -> Dict[str, Any]:
-    """
-    Execute Rollback Recovery.
-
-    Role: Triggered when quality degrades significantly. Reverts state
-    to a previous known-good point (if implemented completely) or
-    aborts the current deficient branch.
-    """
+    """Revert phase-2 state to a known-good point on quality degradation."""
     start_time = time.time()
     orchestrator = AgentFactory.get_agent("orchestrator")
-    start_tokens = orchestrator.llm_agent.total_tokens
-    start_prompt = orchestrator.llm_agent.prompt_tokens
-    start_completion = orchestrator.llm_agent.completion_tokens
-    result = orchestrator.process(state, action="rollback_phase2")
-    tokens_used = orchestrator.llm_agent.total_tokens - start_tokens
-    prompt_used = orchestrator.llm_agent.prompt_tokens - start_prompt
-    completion_used = orchestrator.llm_agent.completion_tokens - start_completion
-
-    if isinstance(result, dict):
-        _attribute_tokens(result, state, tokens_used, prompt_used, completion_used, "phase2")
-
+    with _track(orchestrator, state, "phase2") as updates:
+        result = orchestrator.process(state, action="rollback_phase2")
+        if isinstance(result, dict):
+            updates.update(result)
     logger.log_execution_time("rollback_recovery_node", time.time() - start_time)
-    return result
+    return updates
 
 
 # ============================================================================
@@ -780,134 +520,54 @@ def route_after_profile_validation(
     return "profile_codegen"
 
 
+def _extraction_node(state: AnalysisState, agent_key: str, label: str) -> Dict[str, Any]:
+    """Shared body for SQL / API extraction (LLM-driven, returns csv_path)."""
+    start_time = time.time()
+    agent = AgentFactory.get_agent(agent_key)
+    with _track(agent, state, "phase1") as updates:
+        try:
+            result = agent.process(state)
+            if result.get("csv_path"):
+                updates["csv_path"] = result["csv_path"]
+            if result.get("errors"):
+                updates["errors"] = state.errors + result["errors"]
+            logger.log_execution_time(f"{label}_node", time.time() - start_time)
+        except Exception as e:
+            logger.log_execution_time(f"{label}_node (FAILED)", time.time() - start_time)
+            logger.error(f"{label} Crash: {e}", exc_info=True)
+            updates["errors"] = state.errors + [f"{label} Crash: {str(e)}"]
+    return updates
+
+
 def sql_extraction_node(state: AnalysisState) -> Dict[str, Any]:
-    """
-    Execute the SQL Extraction Agent.
-
-    Role: Uses the LLM to generate a SELECT query from the database schema and
-    user question, executes it, and saves the result as a CSV for the pipeline.
-
-    Input: UserIntent with db_uri and analysis_question.
-    Output: Updated csv_path in state pointing to the extracted CSV.
-    """
-    start_time = time.time()
-    sql_agent = AgentFactory.get_agent("sql_extraction")
-    start_tokens = sql_agent.llm_agent.total_tokens
-    start_prompt = sql_agent.llm_agent.prompt_tokens
-    start_completion = sql_agent.llm_agent.completion_tokens
-
-    try:
-        result = sql_agent.process(state)
-        tokens_used = sql_agent.llm_agent.total_tokens - start_tokens
-        prompt_used = sql_agent.llm_agent.prompt_tokens - start_prompt
-        completion_used = sql_agent.llm_agent.completion_tokens - start_completion
-
-        logger.log_execution_time("sql_extraction_node", time.time() - start_time)
-
-        updates: Dict[str, Any] = {}
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
-
-        if result.get("csv_path"):
-            updates["csv_path"] = result["csv_path"]
-        if result.get("errors"):
-            updates["errors"] = state.errors + result["errors"]
-
-        return updates
-    except Exception as e:
-        tokens_used = sql_agent.llm_agent.total_tokens - start_tokens
-        prompt_used = sql_agent.llm_agent.prompt_tokens - start_prompt
-        completion_used = sql_agent.llm_agent.completion_tokens - start_completion
-        logger.log_execution_time("sql_extraction_node (FAILED)", time.time() - start_time)
-        logger.error(f"SQLExtraction Crash: {e}", exc_info=True)
-        updates = {"errors": state.errors + [f"SQLExtraction Crash: {str(e)}"]}
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
-        return updates
-
-
-def data_merger_node(state: AnalysisState) -> Dict[str, Any]:
-    """
-    Execute the Data Merger Agent.
-
-    Role: Merges multiple input files into a single dataset if required.
-    """
-    start_time = time.time()
-    data_merger = AgentFactory.get_agent("data_merger")
-    start_tokens = data_merger.llm_agent.total_tokens
-    start_prompt = data_merger.llm_agent.prompt_tokens
-    start_completion = data_merger.llm_agent.completion_tokens
-
-    try:
-        result = data_merger.process(state)
-        tokens_used = data_merger.llm_agent.total_tokens - start_tokens
-        prompt_used = data_merger.llm_agent.prompt_tokens - start_prompt
-        completion_used = data_merger.llm_agent.completion_tokens - start_completion
-
-        logger.log_execution_time("data_merger_node", time.time() - start_time)
-        if "error" in result:
-            updates: Dict[str, Any] = {"errors": state.errors + [result["error"]]}
-            _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
-            return updates
-
-        updates = {
-            "merged_dataset": result.get("merged_dataset"),
-            "join_report": result.get("join_report"),
-            "csv_path": result.get("csv_path", state.csv_path),
-        }
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
-        return updates
-    except Exception as e:
-        tokens_used = data_merger.llm_agent.total_tokens - start_tokens
-        prompt_used = data_merger.llm_agent.prompt_tokens - start_prompt
-        completion_used = data_merger.llm_agent.completion_tokens - start_completion
-        logger.log_execution_time("data_merger_node (FAILED)", time.time() - start_time)
-        logger.error(f"DataMerger Crash: {e}", exc_info=True)
-        updates = {"errors": state.errors + [f"DataMerger Crash: {str(e)}"]}
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
-        return updates
+    """SQL Extraction: schema + question → SELECT → CSV for the pipeline."""
+    return _extraction_node(state, "sql_extraction", "SQLExtraction")
 
 
 def api_extraction_node(state: AnalysisState) -> Dict[str, Any]:
-    """
-    Execute the API Extraction Agent.
+    """API Extraction: REST endpoint → CSV for the pipeline."""
+    return _extraction_node(state, "api_extraction", "APIExtraction")
 
-    Role: Fetches data from a REST API endpoint, handles pagination,
-    and saves the result as a CSV for the pipeline.
 
-    Input: UserIntent with api_url (and optional api_headers, api_auth, json_path).
-    Output: Updated csv_path in state pointing to the extracted CSV.
-    """
+def data_merger_node(state: AnalysisState) -> Dict[str, Any]:
+    """Merge multiple input files into one dataset."""
     start_time = time.time()
-    api_agent = AgentFactory.get_agent("api_extraction")
-    start_tokens = api_agent.llm_agent.total_tokens
-    start_prompt = api_agent.llm_agent.prompt_tokens
-    start_completion = api_agent.llm_agent.completion_tokens
-
-    try:
-        result = api_agent.process(state)
-        tokens_used = api_agent.llm_agent.total_tokens - start_tokens
-        prompt_used = api_agent.llm_agent.prompt_tokens - start_prompt
-        completion_used = api_agent.llm_agent.completion_tokens - start_completion
-
-        logger.log_execution_time("api_extraction_node", time.time() - start_time)
-
-        updates: Dict[str, Any] = {}
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
-
-        if result.get("csv_path"):
-            updates["csv_path"] = result["csv_path"]
-        if result.get("errors"):
-            updates["errors"] = state.errors + result["errors"]
-
-        return updates
-    except Exception as e:
-        tokens_used = api_agent.llm_agent.total_tokens - start_tokens
-        prompt_used = api_agent.llm_agent.prompt_tokens - start_prompt
-        completion_used = api_agent.llm_agent.completion_tokens - start_completion
-        logger.log_execution_time("api_extraction_node (FAILED)", time.time() - start_time)
-        logger.error(f"APIExtraction Crash: {e}", exc_info=True)
-        updates = {"errors": state.errors + [f"APIExtraction Crash: {str(e)}"]}
-        _attribute_tokens(updates, state, tokens_used, prompt_used, completion_used, "phase1")
-        return updates
+    agent = AgentFactory.get_agent("data_merger")
+    with _track(agent, state, "phase1") as updates:
+        try:
+            result = agent.process(state)
+            if "error" in result:
+                updates["errors"] = state.errors + [result["error"]]
+            else:
+                updates["merged_dataset"] = result.get("merged_dataset")
+                updates["join_report"] = result.get("join_report")
+                updates["csv_path"] = result.get("csv_path", state.csv_path)
+            logger.log_execution_time("data_merger_node", time.time() - start_time)
+        except Exception as e:
+            logger.log_execution_time("data_merger_node (FAILED)", time.time() - start_time)
+            logger.error(f"DataMerger Crash: {e}", exc_info=True)
+            updates["errors"] = state.errors + [f"DataMerger Crash: {str(e)}"]
+    return updates
 
 
 def route_after_initialize(
