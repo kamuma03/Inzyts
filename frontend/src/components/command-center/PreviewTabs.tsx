@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type FC, type ReactNode } from 'react';
+import { type FC, type ReactNode } from 'react';
 
 export type PreviewTabId = 'overview' | 'visual' | 'code' | 'data' | 'logs' | 'events';
 
@@ -74,30 +74,16 @@ interface PreviewPanelProps {
     children: ReactNode;
 }
 
-/** One panel — keeps its scroll position when toggled out of view. */
-const PreviewPanel: FC<PreviewPanelProps> = ({ id, active, children }) => {
-    const ref = useRef<HTMLDivElement | null>(null);
-    const [scrollTop, setScrollTop] = useState(0);
-
-    // Capture scroll position when the panel deactivates so we can restore
-    // it when the user returns. We also restore on activation in case the
-    // browser cleared it (some layout reflows do).
-    const onActivate = useCallback(() => {
-        if (ref.current) ref.current.scrollTop = scrollTop;
-    }, [scrollTop]);
-
-    return (
-        <div
-            ref={ref}
-            role="tabpanel"
-            id={`tabpanel-${id}`}
-            aria-labelledby={`tab-${id}`}
-            hidden={!active}
-            onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
-            onTransitionEnd={onActivate}
-            className="absolute inset-0 overflow-auto"
-        >
-            {children}
-        </div>
-    );
-};
+/** One panel — kept mounted and toggled with `hidden` so the browser preserves
+ *  its native scroll position automatically when the user returns. */
+const PreviewPanel: FC<PreviewPanelProps> = ({ id, active, children }) => (
+    <div
+        role="tabpanel"
+        id={`tabpanel-${id}`}
+        aria-labelledby={`tab-${id}`}
+        hidden={!active}
+        className="absolute inset-0 overflow-auto"
+    >
+        {children}
+    </div>
+);
