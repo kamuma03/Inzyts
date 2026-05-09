@@ -373,7 +373,9 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
             <h3 className="m-0 mb-3 text-[var(--text-primary)] text-[1.2rem] shrink-0">New analysis</h3>
             {breadcrumb}
 
-            <div className="flex flex-col gap-4 flex-1 overflow-y-auto">
+            {/* Scrollable form body — never lets the action button get pushed
+                below the fold. */}
+            <div className="flex flex-col gap-4 flex-1 overflow-y-auto min-h-0">
                 {step === 'connect' && (
                     <>
                         <Tabs
@@ -386,17 +388,6 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
                         <div className="p-2 bg-[rgba(0,0,0,0.2)] rounded-lg border border-dashed border-[var(--rule)]">
                             {renderDataSource()}
                         </div>
-
-                        <div className="flex-1" />
-
-                        <button
-                            type="button"
-                            onClick={() => setStep('frame')}
-                            disabled={!dataResolved}
-                            className="self-end py-2.5 px-5 bg-[var(--accent)] text-[var(--surface-0)] font-semibold text-[14px] rounded-md flex items-center gap-2 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                        >
-                            Continue <ArrowRight size={16} />
-                        </button>
                     </>
                 )}
 
@@ -422,28 +413,41 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
                             question={question} setQuestion={setQuestion}
                             useCache={useCache} setUseCache={setUseCache}
                         />
-
-                        <div className="flex-1" />
-
-                        <button
-                            onClick={handleSubmit}
-                            disabled={loading}
-                            className="py-3 px-6 bg-[var(--accent)] text-[var(--surface-0)] font-semibold text-[15px] rounded-md flex justify-center items-center gap-2 shadow-sm hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                        >
-                            {loading ? 'Starting analysis…' : <><Play size={16} /> Start analysis</>}
-                        </button>
                     </>
                 )}
+            </div>
 
-                {error && (
-                    <div className="text-[#fc8181] py-2 px-3 bg-[rgba(245,101,101,0.1)] border border-[rgba(245,101,101,0.3)] rounded-md flex items-center justify-between text-[0.85rem]">
-                        <span>{error}</span>
-                        <button onClick={() => setError(null)} className="bg-none border-none text-[#fc8181] cursor-pointer pl-2">
-                            <X size={14} />
-                        </button>
-                    </div>
+            {/* Sticky footer — always visible regardless of body scroll. */}
+            <div className="shrink-0 pt-3 mt-3 border-t border-[var(--rule)] flex justify-end items-center gap-3">
+                {step === 'connect' && (
+                    <button
+                        type="button"
+                        onClick={() => setStep('frame')}
+                        disabled={!dataResolved}
+                        className="py-2.5 px-5 bg-[var(--accent)] text-[var(--surface-0)] font-semibold text-[14px] rounded-md flex items-center gap-2 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                    >
+                        Continue <ArrowRight size={16} />
+                    </button>
+                )}
+                {step === 'frame' && (
+                    <button
+                        onClick={handleSubmit}
+                        disabled={loading}
+                        className="py-3 px-6 bg-[var(--accent)] text-[var(--surface-0)] font-semibold text-[15px] rounded-md flex items-center gap-2 shadow-sm hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                    >
+                        {loading ? 'Starting analysis…' : <><Play size={16} /> Start analysis</>}
+                    </button>
                 )}
             </div>
+
+            {error && (
+                <div className="shrink-0 mt-3 text-[#fc8181] py-2 px-3 bg-[rgba(245,101,101,0.1)] border border-[rgba(245,101,101,0.3)] rounded-md flex items-center justify-between text-[0.85rem]">
+                    <span>{error}</span>
+                    <button onClick={() => setError(null)} className="bg-none border-none text-[#fc8181] cursor-pointer pl-2">
+                        <X size={14} />
+                    </button>
+                </div>
+            )}
         </div>
     );
 };
