@@ -101,8 +101,17 @@ export const TopStrip: FC<TopStripProps> = ({ job, metrics, onCancel, onExport }
                 <span className="font-mono text-[12px] text-[var(--text-dim)]">
                     job_id={job.id.slice(0, 8)}
                 </span>
+                {/* Mode pill is informational. While the job is running, drop
+                    it to a neutral fill so --accent stays reserved for the
+                    next user action (Cancel sits on the same row). Once the
+                    job completes the pill picks up the accent again as a
+                    finished-state mark. */}
                 <span
-                    className="px-1.5 py-0.5 text-[11px] uppercase tracking-[0.04em] rounded bg-[rgba(76,201,240,0.12)] text-[var(--accent)]"
+                    className={`px-1.5 py-0.5 text-[11px] uppercase tracking-[0.04em] rounded ${
+                        isRunning
+                            ? 'bg-white/[0.05] text-[var(--text-secondary)]'
+                            : 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                    }`}
                     aria-label={`Analysis mode: ${job.mode}`}
                 >
                     {job.mode}
@@ -127,7 +136,7 @@ export const TopStrip: FC<TopStripProps> = ({ job, metrics, onCancel, onExport }
                         <button
                             type="button"
                             onClick={onCancel}
-                            className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-[rgba(248,113,113,0.1)] text-[var(--bad)] border border-[rgba(248,113,113,0.3)] hover:bg-[rgba(248,113,113,0.2)] transition-colors"
+                            className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] text-[var(--bad)] border border-[color-mix(in_srgb,var(--bad)_30%,transparent)] hover:bg-[color-mix(in_srgb,var(--bad)_20%,transparent)] transition-colors"
                             aria-label="Cancel job"
                         >
                             <X size={12} />
@@ -138,7 +147,7 @@ export const TopStrip: FC<TopStripProps> = ({ job, metrics, onCancel, onExport }
                         <button
                             type="button"
                             onClick={onExport}
-                            className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-[rgba(76,201,240,0.1)] text-[var(--accent)] border border-[rgba(76,201,240,0.3)] hover:bg-[rgba(76,201,240,0.2)] transition-colors"
+                            className="flex items-center gap-1 px-2 py-1 text-[11px] rounded bg-[var(--accent-soft)] text-[var(--accent)] border border-[color-mix(in_srgb,var(--accent)_30%,transparent)] hover:bg-[color-mix(in_srgb,var(--accent)_20%,transparent)] transition-colors"
                             aria-label="Export"
                         >
                             <Download size={12} />
