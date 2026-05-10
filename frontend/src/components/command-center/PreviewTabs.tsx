@@ -45,7 +45,7 @@ export const PreviewTabBar = <T extends PreviewTabId>({
                 id={`tab-${tab.id}`}
                 tabIndex={activeTab === tab.id ? 0 : -1}
                 onClick={() => onChange(tab.id)}
-                className={`px-3 py-2 text-[12px] font-medium border-b-2 transition-colors ${
+                className={`px-3 py-2 text-[12px] font-medium border-b-2 transition-colors focus-visible:outline-none focus-visible:bg-[var(--accent-soft)] focus-visible:text-[var(--accent)] ${
                     activeTab === tab.id
                         ? 'border-[var(--accent)] text-[var(--accent)]'
                         : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'

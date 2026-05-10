@@ -318,10 +318,9 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                                 onClick={() => setNotebookTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
                                 aria-label={notebookTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
                                 title={notebookTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-                                className="flex items-center gap-1 px-2 py-1 rounded-md border border-[var(--rule)] text-[var(--text-secondary)] bg-transparent text-[12px] cursor-pointer hover:text-[var(--text-primary)] transition-colors"
+                                className="flex items-center justify-center p-1.5 rounded-md border border-[var(--rule)] text-[var(--text-secondary)] bg-transparent cursor-pointer hover:text-[var(--text-primary)] hover:border-[var(--rule-strong)] transition-colors"
                             >
                                 {notebookTheme === 'dark' ? <Moon size={14} /> : <Sun size={14} />}
-                                <span className="capitalize">{notebookTheme}</span>
                             </button>
                         )}
 

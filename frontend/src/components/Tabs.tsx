@@ -31,10 +31,10 @@ export const Tabs: FC<TabsProps> = ({ tabs, activeTab, onSelect, ariaLabel = 'Ta
                         aria-controls={`tabpanel-${tab.id}`}
                         id={`tab-${tab.id}`}
                         onClick={() => onSelect(tab.id)}
-                        className={`flex items-center gap-[0.4rem] px-4 py-[0.6rem] text-[0.9rem] bg-none border-none border-b-2 cursor-pointer transition-[color,border-color] duration-200 whitespace-nowrap ${
+                        className={`flex items-center gap-[0.4rem] px-4 py-[0.6rem] text-[0.9rem] bg-none border-none border-b-2 cursor-pointer transition-[color,border-color,background-color] duration-200 whitespace-nowrap focus-visible:outline-none focus-visible:bg-[var(--accent-soft)] focus-visible:text-[var(--accent)] ${
                             isActive
                                 ? 'text-[var(--accent)] font-semibold border-b-[var(--accent)]'
-                                : 'text-[var(--text-secondary)] font-medium border-b-transparent'
+                                : 'text-[var(--text-secondary)] font-medium border-b-transparent hover:text-[var(--text-primary)]'
                         }`}
                     >
                         {tab.icon}

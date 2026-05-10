@@ -136,9 +136,11 @@ export const FollowUpChat: React.FC<FollowUpChatProps> = ({ jobId }) => {
                             className="animate-[slideIn_0.2s_ease-out]"
                         >
                             {msg.role === 'user' ? (
-                                <div className="inline-flex items-center gap-2 bg-[var(--accent-soft)] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] rounded-[12px_12px_12px_4px] px-3.5 py-2 text-[0.88rem] text-[var(--text-primary)] max-w-[80%]">
-                                    <Sparkles size={14} className="text-[var(--accent)] shrink-0" />
-                                    <span>{msg.content}</span>
+                                <div className="flex justify-end">
+                                    <div className="inline-flex items-center gap-2 bg-[var(--accent-soft)] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] rounded-[12px_12px_4px_12px] px-3.5 py-2 text-[0.88rem] text-[var(--text-primary)] max-w-[80%]">
+                                        <Sparkles size={14} className="text-[var(--accent)] shrink-0" />
+                                        <span>{msg.content}</span>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="flex flex-col gap-2">

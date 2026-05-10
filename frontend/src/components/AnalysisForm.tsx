@@ -392,13 +392,22 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
 
                 {step === 'frame' && (
                     <>
-                        <input
-                            type="text"
-                            value={title}
-                            onChange={(e: ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
-                            placeholder="Title (optional)"
-                            className="w-full py-2 px-3 rounded border border-[var(--rule)] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-[0.85rem]"
-                        />
+                        <div>
+                            <label
+                                htmlFor="analysis-title"
+                                className="block text-[12px] mb-1.5 text-[var(--text-secondary)]"
+                            >
+                                Title <span className="text-[var(--text-dim)]">(optional)</span>
+                            </label>
+                            <input
+                                id="analysis-title"
+                                type="text"
+                                value={title}
+                                onChange={(e: ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
+                                placeholder="Q3 forecasting check"
+                                className="w-full py-2 px-3 rounded border border-[var(--rule)] bg-[rgba(0,0,0,0.2)] text-[var(--text-primary)] text-[0.85rem]"
+                            />
+                        </div>
 
                         <ConfigPanel
                             dictPath={dictPath} onDictFileChange={handleDictFileChange}
