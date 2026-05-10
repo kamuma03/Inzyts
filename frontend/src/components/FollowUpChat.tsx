@@ -103,14 +103,14 @@ export const FollowUpChat: React.FC<FollowUpChatProps> = ({ jobId }) => {
     };
 
     return (
-        <div className="mt-4 border border-[var(--rule)] rounded-lg bg-[rgba(13,27,42,0.5)] overflow-hidden">
+        <div className="mt-4 border border-[var(--rule)] rounded-lg bg-[var(--surface-0)]/50 overflow-hidden">
             {/* Header */}
-            <div className="flex items-center gap-2 px-4 py-2.5 text-[0.85rem] font-semibold text-[var(--accent)] border-b border-[rgba(65,90,119,0.3)] bg-[rgba(27,38,59,0.4)]">
+            <div className="flex items-center gap-2 px-4 py-2.5 text-[0.85rem] font-semibold text-[var(--accent)] border-b border-[var(--rule)] bg-[var(--surface-2)]">
                 <MessageSquare size={16} />
                 <span>Follow-Up Analysis</span>
                 {messages.length > 0 && (
                     <span className="ml-auto text-[0.75rem] font-normal text-[var(--text-secondary)] opacity-70">
-                        {Math.ceil(messages.filter(m => m.role === 'user').length)} questions
+                        {messages.filter(m => m.role === 'user').length} questions
                     </span>
                 )}
             </div>
@@ -121,7 +121,7 @@ export const FollowUpChat: React.FC<FollowUpChatProps> = ({ jobId }) => {
                     {messages.map((msg, i) => (
                         <div key={i} className="animate-[slideIn_0.2s_ease-out]">
                             {msg.role === 'user' ? (
-                                <div className="inline-flex items-center gap-2 bg-[rgba(76,201,240,0.1)] border border-[rgba(76,201,240,0.25)] rounded-[12px_12px_12px_4px] px-3.5 py-2 text-[0.88rem] text-[var(--text-primary)] max-w-[80%]">
+                                <div className="inline-flex items-center gap-2 bg-[var(--accent-soft)] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] rounded-[12px_12px_12px_4px] px-3.5 py-2 text-[0.88rem] text-[var(--text-primary)] max-w-[80%]">
                                     <Sparkles size={14} className="text-[var(--accent)] shrink-0" />
                                     <span>{msg.content}</span>
                                 </div>
@@ -139,22 +139,22 @@ export const FollowUpChat: React.FC<FollowUpChatProps> = ({ jobId }) => {
                                         <div key={ci} className="rounded-md overflow-hidden">
                                             {cell.cell_type === 'code' ? (
                                                 <>
-                                                    <pre className="font-mono text-[0.82rem] leading-relaxed text-[#e6edf3] bg-[rgba(27,38,59,0.7)] px-3.5 py-2.5 m-0 whitespace-pre-wrap break-words rounded-t-md">{cell.source}</pre>
+                                                    <pre className="font-mono text-[0.82rem] leading-relaxed text-[var(--text-primary)] bg-white/[0.04] px-3.5 py-2.5 m-0 whitespace-pre-wrap break-words rounded-t-md">{cell.source}</pre>
                                                     {cell.output && (
-                                                        <pre className="font-mono text-[0.78rem] text-[var(--text-secondary)] bg-[rgba(13,27,42,0.6)] px-3.5 py-1.5 m-0 whitespace-pre-wrap border-t border-[rgba(65,90,119,0.2)] rounded-b-md">{cell.output}</pre>
+                                                        <pre className="font-mono text-[0.78rem] text-[var(--text-secondary)] bg-white/[0.02] px-3.5 py-1.5 m-0 whitespace-pre-wrap border-t border-[var(--rule)] rounded-b-md">{cell.output}</pre>
                                                     )}
                                                     {cell.images && cell.images.map((img, ii) => (
                                                         <img
                                                             key={ii}
                                                             src={`data:image/png;base64,${img}`}
                                                             alt={`Follow-up chart ${ii}`}
-                                                            className="max-w-full rounded mt-1 border border-[rgba(65,90,119,0.3)]"
+                                                            className="max-w-full rounded mt-1 border border-[var(--rule)]"
                                                         />
                                                     ))}
                                                 </>
                                             ) : (
                                                 <div
-                                                    className="text-[var(--text-primary)] leading-[1.7] text-[0.88rem] py-1 [&_h1]:my-1 [&_h1]:text-[var(--text-primary)] [&_h2]:my-1 [&_h2]:text-[var(--text-primary)] [&_h3]:my-1 [&_h3]:text-[var(--text-primary)] [&_code]:bg-[rgba(27,38,59,0.6)] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded-sm [&_code]:text-[0.85em]"
+                                                    className="text-[var(--text-primary)] leading-[1.7] text-[0.88rem] py-1 [&_h1]:my-1 [&_h1]:text-[var(--text-primary)] [&_h2]:my-1 [&_h2]:text-[var(--text-primary)] [&_h3]:my-1 [&_h3]:text-[var(--text-primary)] [&_code]:bg-white/[0.04] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded-sm [&_code]:text-[0.85em]"
                                                     dangerouslySetInnerHTML={{
                                                         __html: formatMarkdown(cell.source),
                                                     }}
@@ -183,14 +183,14 @@ export const FollowUpChat: React.FC<FollowUpChatProps> = ({ jobId }) => {
 
             {/* Error */}
             {error && (
-                <div className="flex items-center gap-1.5 px-4 py-2 text-[0.8rem] text-red-500 bg-red-500/[0.08] border-t border-red-500/15">
+                <div className="flex items-center gap-1.5 px-4 py-2 text-[0.8rem] text-[var(--bad)] bg-[color-mix(in_srgb,var(--bad)_8%,transparent)] border-t border-[color-mix(in_srgb,var(--bad)_15%,transparent)]">
                     <AlertTriangle size={14} />
                     <span>{error}</span>
                 </div>
             )}
 
             {/* Input */}
-            <div className="flex items-center gap-2 px-3.5 py-2.5 bg-[rgba(27,38,59,0.5)] border-t border-[rgba(65,90,119,0.3)]">
+            <div className="flex items-center gap-2 px-3.5 py-2.5 bg-[var(--surface-2)] border-t border-[var(--rule)]">
                 <Sparkles size={16} className="text-[var(--accent)] shrink-0 opacity-70" />
                 <input
                     ref={inputRef}
@@ -203,7 +203,7 @@ export const FollowUpChat: React.FC<FollowUpChatProps> = ({ jobId }) => {
                     disabled={isLoading}
                 />
                 <button
-                    className="flex items-center justify-center bg-transparent border border-[rgba(76,201,240,0.3)] rounded-md p-1.5 text-[var(--accent)] cursor-pointer transition-all duration-200 hover:bg-[rgba(76,201,240,0.1)] hover:border-[var(--accent)] disabled:opacity-35 disabled:cursor-not-allowed"
+                    className="flex items-center justify-center bg-transparent border border-[color-mix(in_srgb,var(--accent)_30%,transparent)] rounded-md p-1.5 text-[var(--accent)] cursor-pointer transition-colors duration-200 hover:bg-[var(--accent-soft)] hover:border-[var(--accent)] disabled:opacity-35 disabled:cursor-not-allowed"
                     onClick={handleSubmit}
                     disabled={isLoading || !question.trim()}
                     title="Send"

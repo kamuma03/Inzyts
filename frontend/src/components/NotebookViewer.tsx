@@ -231,8 +231,8 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                     </>
                 ) : status === 'failed' ? (
                     <>
-                        <AlertTriangle size={40} color="#fc8181" className="opacity-60" />
-                        <div className="text-red-300 text-[0.95rem]">
+                        <AlertTriangle size={40} className="text-[var(--bad)] opacity-60" />
+                        <div className="text-[var(--bad)] text-[0.95rem]">
                             Analysis failed. Check the Status tab for details.
                         </div>
                     </>
@@ -279,7 +279,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                     {piiResult?.has_pii && (
                         <span
                             title={`${piiResult.findings.length} PII item(s) detected`}
-                            className="inline-flex items-center gap-[3px] ml-2 px-2 py-0.5 rounded-xl bg-amber-500/15 text-amber-500 text-[0.75rem] font-semibold"
+                            className="inline-flex items-center gap-[3px] ml-2 px-2 py-0.5 rounded-md bg-[color-mix(in_srgb,var(--warn)_15%,transparent)] text-[var(--warn)] text-[0.75rem] font-semibold"
                         >
                             <AlertTriangle size={12} />
                             PII ({piiResult.findings.length})
@@ -351,7 +351,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                                         <button
                                             key={fmt.key}
                                             onClick={() => handleExport(fmt.key)}
-                                            className="flex items-center gap-2 w-full px-3 py-2 border-none bg-transparent text-[var(--text-primary)] text-[0.85rem] cursor-pointer text-left hover:bg-teal-400/10"
+                                            className="flex items-center gap-2 w-full px-3 py-2 border-none bg-transparent text-[var(--text-primary)] text-[0.85rem] cursor-pointer text-left hover:bg-[var(--accent-soft)]"
                                         >
                                             {fmt.icon}
                                             {fmt.label}
@@ -488,7 +488,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                     />
                 ) : (
                     error ? (
-                        <div className="p-8 text-center text-red-500">
+                        <div className="p-8 text-center text-[var(--bad)]">
                             {error}
                         </div>
                     ) : themedHtmlContent ? (

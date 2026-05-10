@@ -3,6 +3,21 @@
  *  scope; this style tag is glued in client-side before the iframe receives
  *  the document.
  *
+ *  Iframe-scoped — cannot reach outer CSS variables, so the palette below
+ *  is hex-coded and mirrors the parent app's tokens:
+ *    #0d1b2a → --surface-0
+ *    #142235 → --surface-1
+ *    #2a3b56 → --rule
+ *    #4cc9f0 → --accent
+ *    #34d399 → --ok
+ *    #fbbf24 → --warn
+ *    #f87171 → --bad
+ *    #a78bfa → --accent-violet
+ *    #e6e7e1 → --text-primary
+ *    #a0aab5 → --text-secondary
+ *    #6c7a89 → close to --text-dim
+ *  Update both sides if the token palette shifts.
+ *
  *  Kept as a string (not a Vite-imported `.css` file) because the consumer
  *  is an iframe `srcDoc`, not the parent app's stylesheet.
  */

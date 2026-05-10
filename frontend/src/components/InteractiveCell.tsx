@@ -89,7 +89,7 @@ export const InteractiveCell: React.FC<InteractiveCellProps> = ({ cell, index, j
 
     return (
         <div
-            className="flex gap-0 border border-transparent rounded-md transition-all duration-200 hover:border-[var(--rule)] hover:shadow-[0_0_0_1px_rgba(76,201,240,0.1)]"
+            className="flex gap-0 border border-transparent rounded-md transition-colors duration-200 hover:border-[var(--rule)]"
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => { if (!isEditing) setIsHovered(false); }}
         >
@@ -103,28 +103,28 @@ export const InteractiveCell: React.FC<InteractiveCellProps> = ({ cell, index, j
             {/* Cell content */}
             <div className="flex-1 min-w-0 py-2 px-3">
                 {isCode ? (
-                    <pre className="font-mono text-[0.85rem] leading-relaxed text-[#e6edf3] bg-[rgba(27,38,59,0.6)] px-4 py-3 rounded m-0 whitespace-pre-wrap break-words overflow-x-auto">{cell.source}</pre>
+                    <pre className="font-mono text-[0.85rem] leading-relaxed text-[var(--text-primary)] bg-white/[0.04] px-4 py-3 rounded m-0 whitespace-pre-wrap break-words overflow-x-auto">{cell.source}</pre>
                 ) : (
                     <div
-                        className="text-[var(--text-primary)] leading-[1.7] py-1 [&_h1]:text-[1.4rem] [&_h1]:my-2 [&_h1]:text-[var(--text-primary)] [&_h2]:text-[1.2rem] [&_h2]:my-1.5 [&_h2]:text-[var(--text-primary)] [&_h3]:text-base [&_h3]:my-1 [&_h3]:text-[var(--text-primary)] [&_code]:bg-[rgba(27,38,59,0.6)] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded-sm [&_code]:text-[0.85em]"
+                        className="text-[var(--text-primary)] leading-[1.7] py-1 [&_h1]:text-[1.4rem] [&_h1]:my-2 [&_h1]:text-[var(--text-primary)] [&_h2]:text-[1.2rem] [&_h2]:my-1.5 [&_h2]:text-[var(--text-primary)] [&_h3]:text-base [&_h3]:my-1 [&_h3]:text-[var(--text-primary)] [&_code]:bg-white/[0.04] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded-sm [&_code]:text-[0.85em]"
                         dangerouslySetInnerHTML={{ __html: formatMarkdown(cell.source) }}
                     />
                 )}
 
                 {/* Outputs */}
                 {cell.outputs.length > 0 && (
-                    <div className="mt-2 border-t border-[rgba(65,90,119,0.3)] pt-2">
+                    <div className="mt-2 border-t border-[var(--rule)] pt-2">
                         {cell.outputs.map((output, oi) => (
                             <div key={oi} className="mb-2">
                                 {output.data?.['image/png'] && (
                                     <img
                                         src={`data:image/png;base64,${output.data['image/png']}`}
                                         alt={`Chart output ${oi}`}
-                                        className="max-w-full rounded mt-1 border border-[rgba(65,90,119,0.3)]"
+                                        className="max-w-full rounded mt-1 border border-[var(--rule)]"
                                     />
                                 )}
                                 {output.text && (
-                                    <pre className="font-mono text-[0.8rem] text-[var(--text-secondary)] bg-[rgba(13,27,42,0.5)] px-3 py-2 rounded m-0 whitespace-pre-wrap overflow-x-auto">{output.text}</pre>
+                                    <pre className="font-mono text-[0.8rem] text-[var(--text-secondary)] bg-[var(--surface-0)]/50 px-3 py-2 rounded m-0 whitespace-pre-wrap overflow-x-auto">{output.text}</pre>
                                 )}
                             </div>
                         ))}
@@ -136,7 +136,7 @@ export const InteractiveCell: React.FC<InteractiveCellProps> = ({ cell, index, j
                     <div className="mt-2 animate-[slideIn_0.15s_ease-out]">
                         {!isEditing ? (
                             <button
-                                className="inline-flex items-center gap-1.5 text-[0.78rem] text-[var(--accent)] bg-transparent border border-dashed border-[rgba(76,201,240,0.3)] rounded px-2.5 py-1 cursor-pointer transition-all duration-200 hover:bg-[rgba(76,201,240,0.08)] hover:border-[var(--accent)]"
+                                className="inline-flex items-center gap-1.5 text-[0.78rem] text-[var(--accent)] bg-transparent border border-dashed border-[color-mix(in_srgb,var(--accent)_30%,transparent)] rounded px-2.5 py-1 cursor-pointer transition-colors duration-200 hover:bg-[var(--accent-soft)] hover:border-[var(--accent)]"
                                 onClick={() => {
                                     setIsEditing(true);
                                     setTimeout(() => inputRef.current?.focus(), 100);
@@ -146,7 +146,7 @@ export const InteractiveCell: React.FC<InteractiveCellProps> = ({ cell, index, j
                                 Tweak this cell
                             </button>
                         ) : (
-                            <div className="flex items-center gap-2 bg-[rgba(27,38,59,0.8)] border border-[var(--accent)] rounded-md px-2.5 py-1.5">
+                            <div className="flex items-center gap-2 bg-[var(--surface-2)] border border-[var(--accent)] rounded-md px-2.5 py-1.5">
                                 <Sparkles size={14} className="text-[var(--accent)] shrink-0" />
                                 <input
                                     ref={inputRef}
@@ -162,10 +162,10 @@ export const InteractiveCell: React.FC<InteractiveCellProps> = ({ cell, index, j
                                     <Loader size={16} className="animate-spin text-[var(--accent)]" />
                                 )}
                                 {editStatus === 'success' && (
-                                    <Check size={16} className="text-green-500" />
+                                    <Check size={16} className="text-[var(--ok)]" />
                                 )}
                                 {editStatus === 'error' && (
-                                    <span className="flex items-center gap-1 text-[0.75rem] text-red-500 whitespace-nowrap">
+                                    <span className="flex items-center gap-1 text-[0.75rem] text-[var(--bad)] whitespace-nowrap">
                                         <AlertTriangle size={14} />
                                         {errorMsg}
                                     </span>
