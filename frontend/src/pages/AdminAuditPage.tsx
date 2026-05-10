@@ -38,10 +38,10 @@ export const AdminAuditPage: React.FC = () => {
 
     return (
         <div className="p-6 max-w-6xl mx-auto">
-            <h2 className="text-2xl font-bold text-white mb-6">Audit Logs</h2>
+            <h2 className="text-[1.4rem] font-semibold text-[var(--text-primary)] mb-6">Audit logs</h2>
 
             {error && (
-                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400 text-sm">
+                <div className="mb-4 p-3 bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] border border-[color-mix(in_srgb,var(--bad)_30%,transparent)] rounded-md text-[var(--bad)] text-sm">
                     {error}
                 </div>
             )}
@@ -51,11 +51,11 @@ export const AdminAuditPage: React.FC = () => {
                 <input
                     type="text" placeholder="Filter by username"
                     value={filterUsername} onChange={e => setFilterUsername(e.target.value)}
-                    className="px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 text-sm w-48"
+                    className="px-3 py-2 bg-[rgba(0,0,0,0.2)] border border-[var(--rule)] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-dim)] text-sm w-48"
                 />
                 <select
                     value={filterAction} onChange={e => setFilterAction(e.target.value)}
-                    className="px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-white text-sm"
+                    className="px-3 py-2 bg-[rgba(0,0,0,0.2)] border border-[var(--rule)] rounded-md text-[var(--text-primary)] text-sm"
                 >
                     <option value="">All actions</option>
                     <option value="login">Login</option>
@@ -68,16 +68,16 @@ export const AdminAuditPage: React.FC = () => {
                 </select>
                 <button
                     onClick={loadLogs}
-                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm"
+                    className="px-4 py-2 bg-[var(--surface-2)] hover:bg-[var(--rule-strong)] text-[var(--text-primary)] border border-[var(--rule)] rounded-md text-sm transition-colors"
                 >
                     Refresh
                 </button>
             </div>
 
             {loading ? (
-                <div className="text-slate-400 text-center py-12">Loading audit logs...</div>
+                <div className="text-[var(--text-secondary)] text-center py-12">Loading audit logs…</div>
             ) : logs.length === 0 ? (
-                <div className="text-slate-500 text-center py-12">No audit log entries found.</div>
+                <div className="text-[var(--text-dim)] text-center py-12">No audit log entries found.</div>
             ) : (
                 <DataTableShell
                     columns={['Timestamp', 'User', 'Action', 'Detail', 'IP', 'Status']}
@@ -85,21 +85,21 @@ export const AdminAuditPage: React.FC = () => {
                     wrapperClass="overflow-x-auto"
                 >
                     {logs.map(log => (
-                        <tr key={log.id} className="border-b border-slate-700/30 hover:bg-slate-700/20">
-                            <td className="px-3 py-2 text-slate-400 text-xs whitespace-nowrap">
+                        <tr key={log.id} className="border-b border-[var(--rule)] hover:bg-white/[0.03]">
+                            <td className="px-3 py-2 text-[var(--text-secondary)] text-xs whitespace-nowrap">
                                 {formatTimestamp(log.timestamp)}
                             </td>
-                            <td className="px-3 py-2 text-white text-xs">{log.username || '—'}</td>
+                            <td className="px-3 py-2 text-[var(--text-primary)] text-xs">{log.username || '—'}</td>
                             <td className="px-3 py-2">
-                                <span className={`text-xs font-medium ${ACTION_COLORS[log.action] || 'text-slate-300'}`}>
+                                <span className={`text-xs font-medium ${ACTION_COLORS[log.action] || 'text-[var(--text-secondary)]'}`}>
                                     {log.action}
                                 </span>
                             </td>
-                            <td className="px-3 py-2 text-slate-400 text-xs max-w-xs truncate" title={log.detail || ''}>
+                            <td className="px-3 py-2 text-[var(--text-secondary)] text-xs max-w-xs truncate" title={log.detail || ''}>
                                 {log.detail || '—'}
                             </td>
-                            <td className="px-3 py-2 text-slate-500 text-xs">{log.ip_address || '—'}</td>
-                            <td className="px-3 py-2 text-slate-500 text-xs">{log.status_code || '—'}</td>
+                            <td className="px-3 py-2 text-[var(--text-dim)] text-xs">{log.ip_address || '—'}</td>
+                            <td className="px-3 py-2 text-[var(--text-dim)] text-xs">{log.status_code || '—'}</td>
                         </tr>
                     ))}
                 </DataTableShell>

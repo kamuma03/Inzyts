@@ -35,12 +35,16 @@ export const DatabaseSection: FC<DatabaseSectionProps> = ({
             <button
                 onClick={onTestConnection}
                 disabled={!dbUri || dbTestLoading}
-                className={`py-2 px-4 bg-[#2d3748] text-white border border-[var(--rule)] rounded cursor-pointer text-[0.9rem] ${!dbUri ? 'opacity-60' : 'opacity-100'}`}
+                className={`py-2 px-4 bg-[var(--surface-2)] text-[var(--text-primary)] border border-[var(--rule)] rounded cursor-pointer text-[0.9rem] hover:border-[var(--rule-strong)] transition-colors ${!dbUri ? 'opacity-60' : 'opacity-100'}`}
             >
-                {dbTestLoading ? 'Testing...' : 'Test Connection'}
+                {dbTestLoading ? 'Testing…' : 'Test connection'}
             </button>
             {dbTestResult && (
-                <div className={`text-[0.85rem] p-2 rounded ${dbTestResult.status === 'ok' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-red-900/30 text-red-400'}`}>
+                <div className={`text-[0.85rem] p-2 rounded ${
+                    dbTestResult.status === 'ok'
+                        ? 'bg-[color-mix(in_srgb,var(--ok)_15%,transparent)] text-[var(--ok)]'
+                        : 'bg-[color-mix(in_srgb,var(--bad)_15%,transparent)] text-[var(--bad)]'
+                }`}>
                     {dbTestResult.status === 'ok' ? (
                         <>Connected to {dbTestResult.dialect}://{dbTestResult.host} — {dbTestResult.tables?.length ?? 0} tables found</>
                     ) : (
