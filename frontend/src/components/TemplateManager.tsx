@@ -139,7 +139,7 @@ export const TemplateManager: React.FC<TemplateManagerProps> = ({ onBack }) => {
                             </button>
                             <button
                                 onClick={confirmState.onConfirm}
-                                className="px-4 py-2 rounded-md cursor-pointer bg-[var(--bad)] text-[var(--surface-0)] font-semibold hover:brightness-110 transition"
+                                className="px-4 py-2 rounded-md cursor-pointer bg-[var(--bad)] text-[var(--bad-ink)] font-semibold hover:brightness-110 transition"
                             >
                                 Delete
                             </button>

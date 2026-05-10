@@ -39,10 +39,17 @@
      filled-accent button. */
   --accent-ink:  #0d1b2a;
 
-  /* Status */
-  --ok:   #34d399;
-  --warn: #fbbf24;
-  --bad:  #f87171;
+  /* Status — and the legible foreground colour for text/icons sitting on
+     each status fill. Defined as their own roles for the same reason as
+     --accent-ink: if a status colour ever shifts (a darker red for higher
+     contrast, say), its ink can move independently without re-pointing
+     every consumer. */
+  --ok:       #34d399;
+  --ok-ink:   #0d1b2a;
+  --warn:     #fbbf24;
+  --warn-ink: #0d1b2a;
+  --bad:      #f87171;
+  --bad-ink:  #0d1b2a;
 
   /* Text */
   --text-primary:   #e6e7e1;
