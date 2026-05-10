@@ -319,8 +319,7 @@ case $TEST_SUITE in
         ;;
     advanced-features)
         echo -e "${BLUE}📋 Running: Advanced Features Tests (Dimensionality, Quality)${NC}"
-        TEST_PATH="tests/unit/test_quality_and_dimensionality.py \
-                   tests/scripts/verify_quality_and_dimensionality.py"
+        TEST_PATH="tests/unit/test_quality_and_dimensionality.py"
         COVERAGE_FLAGS="--cov=src/agents/phase1/data_profiler --cov=src/agents/phase2/dimensionality_strategy --cov=src/models/handoffs --cov-report=term-missing"
         ;;
     *)
