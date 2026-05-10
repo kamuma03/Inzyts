@@ -104,10 +104,12 @@ export const FollowUpChat: React.FC<FollowUpChatProps> = ({ jobId }) => {
 
     return (
         <div className="mt-4 border border-[var(--rule)] rounded-lg bg-[var(--surface-0)]/50 overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center gap-2 px-4 py-2.5 text-[0.85rem] font-semibold text-[var(--accent)] border-b border-[var(--rule)] bg-[var(--surface-2)]">
-                <MessageSquare size={16} />
-                <span>Follow-Up Analysis</span>
+            {/* Header — accent is reserved for the next user action; the
+                section title reads as text-primary with the icon kept in
+                accent so the section's affordance still signals. */}
+            <div className="flex items-center gap-2 px-4 py-2.5 text-[0.85rem] font-semibold text-[var(--text-primary)] border-b border-[var(--rule)] bg-[var(--surface-2)]">
+                <MessageSquare size={16} className="text-[var(--accent)]" />
+                <span>Follow-up analysis</span>
                 {messages.length > 0 && (
                     <span className="ml-auto text-[0.75rem] font-normal text-[var(--text-secondary)] opacity-70">
                         {messages.filter(m => m.role === 'user').length} questions
@@ -167,12 +169,14 @@ export const FollowUpChat: React.FC<FollowUpChatProps> = ({ jobId }) => {
                         </div>
                     ))}
 
-                    {/* Loading indicator */}
+                    {/* Loading indicator — spinner stays accent (it's signal),
+                        text drops to dim so it doesn't compete with the user's
+                        next action. */}
                     {isLoading && (
                         <div className="animate-[slideIn_0.2s_ease-out]">
-                            <div className="flex items-center gap-2 text-[0.85rem] text-[var(--accent)] py-2">
-                                <Loader size={16} className="animate-spin" />
-                                <span>Analyzing...</span>
+                            <div className="flex items-center gap-2 text-[0.85rem] text-[var(--text-dim)] py-2">
+                                <Loader size={16} className="animate-spin text-[var(--accent)]" />
+                                <span>Analysing…</span>
                             </div>
                         </div>
                     )}

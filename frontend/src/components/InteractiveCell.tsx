@@ -131,12 +131,14 @@ export const InteractiveCell: React.FC<InteractiveCellProps> = ({ cell, index, j
                     </div>
                 )}
 
-                {/* Edit bar — visible on hover for code cells */}
+                {/* Edit bar — visible on hover for code cells. Idle state is
+                    neutral (rule + secondary); accent only fires on hover/focus
+                    so it carries meaning when it appears. */}
                 {isCode && (isHovered || isEditing) && (
                     <div className="mt-2 animate-[slideIn_0.15s_ease-out]">
                         {!isEditing ? (
                             <button
-                                className="inline-flex items-center gap-1.5 text-[0.78rem] text-[var(--accent)] bg-transparent border border-dashed border-[color-mix(in_srgb,var(--accent)_30%,transparent)] rounded px-2.5 py-1 cursor-pointer transition-colors duration-200 hover:bg-[var(--accent-soft)] hover:border-[var(--accent)]"
+                                className="inline-flex items-center gap-1.5 text-[0.78rem] text-[var(--text-secondary)] bg-transparent border border-dashed border-[var(--rule)] rounded px-2.5 py-1 cursor-pointer transition-colors duration-200 hover:bg-[var(--accent-soft)] hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:bg-[var(--accent-soft)] focus-visible:border-[var(--accent)] focus-visible:text-[var(--accent)]"
                                 onClick={() => {
                                     setIsEditing(true);
                                     setTimeout(() => inputRef.current?.focus(), 100);

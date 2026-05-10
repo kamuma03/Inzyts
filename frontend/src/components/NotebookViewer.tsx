@@ -396,7 +396,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                             <div className="grid grid-cols-2 gap-4">
                                 {/* Key Findings */}
                                 <div>
-                                    <h4 className="text-[0.8rem] text-[var(--accent)] mb-1.5 uppercase tracking-wider">
+                                    <h4 className="text-[11px] text-[var(--text-dim)] mb-1.5 uppercase tracking-[0.04em] font-semibold">
                                         Key Findings
                                     </h4>
                                     <ul className="m-0 pl-4">
@@ -408,7 +408,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
 
                                 {/* Recommendations */}
                                 <div>
-                                    <h4 className="text-[0.8rem] text-[var(--accent)] mb-1.5 uppercase tracking-wider">
+                                    <h4 className="text-[11px] text-[var(--text-dim)] mb-1.5 uppercase tracking-[0.04em] font-semibold">
                                         Recommendations
                                     </h4>
                                     <ul className="m-0 pl-4">
@@ -422,7 +422,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                             {/* Data Quality */}
                             {executiveSummary.data_quality_highlights.length > 0 && (
                                 <div className="mt-3">
-                                    <h4 className="text-[0.8rem] text-[var(--accent)] mb-1.5 uppercase tracking-wider">
+                                    <h4 className="text-[11px] text-[var(--text-dim)] mb-1.5 uppercase tracking-[0.04em] font-semibold">
                                         Data Quality
                                     </h4>
                                     <ul className="m-0 pl-4">
