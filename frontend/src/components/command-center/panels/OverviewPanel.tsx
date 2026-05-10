@@ -23,10 +23,7 @@ export const OverviewPanel: FC<OverviewPanelProps> = ({
     onSelectColumn,
 }) => {
     return (
-        <div
-            className="grid gap-3 p-3 h-full min-h-0 min-w-0"
-            style={{ gridTemplateColumns: '300px 1fr 320px' }}
-        >
+        <div className="grid gap-3 p-3 h-full min-h-0 min-w-0 grid-cols-1 lg:grid-cols-[280px_1fr_300px]">
             <div className="min-h-0 min-w-0">
                 <PipelineRail phases={phases} mode={job.mode} />
             </div>
