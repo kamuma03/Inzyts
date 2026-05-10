@@ -1,8 +1,49 @@
 import textwrap
-from typing import List, Tuple, Dict, Any
+from typing import List, Optional, Tuple, Dict, Any
 from src.models.handoffs import StrategyToCodeGenHandoff, AnalysisType
 from src.models.state import AnalysisState
 from src.models.cells import NotebookCell, CellManifest
+
+
+class _CellBuilder:
+    """Accumulates ``NotebookCell`` + ``CellManifest`` lists with auto-indexing.
+
+    Replaces the repeated ``cells.append(NotebookCell(...))`` /
+    ``manifest.append(CellManifest(index=idx, ...))`` / ``idx += 1`` pattern
+    that dominated this module. ``add()`` always pushes a cell; passing
+    ``purpose`` also records a manifest entry. The current next-index is
+    available as ``self.idx`` so callers can build dependency lists.
+    """
+
+    def __init__(self) -> None:
+        self.cells: List[NotebookCell] = []
+        self.manifest: List[CellManifest] = []
+        self.idx: int = 0
+
+    def add(
+        self,
+        cell_type: str,
+        source: str,
+        purpose: Optional[str] = None,
+        deps: Optional[List[int]] = None,
+        outs: Optional[List[str]] = None,
+    ) -> "_CellBuilder":
+        self.cells.append(NotebookCell(cell_type=cell_type, source=source))
+        if purpose is not None:
+            self.manifest.append(
+                CellManifest(
+                    index=self.idx,
+                    cell_type=cell_type,
+                    purpose=purpose,
+                    dependencies=deps or [],
+                    outputs_variables=outs or [],
+                )
+            )
+        self.idx += 1
+        return self
+
+    def result(self) -> Tuple[List[NotebookCell], List[CellManifest]]:
+        return self.cells, self.manifest
 
 
 class TemplateGenerator:
@@ -24,217 +65,76 @@ class TemplateGenerator:
         elif strategy.analysis_type == AnalysisType.DIMENSIONALITY:
             return self._generate_dimensionality_template(strategy, state)
 
-        cells = []
-        manifest = []
-        idx = 0
+        b = _CellBuilder()
+        b.add(
+            "markdown",
+            f"# Analysis Phase\n\n**Objective**: {strategy.analysis_objective}\n\n"
+            f"**Analysis Type**: {strategy.analysis_type.value.title()}",
+            purpose="Analysis header",
+        )
+        b.add("code", self._generate_imports(strategy), purpose="Import libraries")
+        b.add(
+            "code",
+            "# Load data (assuming profiling has run)\n"
+            "# We strictly rely on the 'df' variable from Phase 1\n"
+            "df_analysis = df.copy()\n"
+            'print(f"Analysis dataset shape: {df_analysis.shape}")',
+            purpose="Load data",
+            deps=[0],
+            outs=["df_analysis"],
+        )
+        b.add(
+            "markdown",
+            "### 4.1 Data Preprocessing\n\nPreparing data for modeling.",
+            purpose="Preprocessing header",
+        )
+        b.add(
+            "code",
+            self._generate_preprocessing_code(strategy),
+            purpose="Preprocessing pipeline",
+            deps=[2],
+            outs=["X", "y", "X_train", "X_test", "y_train", "y_test"],
+        )
 
-        # Analysis header
-        cells.append(
-            NotebookCell(
-                cell_type="markdown",
-                source=f"# Analysis Phase\n\n**Objective**: {strategy.analysis_objective}\n\n"
-                f"**Analysis Type**: {strategy.analysis_type.value.title()}",
-            )
-        )
-        manifest.append(
-            CellManifest(
-                index=idx,
-                cell_type="markdown",
-                purpose="Analysis header",
-                dependencies=[],
-                outputs_variables=[],
-            )
-        )
-        idx += 1
-
-        # Imports
-        imports_code = self._generate_imports(strategy)
-        cells.append(NotebookCell(cell_type="code", source=imports_code))
-        manifest.append(
-            CellManifest(
-                index=idx,
-                cell_type="code",
-                purpose="Import libraries",
-                dependencies=[],
-                outputs_variables=[],
-            )
-        )
-        idx += 1
-
-        # Load data (assume profiling has loaded it)
-        load_code = """# Load data (assuming profiling has run)
-# We strictly rely on the 'df' variable from Phase 1
-df_analysis = df.copy()
-print(f"Analysis dataset shape: {df_analysis.shape}")"""
-        cells.append(NotebookCell(cell_type="code", source=load_code))
-        manifest.append(
-            CellManifest(
-                index=idx,
-                cell_type="code",
-                purpose="Load data",
-                dependencies=[0],
-                outputs_variables=["df_analysis"],
-            )
-        )
-        idx += 1
-
-        # Preprocessing section
-        cells.append(
-            NotebookCell(
-                cell_type="markdown",
-                source="### 4.1 Data Preprocessing\n\nPreparing data for modeling.",
-            )
-        )
-        manifest.append(
-            CellManifest(
-                index=idx,
-                cell_type="markdown",
-                purpose="Preprocessing header",
-                dependencies=[],
-                outputs_variables=[],
-            )
-        )
-        idx += 1
-
-        # Generate preprocessing code
-        preprocess_code = self._generate_preprocessing_code(strategy)
-        cells.append(NotebookCell(cell_type="code", source=preprocess_code))
-        manifest.append(
-            CellManifest(
-                index=idx,
-                cell_type="code",
-                purpose="Preprocessing pipeline",
-                dependencies=[2],
-                outputs_variables=["X", "y", "X_train", "X_test", "y_train", "y_test"],
-            )
-        )
-        idx += 1
-
-        # Model training section (if models specified)
         if strategy.models_to_train:
-            cells.append(
-                NotebookCell(
-                    cell_type="markdown",
-                    source="### 4.2 Model Training\n\nTraining and comparing models.",
-                )
+            b.add(
+                "markdown",
+                "### 4.2 Model Training\n\nTraining and comparing models.",
+                purpose="Training header",
             )
-            manifest.append(
-                CellManifest(
-                    index=idx,
-                    cell_type="markdown",
-                    purpose="Training header",
-                    dependencies=[],
-                    outputs_variables=[],
-                )
+            b.add(
+                "code",
+                self._generate_training_code(strategy),
+                purpose="Model training",
+                deps=[b.idx - 2],
+                outs=["models", "results"],
             )
-            idx += 1
+            b.add(
+                "markdown",
+                "### 4.3 Model Evaluation\n\nComparing model performance.",
+                purpose="Evaluation header",
+            )
+            b.add(
+                "code",
+                self._generate_evaluation_code(strategy),
+                purpose="Model evaluation",
+                deps=[b.idx - 2],
+                outs=["evaluation_results"],
+            )
 
-            training_code = self._generate_training_code(strategy)
-            cells.append(NotebookCell(cell_type="code", source=training_code))
-            manifest.append(
-                CellManifest(
-                    index=idx,
-                    cell_type="code",
-                    purpose="Model training",
-                    dependencies=[idx - 2],
-                    outputs_variables=["models", "results"],
-                )
-            )
-            idx += 1
-
-            # Evaluation section
-            cells.append(
-                NotebookCell(
-                    cell_type="markdown",
-                    source="### 4.3 Model Evaluation\n\nComparing model performance.",
-                )
-            )
-            manifest.append(
-                CellManifest(
-                    index=idx,
-                    cell_type="markdown",
-                    purpose="Evaluation header",
-                    dependencies=[],
-                    outputs_variables=[],
-                )
-            )
-            idx += 1
-
-            eval_code = self._generate_evaluation_code(strategy)
-            cells.append(NotebookCell(cell_type="code", source=eval_code))
-            manifest.append(
-                CellManifest(
-                    index=idx,
-                    cell_type="code",
-                    purpose="Model evaluation",
-                    dependencies=[idx - 2],
-                    outputs_variables=["evaluation_results"],
-                )
-            )
-            idx += 1
-
-        # Visualizations section
-        cells.append(
-            NotebookCell(
-                cell_type="markdown",
-                source="### 4.4 Results Visualization\n\nVisual analysis of model performance and insights.",
-            )
+        b.add(
+            "markdown",
+            "### 4.4 Results Visualization\n\nVisual analysis of model performance and insights.",
+            purpose="Visualization header",
         )
-        manifest.append(
-            CellManifest(
-                index=idx,
-                cell_type="markdown",
-                purpose="Visualization header",
-                dependencies=[],
-                outputs_variables=[],
-            )
+        b.add("code", self._generate_visualization_code(strategy), purpose="Result visualizations")
+        b.add(
+            "markdown",
+            "### 4.5 Analysis Conclusions\n\nKey findings and recommendations.",
+            purpose="Conclusions header",
         )
-        idx += 1
-
-        viz_code = self._generate_visualization_code(strategy)
-        cells.append(NotebookCell(cell_type="code", source=viz_code))
-        manifest.append(
-            CellManifest(
-                index=idx,
-                cell_type="code",
-                purpose="Result visualizations",
-                dependencies=[],
-                outputs_variables=[],
-            )
-        )
-        idx += 1
-
-        # Conclusions section
-        cells.append(
-            NotebookCell(
-                cell_type="markdown",
-                source="### 4.5 Analysis Conclusions\n\nKey findings and recommendations.",
-            )
-        )
-        manifest.append(
-            CellManifest(
-                index=idx,
-                cell_type="markdown",
-                purpose="Conclusions header",
-                dependencies=[],
-                outputs_variables=[],
-            )
-        )
-        idx += 1
-
-        conclusion_code = self._generate_conclusion_code(strategy)
-        cells.append(NotebookCell(cell_type="code", source=conclusion_code))
-        manifest.append(
-            CellManifest(
-                index=idx,
-                cell_type="code",
-                purpose="Generate conclusions",
-                dependencies=[],
-                outputs_variables=[],
-            )
-        )
-
-        return cells, manifest
+        b.add("code", self._generate_conclusion_code(strategy), purpose="Generate conclusions")
+        return b.result()
 
     def _generate_imports(self, strategy: StrategyToCodeGenHandoff) -> str:
         """Generate import statements."""
@@ -898,116 +798,55 @@ if evaluation_results:
         self, strategy: StrategyToCodeGenHandoff, state: AnalysisState
     ) -> tuple:
         """Generate Diagnostic/Causal analysis template."""
-        cells = []
-        manifest = []
-        idx = 0
-
-        # Header
-        cells.append(
-            NotebookCell(
-                cell_type="markdown",
-                source=f"# Diagnostic Analysis\n\n**Objective**: {strategy.analysis_objective}",
-            )
+        b = _CellBuilder()
+        b.add("markdown", f"# Diagnostic Analysis\n\n**Objective**: {strategy.analysis_objective}", purpose="Header")
+        b.add(
+            "code",
+            self._generate_imports(strategy) + "\n\n# Load Data\ndf_analysis = df.copy()",
+            purpose="Imports & Load", outs=["df_analysis"],
         )
-        manifest.append(CellManifest(index=idx, cell_type="markdown", purpose="Header"))
-        idx += 1
-
-        # Imports & Load
-        cells.append(
-            NotebookCell(
-                cell_type="code",
-                source=self._generate_imports(strategy)
-                + "\n\n# Load Data\ndf_analysis = df.copy()",
-            )
-        )
-        manifest.append(
-            CellManifest(
-                index=idx,
-                cell_type="code",
-                purpose="Imports & Load",
-                outputs_variables=["df_analysis"],
-            )
-        )
-        idx += 1
-
-        # Preprocessing
-        cells.append(
-            NotebookCell(
-                cell_type="code", source=self._generate_preprocessing_code(strategy)
-            )
-        )
-        manifest.append(
-            CellManifest(
-                index=idx,
-                cell_type="code",
-                purpose="Preprocessing",
-                outputs_variables=["X", "y"],
-            )
-        )
-        idx += 1
-
-        # Correlation Analysis
-        cells.append(
-            NotebookCell(
-                cell_type="markdown",
-                source="### 4.1 Correlation Analysis\nIdentifying relationships between variables.",
-            )
-        )
-        idx += 1
-        cells.append(
-            NotebookCell(
-                cell_type="code",
-                source=textwrap.dedent("""
+        b.add("code", self._generate_preprocessing_code(strategy), purpose="Preprocessing", outs=["X", "y"])
+        b.add("markdown", "### 4.1 Correlation Analysis\nIdentifying relationships between variables.")
+        b.add(
+            "code",
+            textwrap.dedent("""
             # Correlation Matrix
             numeric_df = df_analysis.select_dtypes(include=[np.number])
             corr = numeric_df.corr()
-            
+
             plt.figure(figsize=(10, 8))
             sns.heatmap(corr, annot=True, cmap='coolwarm', vmin=-1, vmax=1)
             plt.title('Correlation Matrix')
             plt.show()
-            
+
             # Print significant correlations with target if applicable
             if 'target_col' in locals():
                 print(f"\\nCorrelations with {target_col}:")
                 if target_col in corr.columns:
                     print(corr[target_col].sort_values(ascending=False))
         """),
-            )
+            purpose="Correlation Analysis",
         )
-        manifest.append(
-            CellManifest(index=idx, cell_type="code", purpose="Correlation Analysis")
-        )
-        idx += 1
-
-        # OLS Regression (for drivers)
-        cells.append(
-            NotebookCell(
-                cell_type="markdown",
-                source="### 4.2 Key Drivers Analysis (OLS)\nUsing regression to identify statistically significant factors.",
-            )
-        )
-        idx += 1
-        cells.append(
-            NotebookCell(
-                cell_type="code",
-                source=textwrap.dedent("""
+        b.add("markdown", "### 4.2 Key Drivers Analysis (OLS)\nUsing regression to identify statistically significant factors.")
+        b.add(
+            "code",
+            textwrap.dedent("""
             # OLS for Drivers
             try:
                 # Ensure X is numeric
                 X_numeric = X.select_dtypes(include=[np.number])
                 # Add constant
                 X_const = sm.add_constant(X_numeric.fillna(0))
-                
+
                 if y is not None:
                     # Handle non-numeric y if needed (LabelEncode)
                     y_numeric = y
                     if not pd.api.types.is_numeric_dtype(y):
                          y_numeric = LabelEncoder().fit_transform(y)
-                    
+
                     model = sm.OLS(y_numeric, X_const).fit()
                     print(model.summary())
-                    
+
                     # Store results roughly
                     evaluation_results = {'OLS_R2': {'value': model.rsquared}}
                 else:
@@ -1017,89 +856,43 @@ if evaluation_results:
                 print(f"OLS Analysis failed: {e}")
                 evaluation_results = {}
         """),
-            )
+            purpose="Key Drivers OLS", outs=["model"],
         )
-        manifest.append(
-            CellManifest(
-                index=idx,
-                cell_type="code",
-                purpose="Key Drivers OLS",
-                outputs_variables=["model"],
-            )
-        )
-        idx += 1
-
-        # Conclusions
-        cells.append(
-            NotebookCell(
-                cell_type="code", source=self._generate_conclusion_code(strategy)
-            )
-        )
-        idx += 1
-
-        return cells, manifest
+        b.add("code", self._generate_conclusion_code(strategy))
+        return b.result()
 
     def _generate_comparative_template(
         self, strategy: StrategyToCodeGenHandoff, state: AnalysisState
     ) -> tuple:
         """Generate Comparative analysis template."""
-        cells = []
-        manifest = []
-        idx = 0
-
-        # Header
-        cells.append(
-            NotebookCell(
-                cell_type="markdown",
-                source=f"# Comparative Analysis\n\n**Objective**: {strategy.analysis_objective}",
-            )
-        )
-        idx += 1
-
-        # Imports & Load
-        cells.append(
-            NotebookCell(
-                cell_type="code",
-                source=self._generate_imports(strategy)
-                + "\n\n# Load Data\ndf_analysis = df.copy()",
-            )
-        )
-        idx += 1
-
-        # Group Analysis
-        cells.append(
-            NotebookCell(
-                cell_type="markdown",
-                source="### 4.1 Group Comparisons\nComparing groups using statistical tests.",
-            )
-        )
-        idx += 1
-
-        cells.append(
-            NotebookCell(
-                cell_type="code",
-                source=textwrap.dedent(f"""
+        b = _CellBuilder()
+        b.add("markdown", f"# Comparative Analysis\n\n**Objective**: {strategy.analysis_objective}")
+        b.add("code", self._generate_imports(strategy) + "\n\n# Load Data\ndf_analysis = df.copy()")
+        b.add("markdown", "### 4.1 Group Comparisons\nComparing groups using statistical tests.")
+        b.add(
+            "code",
+            textwrap.dedent(f"""
             # Identify groups
             # Using feature columns or target to define groups
             features = {strategy.feature_columns}
             target = '{strategy.target_column}'
-            
+
             # If target is categorical, compare features across target groups
             if target and target in df_analysis.columns:
                 print(f"Comparing Features across Groups defined by: {{target}}")
                 groups = df_analysis[target].unique()
                 print(f"Groups: {{groups}}")
-                
+
                 for feature in features:
                     if feature in df_analysis.columns and pd.api.types.is_numeric_dtype(df_analysis[feature]):
                         print(f"\\nAnalyzing {{feature}} by {{target}}...")
-                        
+
                         # Boxplot
                         plt.figure(figsize=(10, 6))
                         sns.boxplot(x=target, y=feature, data=df_analysis)
                         plt.title(f'{{feature}} by {{target}}')
                         plt.show()
-                        
+
                         # Statistical Test (ANOVA or T-Test)
                         group_data = [df_analysis[df_analysis[target] == g][feature].dropna() for g in groups]
                         if len(groups) == 2:
@@ -1108,69 +901,26 @@ if evaluation_results:
                         elif len(groups) > 2:
                              stat, p = f_oneway(*group_data)
                              print(f"ANOVA: statistic={{stat:.4f}}, p-value={{p:.4f}}")
-            
+
             # Dummy evaluation results for validator
             evaluation_results = {{'Comparisons': {{'tests_run': len(features)}}}}
         """),
-            )
+            purpose="Group Comparisons", outs=["evaluation_results"],
         )
-        manifest.append(
-            CellManifest(
-                index=idx,
-                cell_type="code",
-                purpose="Group Comparisons",
-                outputs_variables=["evaluation_results"],
-            )
-        )
-        idx += 1
-
-        cells.append(
-            NotebookCell(
-                cell_type="code", source=self._generate_conclusion_code(strategy)
-            )
-        )
-
-        return cells, manifest
+        b.add("code", self._generate_conclusion_code(strategy))
+        return b.result()
 
     def _generate_forecasting_template(
         self, strategy: StrategyToCodeGenHandoff, state: AnalysisState
     ) -> tuple:
         """Generate Forecasting template (Prophet)."""
-        cells = []
-        manifest = []
-        idx = 0
-
-        cells.append(
-            NotebookCell(
-                cell_type="markdown",
-                source=f"# Forecasting Analysis\n\n**Objective**: {strategy.analysis_objective}",
-            )
-        )
-        idx += 1
-
-        # Imports & Load
-        cells.append(
-            NotebookCell(
-                cell_type="code",
-                source=self._generate_imports(strategy)
-                + "\n\n# Load Data\ndf_analysis = df.copy()",
-            )
-        )
-        idx += 1
-
-        # Prepare Data for Prophet
-        cells.append(
-            NotebookCell(
-                cell_type="markdown",
-                source="### 4.1 Prophet Modeling\nForecasting future values.",
-            )
-        )
-        idx += 1
-
-        cells.append(
-            NotebookCell(
-                cell_type="code",
-                source=textwrap.dedent(f"""
+        b = _CellBuilder()
+        b.add("markdown", f"# Forecasting Analysis\n\n**Objective**: {strategy.analysis_objective}")
+        b.add("code", self._generate_imports(strategy) + "\n\n# Load Data\ndf_analysis = df.copy()")
+        b.add("markdown", "### 4.1 Prophet Modeling\nForecasting future values.")
+        b.add(
+            "code",
+            textwrap.dedent(f"""
             # Prepare data (Prophet requires 'ds' and 'y')
             # Heuristic: Find datetime column
             date_col = None
@@ -1178,122 +928,73 @@ if evaluation_results:
                 if pd.api.types.is_datetime64_any_dtype(df_analysis[col]):
                     date_col = col
                     break
-            
+
             target = '{strategy.target_column}'
-            
+
             if date_col and target:
                 print(f"Forecasting {{target}} over {{date_col}}")
                 prophet_df = df_analysis[[date_col, target]].rename(columns={{date_col: 'ds', target: 'y'}})
                 prophet_df['ds'] = pd.to_datetime(prophet_df['ds'])
                 prophet_df = prophet_df.sort_values('ds')
-                
+
                 # Split
                 train_size = int(len(prophet_df) * 0.8)
                 train_df = prophet_df.iloc[:train_size]
                 test_df = prophet_df.iloc[train_size:]
-                
+
                 # Train
                 m = Prophet()
                 m.fit(train_df)
-                
+
                 # Predict
                 future = m.make_future_dataframe(periods=len(test_df))
                 forecast = m.predict(future)
-                
+
                 # Plot
                 fig1 = m.plot(forecast)
                 plt.title('Prophet Forecast')
                 plt.show()
-                
+
                 # Components
                 fig2 = m.plot_components(forecast)
                 plt.show()
-                
+
                 # Evaluate
                 y_true = test_df['y'].values
                 y_pred = forecast.iloc[train_size:]['yhat'].values
-                
+
                 mae = mean_absolute_error(y_true, y_pred)
                 mse = mean_squared_error(y_true, y_pred)
-                
+
                 print(f"MAE: {{mae:.4f}}")
                 print(f"RMSE: {{np.sqrt(mse):.4f}}")
-                
+
                 evaluation_results = {{'Prophet': {{'MAE': mae, 'RMSE': np.sqrt(mse)}}}}
             else:
                 print("Could not identify Date column or Target for forecasting.")
                 evaluation_results = {{}}
         """),
-            )
+            purpose="Prophet Modeling",
+            outs=["m", "forecast", "evaluation_results"],
         )
-        manifest.append(
-            CellManifest(
-                index=idx,
-                cell_type="code",
-                purpose="Prophet Modeling",
-                outputs_variables=["m", "forecast", "evaluation_results"],
-            )
-        )
-        idx += 1
-
-        cells.append(
-            NotebookCell(
-                cell_type="code", source=self._generate_conclusion_code(strategy)
-            )
-        )
-
-        return cells, manifest
+        b.add("code", self._generate_conclusion_code(strategy))
+        return b.result()
 
     def _generate_segmentation_template(
         self, strategy: StrategyToCodeGenHandoff, state: AnalysisState
     ) -> tuple:
         """Generate Segmentation/Clustering template."""
-        cells = []
-        manifest = []
-        idx = 0
-
-        cells.append(
-            NotebookCell(
-                cell_type="markdown",
-                source=f"# Segmentation Analysis\n\n**Objective**: {strategy.analysis_objective}",
-            )
-        )
-        idx += 1
-
-        # Imports & Load
-        cells.append(
-            NotebookCell(
-                cell_type="code",
-                source=self._generate_imports(strategy)
-                + "\n\n# Load Data\ndf_analysis = df.copy()",
-            )
-        )
-        idx += 1
-
-        # Preprocessing
-        cells.append(
-            NotebookCell(
-                cell_type="code", source=self._generate_preprocessing_code(strategy)
-            )
-        )
-        idx += 1
-
-        # Clustering
-        cells.append(
-            NotebookCell(
-                cell_type="markdown",
-                source="### 4.1 Clustering (K-Means)\nIdentifying distinct segments.",
-            )
-        )
-        idx += 1
-
-        cells.append(
-            NotebookCell(
-                cell_type="code",
-                source=textwrap.dedent("""
+        b = _CellBuilder()
+        b.add("markdown", f"# Segmentation Analysis\n\n**Objective**: {strategy.analysis_objective}")
+        b.add("code", self._generate_imports(strategy) + "\n\n# Load Data\ndf_analysis = df.copy()")
+        b.add("code", self._generate_preprocessing_code(strategy))
+        b.add("markdown", "### 4.1 Clustering (K-Means)\nIdentifying distinct segments.")
+        b.add(
+            "code",
+            textwrap.dedent("""
             # Select numeric features for clustering
             X_cluster = X.select_dtypes(include=[np.number])
-            
+
             # Elbow Method
             distortions = []
             K = range(1, 10)
@@ -1301,166 +1002,105 @@ if evaluation_results:
                 kmeanModel = KMeans(n_clusters=k)
                 kmeanModel.fit(X_cluster)
                 distortions.append(kmeanModel.inertia_)
-                
+
             plt.figure(figsize=(10, 6))
             plt.plot(K, distortions, 'bx-')
             plt.xlabel('k')
             plt.ylabel('Inertia')
             plt.title('Elbow Method showing optimal k')
             plt.show()
-            
+
             # Apply K-Means (defaulting to 3 if optimal not obvious)
             optimal_k = 3
             kmeans = KMeans(n_clusters=optimal_k, random_state=42)
             clusters = kmeans.fit_predict(X_cluster)
-            
+
             df_analysis['Cluster'] = clusters
-            
+
             # Profile Segments
             print("Cluster Profiles:")
             print(df_analysis.groupby('Cluster')[X_cluster.columns].mean())
-            
+
             # Silhouette Score
             score = silhouette_score(X_cluster, clusters)
             print(f"Silhouette Score: {score:.4f}")
-            
+
             evaluation_results = {'KMeans': {'Silhouette': score, 'k': optimal_k}}
         """),
-            )
+            purpose="Clustering",
+            outs=["kmeans", "df_analysis", "evaluation_results"],
         )
-        manifest.append(
-            CellManifest(
-                index=idx,
-                cell_type="code",
-                purpose="Clustering",
-                outputs_variables=["kmeans", "df_analysis", "evaluation_results"],
-            )
-        )
-        idx += 1
-
-        # Visualization
-        cells.append(
-            NotebookCell(
-                cell_type="code",
-                source=textwrap.dedent("""
+        b.add(
+            "code",
+            textwrap.dedent("""
             # Pairplot of Clusters
             if len(X_cluster.columns) < 10:
                 sns.pairplot(df_analysis, vars=X_cluster.columns, hue='Cluster', palette='viridis')
                 plt.show()
         """),
-            )
         )
-        idx += 1
-
-        cells.append(
-            NotebookCell(
-                cell_type="code", source=self._generate_conclusion_code(strategy)
-            )
-        )
-
-        return cells, manifest
+        b.add("code", self._generate_conclusion_code(strategy))
+        return b.result()
 
     def _generate_dimensionality_template(
         self, strategy: StrategyToCodeGenHandoff, state: AnalysisState
     ) -> tuple:
         """Generate Dimensionality Reduction (PCA) template."""
-        cells = []
-        manifest = []
-        idx = 0
-
-        cells.append(
-            NotebookCell(
-                cell_type="markdown",
-                source=f"# Dimensionality Reduction Analysis\n\n**Objective**: {strategy.analysis_objective}",
-            )
+        b = _CellBuilder()
+        b.add("markdown", f"# Dimensionality Reduction Analysis\n\n**Objective**: {strategy.analysis_objective}")
+        b.add("code", self._generate_imports(strategy) + "\\n\\n# Load Data\\ndf_analysis = df.copy()")
+        b.add("code", self._generate_preprocessing_code(strategy))
+        b.add(
+            "markdown",
+            "### 4.1 Principal Component Analysis (PCA)\\nReducing dimensionality while retaining variance.",
         )
-        idx += 1
+        b.add(
+            "code",
+            textwrap.dedent("""
+                from sklearn.decomposition import PCA
 
-        # Imports & Load
-        cells.append(
-            NotebookCell(
-                cell_type="code",
-                source=self._generate_imports(strategy)
-                + "\\n\\n# Load Data\\ndf_analysis = df.copy()",
-            )
-        )
-        idx += 1
+                # Select numeric features
+                X_pca = X.select_dtypes(include=[np.number])
 
-        # Preprocessing (Standard Scaling is critical)
-        cells.append(
-            NotebookCell(
-                cell_type="code", source=self._generate_preprocessing_code(strategy)
-            )
-        )
-        idx += 1
+                # PCA
+                # Determine n_components (using 0.95 explained variance or max 10 components)
+                n_comp = min(X_pca.shape[1], 10)
+                pca = PCA(n_components=n_comp)
+                X_reduced = pca.fit_transform(X_pca)
 
-        # PCA
-        cells.append(
-            NotebookCell(
-                cell_type="markdown",
-                source="### 4.1 Principal Component Analysis (PCA)\\nReducing dimensionality while retaining variance.",
-            )
-        )
-        idx += 1
+                # Analysis Results
+                explained_variance = pca.explained_variance_ratio_
+                cumulative_variance = np.cumsum(explained_variance)
 
-        pca_code = textwrap.dedent("""
-            from sklearn.decomposition import PCA
-            
-            # Select numeric features
-            X_pca = X.select_dtypes(include=[np.number])
-            
-            # PCA
-            # Determine n_components (using 0.95 explained variance or max 10 components)
-            n_comp = min(X_pca.shape[1], 10)
-            pca = PCA(n_components=n_comp)
-            X_reduced = pca.fit_transform(X_pca)
-            
-            # Analysis Results
-            explained_variance = pca.explained_variance_ratio_
-            cumulative_variance = np.cumsum(explained_variance)
-            
-            print(f"Explained Variance Ratios: {explained_variance}")
-            print(f"Cumulative Variance: {cumulative_variance}")
-            
-            # Scree Plot
-            plt.figure(figsize=(10, 6))
-            plt.plot(range(1, len(explained_variance) + 1), cumulative_variance, marker='o', linestyle='--')
-            plt.title('PCA Explained Variance (Scree Plot)')
-            plt.xlabel('Number of Components')
-            plt.ylabel('Cumulative Explained Variance')
-            plt.grid(True)
-            plt.show()
-            
-            # 2D Projection
-            if n_comp >= 2:
-                plt.figure(figsize=(10, 8))
-                plt.scatter(X_reduced[:, 0], X_reduced[:, 1], alpha=0.5)
-                plt.title('PCA: First 2 Components')
-                plt.xlabel(f'PC1 ({explained_variance[0]:.2%} var)')
-                plt.ylabel(f'PC2 ({explained_variance[1]:.2%} var)')
+                print(f"Explained Variance Ratios: {explained_variance}")
+                print(f"Cumulative Variance: {cumulative_variance}")
+
+                # Scree Plot
+                plt.figure(figsize=(10, 6))
+                plt.plot(range(1, len(explained_variance) + 1), cumulative_variance, marker='o', linestyle='--')
+                plt.title('PCA Explained Variance (Scree Plot)')
+                plt.xlabel('Number of Components')
+                plt.ylabel('Cumulative Explained Variance')
                 plt.grid(True)
                 plt.show()
-                
-            # Component Loadings
-            loadings = pd.DataFrame(pca.components_.T, columns=[f'PC{i+1}' for i in range(n_comp)], index=X_pca.columns)
-            print("Top Loadings for PC1:")
-            print(loadings['PC1'].abs().sort_values(ascending=False).head(5))
-        """).strip()
-        cells.append(NotebookCell(cell_type="code", source=pca_code))
-        manifest.append(
-            CellManifest(
-                index=idx,
-                cell_type="code",
-                purpose="PCA Analysis",
-                outputs_variables=["pca", "X_reduced", "loadings"],
-            )
-        )
-        idx += 1
 
-        cells.append(
-            NotebookCell(
-                cell_type="code", source=self._generate_conclusion_code(strategy)
-            )
-        )
+                # 2D Projection
+                if n_comp >= 2:
+                    plt.figure(figsize=(10, 8))
+                    plt.scatter(X_reduced[:, 0], X_reduced[:, 1], alpha=0.5)
+                    plt.title('PCA: First 2 Components')
+                    plt.xlabel(f'PC1 ({explained_variance[0]:.2%} var)')
+                    plt.ylabel(f'PC2 ({explained_variance[1]:.2%} var)')
+                    plt.grid(True)
+                    plt.show()
 
-        return cells, manifest
+                # Component Loadings
+                loadings = pd.DataFrame(pca.components_.T, columns=[f'PC{i+1}' for i in range(n_comp)], index=X_pca.columns)
+                print("Top Loadings for PC1:")
+                print(loadings['PC1'].abs().sort_values(ascending=False).head(5))
+            """).strip(),
+            purpose="PCA Analysis",
+            outs=["pca", "X_reduced", "loadings"],
+        )
+        b.add("code", self._generate_conclusion_code(strategy))
+        return b.result()
