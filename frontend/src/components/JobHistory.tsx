@@ -1,7 +1,8 @@
 import React from 'react';
 import { JobSummary } from '../api';
-import { Calendar, Loader2, Inbox, Zap } from 'lucide-react';
+import { Calendar, Zap } from 'lucide-react';
 import { getFileName, formatRelativeTime } from '../utils/formatters';
+import { SkeletonList, EmptyState } from './state';
 
 interface JobHistoryProps {
     jobs: JobSummary[];
@@ -9,6 +10,9 @@ interface JobHistoryProps {
     activeJobId: string | null;
     onUpgradeJob: (job: JobSummary) => void;
     isLoading?: boolean;
+    /** Optional — wired by the consuming layout to its "new analysis" handler.
+     *  When present, the empty-state surfaces a CTA pointing at it. */
+    onNewAnalysis?: () => void;
 }
 
 const STATUS_DOT_COLOR: Record<string, string> = {
@@ -19,24 +23,22 @@ const STATUS_DOT_COLOR: Record<string, string> = {
     cancelled: 'var(--text-dim)',
 };
 
-export const JobHistory: React.FC<JobHistoryProps> = ({ jobs, onSelectJob, activeJobId, onUpgradeJob, isLoading = false }) => {
+export const JobHistory: React.FC<JobHistoryProps> = ({
+    jobs, onSelectJob, activeJobId, onUpgradeJob, isLoading = false, onNewAnalysis,
+}) => {
 
     if (isLoading) {
-        return (
-            <div className="flex flex-col items-center gap-3 py-8 text-[var(--text-secondary)]">
-                <Loader2 size={24} className="animate-spin" />
-                <span className="text-[12px]">Loading jobs...</span>
-            </div>
-        );
+        return <SkeletonList rows={4} variant="job" />;
     }
 
     if (jobs.length === 0) {
         return (
-            <div className="flex flex-col items-center gap-3 py-8 text-[var(--text-secondary)]">
-                <Inbox size={28} className="opacity-50" />
-                <span className="text-[13px]">No analysis jobs yet</span>
-                <span className="text-[12px] opacity-60">Start a new analysis to see it here</span>
-            </div>
+            <EmptyState
+                icon="inbox"
+                title="No analyses yet"
+                body="Start a new analysis to see it here."
+                cta={onNewAnalysis ? { label: 'New analysis', onClick: onNewAnalysis } : undefined}
+            />
         );
     }
 

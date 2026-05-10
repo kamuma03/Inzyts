@@ -42,7 +42,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ jobs, onSelectJob, activeJobId
 
 
                 <div className="flex-1 overflow-y-auto min-h-0">
-                    <JobHistory jobs={jobs} onSelectJob={onSelectJob} activeJobId={activeJobId} onUpgradeJob={onUpgradeJob} />
+                    <JobHistory
+                        jobs={jobs}
+                        onSelectJob={onSelectJob}
+                        activeJobId={activeJobId}
+                        onUpgradeJob={onUpgradeJob}
+                        onNewAnalysis={onNewAnalysis}
+                    />
                 </div>
             </div>
 
