@@ -35,6 +35,11 @@ jobs:
       ADMIN_PASSWORD: test-admin-password
       REDIS_URL: redis://localhost:6399/0
       INZYTS_NETWORK_ISOLATION: "off"
+      # Agent constructors eagerly call get_llm() in BaseAgent.__init__ via
+      # LLMAgent. Tests that mock the LLM still pay the constructor cost,
+      # so a dummy key is required to clear the ConfigurationError gate.
+      INZYTS__LLM__DEFAULT_PROVIDER: anthropic
+      INZYTS__LLM__ANTHROPIC_API_KEY: dummy
 
     steps:
       - uses: actions/checkout@v4
@@ -89,6 +94,8 @@ jobs:
       ADMIN_PASSWORD: test-admin-password
       REDIS_URL: redis://localhost:6399/0
       INZYTS_NETWORK_ISOLATION: "off"
+      INZYTS__LLM__DEFAULT_PROVIDER: anthropic
+      INZYTS__LLM__ANTHROPIC_API_KEY: dummy
 
     steps:
       - uses: actions/checkout@v4

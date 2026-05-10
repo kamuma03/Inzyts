@@ -18,34 +18,33 @@ from src.models.state import AnalysisState
 
 class TestProfilerMultiFile(unittest.TestCase):
     def setUp(self):
-        # Disable cache for all tests to prevent permission errors
+        # Register patches via addCleanup so any setUp failure still tears
+        # them down — otherwise the patches leak into unrelated tests and
+        # surface as flaky cache_manager failures elsewhere in the suite.
         self.cache_save_patcher = patch('src.utils.cache_manager.CacheManager.save_artifact', return_value=None)
         self.cache_save_patcher.start()
+        self.addCleanup(self.cache_save_patcher.stop)
         self.cache_load_patcher = patch('src.utils.cache_manager.CacheManager.load_artifact', return_value=None)
         self.cache_load_patcher.start()
+        self.addCleanup(self.cache_load_patcher.stop)
         self.cache_hash_patcher = patch('src.utils.cache_manager.CacheManager.get_csv_hash', return_value='test_hash')
         self.cache_hash_patcher.start()
-        
+        self.addCleanup(self.cache_hash_patcher.stop)
+
         self.test_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.test_dir, ignore_errors=True)
         self.file1 = os.path.join(self.test_dir, "customers.csv")
         self.file2 = os.path.join(self.test_dir, "orders.csv")
-        
+
         # Create CSVs
         # Use Healthcare columns to trigger domain detection (PatientID, Diagnosis)
         pd.DataFrame({"PatientID": [1, 2], "Name": ["A", "B"]}).to_csv(self.file1, index=False)
         pd.DataFrame({"VisitID": [10, 20], "PatientID": [1, 2], "Diagnosis": ["Flu", "Cold"]}).to_csv(self.file2, index=False)
-        
+
         # Mock LLM to avoid actual calls
         self.agent = DataProfilerAgent()
         self.agent.llm_agent = MagicMock()
         self.agent.llm_agent.invoke_with_json.return_value = "invalid json" # Trigger heuristic fallback
-
-    def tearDown(self):
-        shutil.rmtree(self.test_dir)
-        logger_patcher.stop()
-        self.cache_save_patcher.stop()
-        self.cache_load_patcher.stop()
-        self.cache_hash_patcher.stop()
 
     def test_profiler_merges_files(self):
         # Setup handoff with multi-file input

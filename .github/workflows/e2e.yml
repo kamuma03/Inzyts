@@ -80,7 +80,11 @@ jobs:
 
       - name: Start backend
         run: |
-          uvicorn src.server.main:app --host 0.0.0.0 --port 8000 &
+          # Redirect uvicorn output to a file so we can upload it as an
+          # artifact when tests fail. Without this, the backend traceback
+          # is lost (it writes to a detached PTY) and we can't diagnose
+          # why a request returned 5xx.
+          uvicorn src.server.main:app --host 0.0.0.0 --port 8000 > backend.log 2>&1 &
           # Wait up to 60s for /health to respond.
           for i in $(seq 1 60); do
             if curl -fs http://localhost:8000/health >/dev/null; then
@@ -88,7 +92,9 @@ jobs:
             fi
             sleep 1
           done
-          echo "Backend did not become ready"; exit 1
+          echo "Backend did not become ready"
+          tail -100 backend.log
+          exit 1
 
       # ---- Frontend ----
       - uses: actions/setup-node@v4
@@ -147,3 +153,12 @@ jobs:
           name: playwright-report
           path: frontend/playwright-report/
           retention-days: 7
+
+      - name: Upload backend log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-log
+          path: backend.log
+          retention-days: 7
+          if-no-files-found: ignore
