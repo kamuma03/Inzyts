@@ -75,18 +75,10 @@ export const CodePanel: FC<CodePanelProps> = ({ job, events }) => {
 
     return (
         <div className="h-full flex flex-col min-h-0">
-            <div className="shrink-0 px-3 py-1.5 flex items-center gap-2 text-[11px] text-[var(--text-dim)] border-b border-[var(--rule)]">
-                <span
-                    className={`inline-block w-2 h-2 rounded-full shrink-0 ${
-                        isCompleted ? '' : 'animate-pulse'
-                    }`}
-                    style={{
-                        backgroundColor: isCompleted
-                            ? 'var(--ok)'
-                            : 'var(--accent)',
-                    }}
-                />
-                <span>{isCompleted ? 'ready' : 'streaming'}</span>
+            {/* The streaming/ready state is already painted as a badge on the
+                Code tab itself, so the panel header only carries the line
+                count — no second copy of the same signal. */}
+            <div className="shrink-0 px-3 py-1.5 flex items-center text-[11px] text-[var(--text-dim)] border-b border-[var(--rule)]">
                 <span className="ml-auto font-mono">{totalSourceLines} lines</span>
             </div>
 
