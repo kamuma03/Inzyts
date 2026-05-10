@@ -21,7 +21,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ jobs, onSelectJob, activeJobId
             {/* Toggle Button */}
             <button
                 onClick={() => setIsCollapsed(!isCollapsed)}
-                className={`absolute top-3 ${isCollapsed ? 'right-1/2 translate-x-1/2' : 'right-3 translate-x-0'} bg-[var(--surface-2)] border border-[var(--rule)] hover:border-[var(--rule-strong)] rounded-full w-7 h-7 flex items-center justify-center cursor-pointer z-10 transition-all duration-300 ease-in-out`}
+                className={`absolute top-3 ${isCollapsed ? 'right-1/2 translate-x-1/2' : 'right-3 translate-x-0'} bg-transparent hover:bg-[var(--surface-2)] border border-[var(--rule)] hover:border-[var(--rule-strong)] rounded-full w-7 h-7 flex items-center justify-center cursor-pointer z-10 transition-colors duration-200`}
                 title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
                 aria-label={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
                 aria-expanded={!isCollapsed}
