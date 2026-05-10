@@ -85,11 +85,14 @@ export const JobHistory: React.FC<JobHistoryProps> = ({ jobs, onSelectJob, activ
 
                             {/* Tokens / cost / upgrade — hover-revealed on pointer
                                 devices, always visible on touch (which has no
-                                hover state) and on the active card. */}
-                            <div className={`mt-2 flex items-center gap-2 text-[11px] text-[var(--text-secondary)] ${
+                                hover state) and on the active card. The row
+                                reserves its 20px slot via min-h so toggling
+                                visibility doesn't change card height — the list
+                                no longer jumps as the cursor moves over it. */}
+                            <div className={`mt-2 flex items-center gap-2 min-h-[20px] text-[11px] text-[var(--text-secondary)] transition-opacity duration-150 ${
                                 isActive
-                                    ? 'flex'
-                                    : 'hidden group-hover:flex [@media(hover:none)]:flex'
+                                    ? 'opacity-100'
+                                    : 'opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100'
                             }`}>
                                 {job.token_usage?.total !== undefined && (
                                     <span className="bg-white/10 px-1.5 py-px rounded-sm font-mono">
