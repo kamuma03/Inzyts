@@ -47,7 +47,7 @@ interface PIIScanResult {
 }
 
 type ViewMode = 'static' | 'live' | 'interactive';
-type ExportFormat = 'pdf' | 'html' | 'pptx' | 'markdown';
+type ExportFormat = 'pdf' | 'html' | 'pptx' | 'markdown' | 'ipynb';
 
 export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPath, status = 'completed' }) => {
     const [htmlContent, setHtmlContent] = useState<string | null>(null);
@@ -158,13 +158,28 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
         setExportLoading(format);
         setExportMenuOpen(false);
         try {
-            const response = await AnalysisAPI.exportReport(jobId, format);
-            const blob = new Blob([response.data], { type: response.headers['content-type'] });
+            // .ipynb has its own dedicated endpoint; everything else flows
+            // through the unified exportReport pipeline.
+            const isNotebook = format === 'ipynb';
+            const response = isNotebook
+                ? await AnalysisAPI.downloadNotebook(jobId)
+                : await AnalysisAPI.exportReport(jobId, format);
+
+            const contentType = isNotebook
+                ? 'application/x-ipynb+json'
+                : response.headers['content-type'];
+            const blob = new Blob([response.data], { type: contentType });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            const ext = format === 'markdown' ? 'md' : format;
-            a.download = `inzyts_report_${jobId}.${ext}`;
+
+            if (isNotebook) {
+                a.download = resultPath?.split('/').pop() || `notebook_${jobId}.ipynb`;
+            } else {
+                const ext = format === 'markdown' ? 'md' : format;
+                a.download = `inzyts_report_${jobId}.${ext}`;
+            }
+
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -174,7 +189,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
         } finally {
             setExportLoading(null);
         }
-    }, [jobId]);
+    }, [jobId, resultPath]);
 
     const modeButtonClass = (mode: ViewMode) =>
         `text-[0.8rem] px-2 py-1 rounded border border-[var(--accent)] cursor-pointer flex items-center gap-1 ${
@@ -188,6 +203,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
         { key: 'html', label: 'HTML', icon: <Download size={14} /> },
         { key: 'pptx', label: 'PowerPoint', icon: <Presentation size={14} /> },
         { key: 'markdown', label: 'Markdown', icon: <FileText size={14} /> },
+        ...(resultPath ? [{ key: 'ipynb' as const, label: 'Jupyter (.ipynb)', icon: <FileCode size={14} /> }] : []),
     ];
 
     // Show waiting state if job is not completed
@@ -302,37 +318,13 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                             </button>
                         )}
 
-                        {/* .ipynb download */}
-                        {resultPath && (
-                            <button
-                                onClick={async () => {
-                                    try {
-                                        const response = await AnalysisAPI.downloadNotebook(jobId);
-                                        const blob = new Blob([response.data], { type: 'application/x-ipynb+json' });
-                                        const url = URL.createObjectURL(blob);
-                                        const a = document.createElement('a');
-                                        a.href = url;
-                                        a.download = resultPath.split('/').pop() || `notebook_${jobId}.ipynb`;
-                                        document.body.appendChild(a);
-                                        a.click();
-                                        document.body.removeChild(a);
-                                        URL.revokeObjectURL(url);
-                                    } catch (err) {
-                                        if (import.meta.env.DEV) console.error('Notebook download failed', err);
-                                    }
-                                }}
-                                className="text-[0.8rem] text-[var(--accent)] bg-transparent border-none cursor-pointer px-2 py-1"
-                            >
-                                .ipynb
-                            </button>
-                        )}
-
-                        {/* Export dropdown */}
+                        {/* Export dropdown — also hosts the .ipynb download
+                            so download formats sit in one menu. */}
                         <div ref={exportMenuRef} className="relative">
                             <button
                                 onClick={() => setExportMenuOpen(prev => !prev)}
                                 disabled={!!exportLoading}
-                                className={`flex items-center gap-1 px-2.5 py-1 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-white text-[0.8rem] font-medium ${
+                                className={`flex items-center gap-1 px-2.5 py-1 rounded-md bg-[var(--accent)] text-[var(--surface-0)] text-[0.8rem] font-semibold hover:brightness-110 transition ${
                                     exportLoading ? 'cursor-wait' : 'cursor-pointer'
                                 }`}
                             >
