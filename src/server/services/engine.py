@@ -339,19 +339,7 @@ def execution_task(self, job_id: str, csv_path: Optional[str] = None, mode: str 
                         "completion": completion_tokens,
                     }  # type: ignore
 
-                    # Resolve the configured model name for pricing lookup.
-                    provider = settings.llm.default_provider
-                    if provider == "anthropic":
-                        model_name = settings.llm.anthropic_model or "claude-sonnet-4"
-                    elif provider == "openai":
-                        model_name = settings.llm.openai_model or "gpt-4o"
-                    elif provider == "gemini":
-                        model_name = settings.llm.gemini_model or "gemini-1.5-pro"
-                    elif provider == "ollama":
-                        model_name = "ollama"
-                    else:
-                        model_name = "gpt-4o"
-
+                    model_name = settings.llm.resolve_model_name()
                     cost = calculate_cost(prompt_tokens, completion_tokens, model_name)
                     job.cost_estimate = {"estimated_cost_usd": round(cost, 6), "total": round(cost, 6)}  # type: ignore
 

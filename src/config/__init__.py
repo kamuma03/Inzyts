@@ -339,6 +339,22 @@ class LLMConfig(BaseSettings):
             )
         return v
 
+    def resolve_model_name(self, provider: Optional[str] = None) -> str:
+        """Return the configured model name for the given provider.
+
+        Used by pricing/cost lookups so callers don't have to repeat the
+        provider→field if/elif chain. Defaults to ``self.default_provider``
+        and falls back to a sensible per-provider default if the field is
+        empty.
+        """
+        p = (provider or self.default_provider).lower()
+        return {
+            "anthropic": self.anthropic_model or "claude-sonnet-4",
+            "openai": self.openai_model or "gpt-4o",
+            "gemini": self.gemini_model or "gemini-1.5-pro",
+            "ollama": "ollama",
+        }.get(p, "gpt-4o")
+
 
 class Settings(BaseSettings):
     """Global application settings."""

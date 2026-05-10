@@ -24,6 +24,18 @@ from src.utils.path_validator import validate_path_within
 logger = get_logger()
 router = APIRouter(tags=["jobs"])
 
+
+def _enum_value(x):
+    """Return ``x.value`` for enums, otherwise ``x`` unchanged.
+
+    Mirrors the duplicated ``x.value if hasattr(x, "value") else x`` pattern
+    that `JobStatus`/`PipelineMode`/etc. arrive as on the Pydantic model
+    (sometimes plain str on older rows, sometimes the Enum after recent
+    coercion).
+    """
+    return x.value if hasattr(x, "value") else x
+
+
 # Resolve once at module load so it is consistent with the engine.py log path.
 _LOG_BASE = settings.log_dir_resolved
 
@@ -55,8 +67,8 @@ async def list_jobs(
     return [
         JobSummary(
             id=job.id,  # type: ignore
-            status=job.status.value if hasattr(job.status, "value") else job.status,  # type: ignore
-            mode=job.mode.value if hasattr(job.mode, "value") else job.mode,  # type: ignore
+            status=_enum_value(job.status),  # type: ignore
+            mode=_enum_value(job.mode),  # type: ignore
             created_at=job.created_at,  # type: ignore
             cost_estimate=job.cost_estimate,  # type: ignore
             token_usage=job.token_usage,  # type: ignore
@@ -162,9 +174,9 @@ async def get_job_status(
 
     return JobStatusResponse(
         job_id=job.id,  # type: ignore
-        status=job.status.value if hasattr(job.status, "value") else job.status,  # type: ignore
+        status=_enum_value(job.status),  # type: ignore
         progress=progress,
-        message=f"Job is {job.status.value if hasattr(job.status, 'value') else job.status}",
+        message=f"Job is {_enum_value(job.status)}",
         result_path=job.result_path,  # type: ignore
         error=job.error_message,  # type: ignore
         logs=logs,
@@ -273,10 +285,12 @@ async def get_job_columns(
 
     rows: list[ColumnProfileResponse] = []
     for col in handoff.column_profiles:
-        dtype_value = col.detected_type.value if hasattr(col.detected_type, "value") else str(col.detected_type)
+        dtype_value = _enum_value(col.detected_type) or str(col.detected_type)
         dtype_label = _DTYPE_LABEL.get(dtype_value, "text")
         ft = feature_types.get(col.name)
-        ft_value = ft.value if hasattr(ft, "value") else (ft if isinstance(ft, str) else None)
+        ft_value = _enum_value(ft) if ft is not None else None
+        if ft_value is not None and not isinstance(ft_value, str):
+            ft_value = None
         role = _resolve_role(col.name, ft_value, target_names, temporal_names)
         null_count = int(round((col.null_percentage or 0.0) * row_count))
         stats_obj = col.statistics

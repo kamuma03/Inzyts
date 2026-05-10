@@ -108,15 +108,7 @@ class MetricsAggregator:
             mgr = get_socket_manager()
             tracker = ProgressTracker()
 
-            provider = settings.llm.default_provider
-            if provider == "anthropic":
-                model_name = settings.llm.anthropic_model or "claude-sonnet-4"
-            elif provider == "openai":
-                model_name = settings.llm.openai_model or "gpt-4o"
-            elif provider == "gemini":
-                model_name = settings.llm.gemini_model or "gemini-1.5-pro"
-            else:
-                model_name = "gpt-4o"
+            model_name = settings.llm.resolve_model_name()
         except Exception as e:
             logger.debug(f"MetricsAggregator: setup failed: {e}")
             return

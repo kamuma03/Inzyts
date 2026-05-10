@@ -27,6 +27,16 @@ logger = get_logger()
 _MAX_DOWNLOAD_MB = settings.cloud_max_download_mb
 
 
+def _check_size(size_bytes: int) -> float:
+    """Convert bytes → MB and raise if it exceeds the configured cap."""
+    size_mb = size_bytes / (1024 * 1024)
+    if size_mb > _MAX_DOWNLOAD_MB:
+        raise ValueError(
+            f"File is {size_mb:.1f} MB, exceeds limit of {_MAX_DOWNLOAD_MB} MB."
+        )
+    return size_mb
+
+
 def _download_from_s3(uri: str, output_path: str) -> None:
     """Download a file from S3."""
     import boto3
@@ -36,15 +46,8 @@ def _download_from_s3(uri: str, output_path: str) -> None:
     key = parsed.path.lstrip("/")
 
     s3 = boto3.client("s3")
-
-    # Check file size before downloading
     head = s3.head_object(Bucket=bucket, Key=key)
-    size_mb = head["ContentLength"] / (1024 * 1024)
-    if size_mb > _MAX_DOWNLOAD_MB:
-        raise ValueError(
-            f"File is {size_mb:.1f} MB, exceeds limit of {_MAX_DOWNLOAD_MB} MB."
-        )
-
+    size_mb = _check_size(head["ContentLength"])
     logger.info(f"Downloading s3://{bucket}/{key} ({size_mb:.1f} MB)")
     s3.download_file(bucket, key, output_path)
 
@@ -61,14 +64,8 @@ def _download_from_gcs(uri: str, output_path: str) -> None:
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
 
-    # Check size
     blob.reload()
-    size_mb = (blob.size or 0) / (1024 * 1024)
-    if size_mb > _MAX_DOWNLOAD_MB:
-        raise ValueError(
-            f"File is {size_mb:.1f} MB, exceeds limit of {_MAX_DOWNLOAD_MB} MB."
-        )
-
+    size_mb = _check_size(blob.size or 0)
     logger.info(f"Downloading gs://{bucket_name}/{blob_name} ({size_mb:.1f} MB)")
     blob.download_to_filename(output_path)
 
@@ -91,14 +88,8 @@ def _download_from_azure(uri: str, output_path: str) -> None:
     client = BlobServiceClient.from_connection_string(conn_str)
     blob_client = client.get_blob_client(container=container, blob=blob_name)
 
-    # Check size
     props = blob_client.get_blob_properties()
-    size_mb = props.size / (1024 * 1024)
-    if size_mb > _MAX_DOWNLOAD_MB:
-        raise ValueError(
-            f"File is {size_mb:.1f} MB, exceeds limit of {_MAX_DOWNLOAD_MB} MB."
-        )
-
+    size_mb = _check_size(props.size)
     logger.info(f"Downloading az://{container}/{blob_name} ({size_mb:.1f} MB)")
     with open(output_path, "wb") as f:
         download_stream = blob_client.download_blob()

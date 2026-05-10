@@ -701,30 +701,26 @@ class ProfileValidatorAgent(BaseAgent):
                     )
                 )
 
-        # Map column types to feature types
+        # Map column types to feature types. CATEGORICAL splits on cardinality;
+        # all other types pass through to a single matching FeatureType.
+        _DTYPE_TO_FEATURE = {
+            DataType.NUMERIC_CONTINUOUS: FeatureType.NUMERIC_CONTINUOUS,
+            DataType.NUMERIC_DISCRETE: FeatureType.NUMERIC_DISCRETE,
+            DataType.BINARY: FeatureType.BINARY,
+            DataType.DATETIME: FeatureType.DATETIME,
+            DataType.TEXT: FeatureType.TEXT,
+            DataType.IDENTIFIER: FeatureType.IDENTIFIER,
+        }
         feature_types = {}
         for profile in column_profiles:
-            if profile.detected_type == DataType.NUMERIC_CONTINUOUS:
-                feature_types[profile.name] = FeatureType.NUMERIC_CONTINUOUS
-            elif profile.detected_type == DataType.NUMERIC_DISCRETE:
-                feature_types[profile.name] = FeatureType.NUMERIC_DISCRETE
-            elif profile.detected_type == DataType.CATEGORICAL:
-                if profile.unique_count > 20:
-                    feature_types[profile.name] = (
-                        FeatureType.CATEGORICAL_HIGH_CARDINALITY
-                    )
-                else:
-                    feature_types[profile.name] = (
-                        FeatureType.CATEGORICAL_LOW_CARDINALITY
-                    )
-            elif profile.detected_type == DataType.BINARY:
-                feature_types[profile.name] = FeatureType.BINARY
-            elif profile.detected_type == DataType.DATETIME:
-                feature_types[profile.name] = FeatureType.DATETIME
-            elif profile.detected_type == DataType.TEXT:
-                feature_types[profile.name] = FeatureType.TEXT
-            elif profile.detected_type == DataType.IDENTIFIER:
-                feature_types[profile.name] = FeatureType.IDENTIFIER
+            if profile.detected_type == DataType.CATEGORICAL:
+                feature_types[profile.name] = (
+                    FeatureType.CATEGORICAL_HIGH_CARDINALITY
+                    if profile.unique_count > 20
+                    else FeatureType.CATEGORICAL_LOW_CARDINALITY
+                )
+            elif profile.detected_type in _DTYPE_TO_FEATURE:
+                feature_types[profile.name] = _DTYPE_TO_FEATURE[profile.detected_type]
 
         # Identify temporal columns
         temporal_cols = [
