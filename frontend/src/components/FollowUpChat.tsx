@@ -29,6 +29,7 @@ export const FollowUpChat: React.FC<FollowUpChatProps> = ({ jobId }) => {
     const [error, setError] = useState('');
 
     const chatEndRef = useRef<HTMLDivElement>(null);
+    const lastMessageRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const isSubmitting = useRef(false);
 
@@ -49,9 +50,17 @@ export const FollowUpChat: React.FC<FollowUpChatProps> = ({ jobId }) => {
         return () => { mounted = false; };
     }, [jobId]);
 
-    // Auto-scroll to bottom
+    // Auto-scroll: when the user posts, snap to the bottom (their new
+    // message). When the assistant replies, pin the *top* of the answer
+    // into view so users read it from the start instead of the tail.
     useEffect(() => {
-        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (messages.length === 0) return;
+        const last = messages[messages.length - 1];
+        if (last.role === 'assistant') {
+            lastMessageRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        } else {
+            chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
     }, [messages]);
 
     const handleSubmit = async () => {
@@ -121,7 +130,11 @@ export const FollowUpChat: React.FC<FollowUpChatProps> = ({ jobId }) => {
             {messages.length > 0 && (
                 <div className="max-h-[400px] overflow-y-auto p-3 flex flex-col gap-3">
                     {messages.map((msg, i) => (
-                        <div key={i} className="animate-[slideIn_0.2s_ease-out]">
+                        <div
+                            key={i}
+                            ref={i === messages.length - 1 ? lastMessageRef : undefined}
+                            className="animate-[slideIn_0.2s_ease-out]"
+                        >
                             {msg.role === 'user' ? (
                                 <div className="inline-flex items-center gap-2 bg-[var(--accent-soft)] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] rounded-[12px_12px_12px_4px] px-3.5 py-2 text-[0.88rem] text-[var(--text-primary)] max-w-[80%]">
                                     <Sparkles size={14} className="text-[var(--accent)] shrink-0" />
