@@ -1,11 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AnalysisAPI, UserRecord, UserRole } from '../api';
-
-const ROLE_COLORS: Record<UserRole, string> = {
-    admin: 'bg-red-500/20 text-red-400 border-red-500/30',
-    analyst: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-    viewer: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
-};
+import { ROLE_COLORS } from '../constants/adminColors';
+import { DataTableShell } from '../components/DataTableShell';
 
 export const AdminUsersPage: React.FC = () => {
     const [users, setUsers] = useState<UserRecord[]>([]);
@@ -141,59 +137,47 @@ export const AdminUsersPage: React.FC = () => {
             {loading ? (
                 <div className="text-slate-400 text-center py-12">Loading users...</div>
             ) : (
-                <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 overflow-hidden">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="border-b border-slate-700/50 text-slate-400 text-left">
-                                <th className="px-4 py-3 font-medium">Username</th>
-                                <th className="px-4 py-3 font-medium">Email</th>
-                                <th className="px-4 py-3 font-medium">Role</th>
-                                <th className="px-4 py-3 font-medium">Status</th>
-                                <th className="px-4 py-3 font-medium">Created</th>
-                                <th className="px-4 py-3 font-medium text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {users.map(user => (
-                                <tr key={user.id} className="border-b border-slate-700/30 hover:bg-slate-700/20">
-                                    <td className="px-4 py-3 text-white font-medium">{user.username}</td>
-                                    <td className="px-4 py-3 text-slate-400">{user.email || '—'}</td>
-                                    <td className="px-4 py-3">
-                                        <select
-                                            value={user.role}
-                                            onChange={e => handleRoleChange(user, e.target.value as UserRole)}
-                                            className={`px-2 py-1 rounded border text-xs font-medium ${ROLE_COLORS[user.role]} bg-transparent cursor-pointer`}
-                                        >
-                                            <option value="viewer">Viewer</option>
-                                            <option value="analyst">Analyst</option>
-                                            <option value="admin">Admin</option>
-                                        </select>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <button
-                                            onClick={() => handleToggleActive(user)}
-                                            className={`px-2 py-1 rounded text-xs font-medium ${user.is_active ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}
-                                        >
-                                            {user.is_active ? 'Active' : 'Disabled'}
-                                        </button>
-                                    </td>
-                                    <td className="px-4 py-3 text-slate-400 text-xs">
-                                        {user.created_at ? new Date(user.created_at).toLocaleDateString() : '—'}
-                                    </td>
-                                    <td className="px-4 py-3 text-right">
-                                        <button
-                                            onClick={() => handleDelete(user)}
-                                            className="text-red-400 hover:text-red-300 text-xs"
-                                            title="Delete user"
-                                        >
-                                            Delete
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                <DataTableShell
+                    columns={['Username', 'Email', 'Role', 'Status', 'Created', { label: 'Actions', align: 'right' }]}
+                >
+                    {users.map(user => (
+                        <tr key={user.id} className="border-b border-slate-700/30 hover:bg-slate-700/20">
+                            <td className="px-4 py-3 text-white font-medium">{user.username}</td>
+                            <td className="px-4 py-3 text-slate-400">{user.email || '—'}</td>
+                            <td className="px-4 py-3">
+                                <select
+                                    value={user.role}
+                                    onChange={e => handleRoleChange(user, e.target.value as UserRole)}
+                                    className={`px-2 py-1 rounded border text-xs font-medium ${ROLE_COLORS[user.role]} bg-transparent cursor-pointer`}
+                                >
+                                    <option value="viewer">Viewer</option>
+                                    <option value="analyst">Analyst</option>
+                                    <option value="admin">Admin</option>
+                                </select>
+                            </td>
+                            <td className="px-4 py-3">
+                                <button
+                                    onClick={() => handleToggleActive(user)}
+                                    className={`px-2 py-1 rounded text-xs font-medium ${user.is_active ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}
+                                >
+                                    {user.is_active ? 'Active' : 'Disabled'}
+                                </button>
+                            </td>
+                            <td className="px-4 py-3 text-slate-400 text-xs">
+                                {user.created_at ? new Date(user.created_at).toLocaleDateString() : '—'}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                                <button
+                                    onClick={() => handleDelete(user)}
+                                    className="text-red-400 hover:text-red-300 text-xs"
+                                    title="Delete user"
+                                >
+                                    Delete
+                                </button>
+                            </td>
+                        </tr>
+                    ))}
+                </DataTableShell>
             )}
         </div>
     );

@@ -100,30 +100,17 @@ class DataProfilerAgent(BaseAgent):
                 if not handoff.multi_file_input:
                     raise ValueError("multi_file_input is None")
                 df, merged_meta = loader.merge_datasets(handoff.multi_file_input)
-                # Note: We might want to save this merged DF to a temp path for downstream agents?
-                # For now, we operate in memory, but state.csv_path still points to primary.
-                # Ideally, we should update state.csv_path to a new merged file specific path if we serialize it.
-                # However, ProfileCodeGen typically writes code to load CSV.
-                # If we dynamically merge in memory here, ProfileCodeGen needs to know how to load it.
-                # Options:
-                # 1. Save merged DF to disk and update csv_path.
-                # 2. Tell CodeGen to generate code that performs the merge (complex).
-                # Approach 1 is safer for v1.8. Let's save it.
-
+                # ProfileCodeGen needs a CSV on disk to read; persist the merged
+                # frame next to the primary input so downstream stays simple.
                 cache_dir = (
                     Path(state.csv_path).parent
                     if state.csv_path
                     else Path(tempfile.gettempdir())
                 )
-                merged_filename = f"merged_{Path(state.csv_path).name}"
-                merged_path = str(cache_dir / merged_filename)
-
+                merged_path = str(cache_dir / f"merged_{Path(state.csv_path).name}")
                 df.to_csv(merged_path, index=False)
                 logger.info(f"Saved merged dataset to {merged_path}")
 
-                # Update references to point to the merged file
-                # Do not mutate state directly
-                # state.csv_path = merged_path
                 handoff.merged_dataset = merged_meta
                 handoff.merged_dataset.merged_df_path = merged_path
 
@@ -152,18 +139,11 @@ class DataProfilerAgent(BaseAgent):
             except Exception as e:
                 logger.error(f"Failed to load CSV: {e}")
                 raise e
-        if "df" in locals() and df is not None:
-            # Performance: We rely on DataManager/cache or reload to avoid serializing DF in state
-            pass
-        # Load Data Dictionary (v1.8.0)
-        data_dictionary: Optional[DataDictionary] = None
-        # Check kwargs or user intent for dictionary path
-        dict_path = kwargs.get("dictionary_path")
-        if not dict_path and handoff and handoff.user_intent:
-            # Assuming user_intent might carry it in future, or we parse it from kwargs passed from API
-            pass
 
-        # If passed explicitly in kwargs (e.g. from API)
+        # Load Data Dictionary (v1.8.0). DataFrame is kept out of state — we
+        # rely on DataManager/cache or reload to avoid serializing it on Celery.
+        data_dictionary: Optional[DataDictionary] = None
+        dict_path = kwargs.get("dictionary_path")
         if dict_path:
             logger.info(f"Loading data dictionary from {dict_path}")
             data_dictionary = DictionaryParser.parse(dict_path)

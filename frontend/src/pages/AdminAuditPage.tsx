@@ -1,15 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AnalysisAPI, AuditLogRecord } from '../api';
-
-const ACTION_COLORS: Record<string, string> = {
-    login: 'text-green-400',
-    login_failed: 'text-red-400',
-    start_analysis: 'text-blue-400',
-    upload_file: 'text-yellow-400',
-    create_user: 'text-purple-400',
-    update_user: 'text-purple-400',
-    delete_user: 'text-red-400',
-};
+import { ACTION_COLORS } from '../constants/adminColors';
+import { DataTableShell } from '../components/DataTableShell';
 
 export const AdminAuditPage: React.FC = () => {
     const [logs, setLogs] = useState<AuditLogRecord[]>([]);
@@ -87,40 +79,30 @@ export const AdminAuditPage: React.FC = () => {
             ) : logs.length === 0 ? (
                 <div className="text-slate-500 text-center py-12">No audit log entries found.</div>
             ) : (
-                <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 overflow-hidden overflow-x-auto">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="border-b border-slate-700/50 text-slate-400 text-left">
-                                <th className="px-3 py-3 font-medium">Timestamp</th>
-                                <th className="px-3 py-3 font-medium">User</th>
-                                <th className="px-3 py-3 font-medium">Action</th>
-                                <th className="px-3 py-3 font-medium">Detail</th>
-                                <th className="px-3 py-3 font-medium">IP</th>
-                                <th className="px-3 py-3 font-medium">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {logs.map(log => (
-                                <tr key={log.id} className="border-b border-slate-700/30 hover:bg-slate-700/20">
-                                    <td className="px-3 py-2 text-slate-400 text-xs whitespace-nowrap">
-                                        {formatTimestamp(log.timestamp)}
-                                    </td>
-                                    <td className="px-3 py-2 text-white text-xs">{log.username || '—'}</td>
-                                    <td className="px-3 py-2">
-                                        <span className={`text-xs font-medium ${ACTION_COLORS[log.action] || 'text-slate-300'}`}>
-                                            {log.action}
-                                        </span>
-                                    </td>
-                                    <td className="px-3 py-2 text-slate-400 text-xs max-w-xs truncate" title={log.detail || ''}>
-                                        {log.detail || '—'}
-                                    </td>
-                                    <td className="px-3 py-2 text-slate-500 text-xs">{log.ip_address || '—'}</td>
-                                    <td className="px-3 py-2 text-slate-500 text-xs">{log.status_code || '—'}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                <DataTableShell
+                    columns={['Timestamp', 'User', 'Action', 'Detail', 'IP', 'Status']}
+                    padding="sm"
+                    wrapperClass="overflow-x-auto"
+                >
+                    {logs.map(log => (
+                        <tr key={log.id} className="border-b border-slate-700/30 hover:bg-slate-700/20">
+                            <td className="px-3 py-2 text-slate-400 text-xs whitespace-nowrap">
+                                {formatTimestamp(log.timestamp)}
+                            </td>
+                            <td className="px-3 py-2 text-white text-xs">{log.username || '—'}</td>
+                            <td className="px-3 py-2">
+                                <span className={`text-xs font-medium ${ACTION_COLORS[log.action] || 'text-slate-300'}`}>
+                                    {log.action}
+                                </span>
+                            </td>
+                            <td className="px-3 py-2 text-slate-400 text-xs max-w-xs truncate" title={log.detail || ''}>
+                                {log.detail || '—'}
+                            </td>
+                            <td className="px-3 py-2 text-slate-500 text-xs">{log.ip_address || '—'}</td>
+                            <td className="px-3 py-2 text-slate-500 text-xs">{log.status_code || '—'}</td>
+                        </tr>
+                    ))}
+                </DataTableShell>
             )}
         </div>
     );
