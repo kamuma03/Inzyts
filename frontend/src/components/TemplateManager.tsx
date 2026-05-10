@@ -171,7 +171,7 @@ export const TemplateManager: React.FC<TemplateManagerProps> = ({ onBack }) => {
                     </div>
                 </div>
 
-                <label className="flex items-center gap-2 px-4 py-2.5 bg-[var(--accent)] text-[var(--surface-0)] rounded-md cursor-pointer font-semibold text-[14px] transition hover:brightness-110">
+                <label className="flex items-center gap-2 px-4 py-2.5 bg-[var(--accent)] text-[var(--accent-ink)] rounded-md cursor-pointer font-semibold text-[14px] transition hover:brightness-110">
                     <Upload size={16} />
                     {uploading ? 'Uploading…' : 'Upload template'}
                     <input

@@ -96,7 +96,7 @@ export const FileUploadSection: FC<FileUploadSectionProps> = ({
                     <button
                         onClick={onUpload}
                         disabled={loading}
-                        className={`flex items-center justify-center gap-2 py-3 px-8 bg-[var(--accent)] text-white border-none rounded-md cursor-pointer font-semibold transition-opacity duration-200 ${loading ? 'opacity-70' : 'opacity-100'}`}
+                        className={`flex items-center justify-center gap-2 py-3 px-8 bg-[var(--accent)] text-[var(--accent-ink)] border-none rounded-md cursor-pointer font-semibold transition-opacity duration-200 ${loading ? 'opacity-70' : 'opacity-100'}`}
                     >
                         <UploadCloud size={18} /> {loading ? 'Uploading...' : 'Upload Selected Files'}
                     </button>

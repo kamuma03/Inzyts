@@ -33,6 +33,11 @@
   /* Single accent */
   --accent:      #4cc9f0;
   --accent-soft: rgba(76, 201, 240, 0.10);
+  /* Legible foreground colour for text/icons sitting on `--accent`.
+     Defined as its own role so it can move independently if --accent
+     ever shifts (e.g. for accessibility) without re-pointing every
+     filled-accent button. */
+  --accent-ink:  #0d1b2a;
 
   /* Status */
   --ok:   #34d399;

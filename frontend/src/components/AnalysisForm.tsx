@@ -341,7 +341,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
                 aria-current={step === 'connect' ? 'step' : undefined}
             >
                 <span className={`w-5 h-5 rounded-full inline-flex items-center justify-center text-[11px] font-mono ${
-                    step === 'connect' ? 'bg-[var(--accent)] text-[var(--surface-0)]' : 'bg-[var(--surface-2)] text-[var(--text-dim)]'
+                    step === 'connect' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--text-dim)]'
                 }`}>1</span>
                 Connect data
             </button>
@@ -360,7 +360,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
                 aria-current={step === 'frame' ? 'step' : undefined}
             >
                 <span className={`w-5 h-5 rounded-full inline-flex items-center justify-center text-[11px] font-mono ${
-                    step === 'frame' ? 'bg-[var(--accent)] text-[var(--surface-0)]' : 'bg-[var(--surface-2)] text-[var(--text-dim)]'
+                    step === 'frame' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--text-dim)]'
                 }`}>2</span>
                 Ask a question
             </button>
@@ -423,7 +423,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
                         type="button"
                         onClick={() => setStep('frame')}
                         disabled={!dataResolved}
-                        className="py-2.5 px-5 bg-[var(--accent)] text-[var(--surface-0)] font-semibold text-[14px] rounded-md flex items-center gap-2 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                        className="py-2.5 px-5 bg-[var(--accent)] text-[var(--accent-ink)] font-semibold text-[14px] rounded-md flex items-center gap-2 hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition"
                     >
                         Continue <ArrowRight size={16} />
                     </button>
@@ -432,7 +432,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
                     <button
                         onClick={handleSubmit}
                         disabled={loading}
-                        className="py-3 px-6 bg-[var(--accent)] text-[var(--surface-0)] font-semibold text-[15px] rounded-md flex items-center gap-2 shadow-sm hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                        className="py-3 px-6 bg-[var(--accent)] text-[var(--accent-ink)] font-semibold text-[15px] rounded-md flex items-center gap-2 shadow-sm hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition"
                     >
                         {loading ? 'Starting analysis…' : <><Play size={16} /> Start analysis</>}
                     </button>

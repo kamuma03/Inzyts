@@ -195,11 +195,14 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
         }
     }, [jobId, resultPath]);
 
+    // View-mode toggle: neutral border when inactive, accent fill when
+    // active. Matches the Tweak/Cancel pattern — accent only fires once
+    // the control is the chosen mode, so it carries meaning when seen.
     const modeButtonClass = (mode: ViewMode) =>
-        `text-[0.8rem] px-2 py-1 rounded border border-[var(--accent)] cursor-pointer flex items-center gap-1 ${
+        `text-[0.8rem] px-2 py-1 rounded border cursor-pointer flex items-center gap-1 transition-colors ${
             viewMode === mode
-                ? 'text-white bg-[var(--accent)]'
-                : 'text-[var(--accent)] bg-transparent'
+                ? 'text-[var(--accent-ink)] bg-[var(--accent)] border-[var(--accent)]'
+                : 'text-[var(--text-secondary)] bg-transparent border-[var(--rule)] hover:text-[var(--text-primary)] hover:border-[var(--rule-strong)]'
         }`;
 
     const exportFormats: { key: ExportFormat; label: string; icon: React.ReactNode }[] = [
@@ -328,7 +331,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                             <button
                                 onClick={() => setExportMenuOpen(prev => !prev)}
                                 disabled={!!exportLoading}
-                                className={`flex items-center gap-1 px-2.5 py-1 rounded-md bg-[var(--accent)] text-[var(--surface-0)] text-[0.8rem] font-semibold hover:brightness-110 transition ${
+                                className={`flex items-center gap-1 px-2.5 py-1 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-[0.8rem] font-semibold hover:brightness-110 transition ${
                                     exportLoading ? 'cursor-wait' : 'cursor-pointer'
                                 }`}
                             >

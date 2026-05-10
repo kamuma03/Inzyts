@@ -287,7 +287,7 @@ export const ModeSelector: FC<ModeSelectorProps> = ({
                     <button
                         type="button"
                         onClick={() => onSelect(suggestedMode!)}
-                        className="ml-2 px-2.5 py-0.5 text-[12px] font-semibold bg-[var(--accent)] text-[var(--surface-0)] border-none rounded cursor-pointer shrink-0"
+                        className="ml-2 px-2.5 py-0.5 text-[12px] font-semibold bg-[var(--accent)] text-[var(--accent-ink)] border-none rounded cursor-pointer shrink-0"
                     >
                         Use {suggestedMeta.label.toLowerCase()}
                     </button>
