@@ -203,119 +203,13 @@ class TestNotebookHTMLEndpoint:
         assert 'failed to render' in response.json()['detail'].lower()
 
 
-@pytest.mark.skip(
-    reason="Tests an obsolete `jupyter_service` proxy layer that was removed when "
-    "live execution moved in-process (KernelSandbox/cell_stream). Kept on disk for "
-    "history; rewrite against the new surface if live-session coverage is needed."
-)
-class TestLiveSessionEndpoint:
-    """Test suite for /api/v2/notebooks/{job_id}/session endpoint (v1.7.0)."""
-
-    @pytest.fixture
-    def mock_db_session(self):
-        """Create a mock DB session."""
-        session = AsyncMock()
-        return session
-
-    @pytest.fixture
-    def client(self, mock_db_session):
-        """Create a test client with DB override."""
-        async def override_get_db():
-            yield mock_db_session
-        
-        app.dependency_overrides[get_db] = override_get_db
-        app.dependency_overrides[verify_token] = _admin_user_override
-        with TestClient(app) as c:
-            yield c
-        app.dependency_overrides.clear()
-
-    @pytest.fixture
-    def sample_job(self):
-        """Create a sample completed job."""
-        return Job(
-            id=str(uuid.uuid4()),
-            status=JobStatus.COMPLETED,
-            mode='exploratory',
-            csv_path='/data/test.csv',
-            result_path='/results/notebook.ipynb',
-            created_at=datetime.now()
-        )
-
-    # Test 6: Create live session - successful
-    @patch('src.server.routes.notebooks.jupyter_service')
-    def test_create_live_session_success(self, mock_jupyter, client, mock_db_session, sample_job):
-        """Test successful live session creation."""
-        mock_jupyter.get_status = AsyncMock(return_value={"status": "ok"})
-        mock_jupyter.create_kernel = AsyncMock(return_value="test-kernel-12345")
-
-        mock_db_returns(mock_db_session, sample_job)
-
-        response = client.post(f'{API_PREFIX}/notebooks/{sample_job.id}/session')
-
-        assert response.status_code == 200
-        data = response.json()
-        assert 'job_id' in data
-        assert 'kernel_id' in data
-        assert 'status' in data
-        assert data['job_id'] == sample_job.id
-        assert data['kernel_id'] == "test-kernel-12345"
-        assert data['status'] == "ready"
-
-    # Test 7: Create live session - Jupyter unavailable
-    @patch('src.server.routes.notebooks.jupyter_service')
-    def test_create_live_session_jupyter_unavailable(self, mock_jupyter, client, mock_db_session, sample_job):
-        """Test live session creation when Jupyter is unavailable."""
-        mock_jupyter.get_status = AsyncMock(return_value={"status": "unreachable", "error": "Connection refused"})
-
-        mock_db_returns(mock_db_session, sample_job)
-
-        response = client.post(f'{API_PREFIX}/notebooks/{sample_job.id}/session')
-
-        assert response.status_code == 503
-        assert 'unavailable' in response.json()['detail'].lower()
-
-    # Test 8: Create live session - kernel creation fails
-    @patch('src.server.routes.notebooks.jupyter_service')
-    def test_create_live_session_kernel_creation_fails(self, mock_jupyter, client, mock_db_session, sample_job):
-        """Test live session creation when kernel creation fails."""
-        mock_jupyter.get_status = AsyncMock(return_value={"status": "ok"})
-        mock_jupyter.create_kernel = AsyncMock(side_effect=Exception("Kernel creation failed"))
-
-        mock_db_returns(mock_db_session, sample_job)
-
-        response = client.post(f'{API_PREFIX}/notebooks/{sample_job.id}/session')
-
-        assert response.status_code == 500
-        assert 'kernel creation failed' in response.json()['detail'].lower()
-
-    # Test 9: Create live session - no job validation (optional, depends on implementation)
-    @patch('src.server.routes.notebooks.jupyter_service')
-    def test_create_live_session_no_job_validation(self, mock_jupyter, client):
-        """Test that live session endpoint doesn't require job validation."""
-        mock_jupyter.get_status = AsyncMock(return_value={"status": "ok"})
-        mock_jupyter.create_kernel = AsyncMock(return_value="test-kernel-12345")
-
-        fake_job_id = str(uuid.uuid4())
-        response = client.post(f'{API_PREFIX}/notebooks/{fake_job_id}/session')
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data['kernel_id'] == "test-kernel-12345"
-
-    # Test 10: Create live session - verifies Jupyter status is checked
-    @patch('src.server.routes.notebooks.jupyter_service')
-    def test_create_live_session_checks_status(self, mock_jupyter, client, mock_db_session, sample_job):
-        """Test that live session creation checks Jupyter status first."""
-        mock_jupyter.get_status = AsyncMock(return_value={"status": "ok"})
-        mock_jupyter.create_kernel = AsyncMock(return_value="test-kernel-12345")
-
-        mock_db_returns(mock_db_session, sample_job)
-
-        response = client.post(f'{API_PREFIX}/notebooks/{sample_job.id}/session')
-
-        assert response.status_code == 200
-        mock_jupyter.get_status.assert_called_once()
-        mock_jupyter.create_kernel.assert_called_once()
+# NOTE: ``TestLiveSessionEndpoint`` (5 tests) and the
+# ``test_websocket_proxies_to_jupyter`` test were removed: they targeted a
+# ``jupyter_service`` HTTP proxy that was retired when notebook-cell
+# execution moved in-process via ``KernelSandbox`` / ``cell_stream``. The
+# new surface is exercised by ``test_api_notebooks::test_execute_cell*``,
+# ``tests/unit/services/test_kernel_session_manager.py``, and the live
+# ``test_full_workflow_execution`` E2E.
 
 
 class TestWebSocketEndpoint:
@@ -326,20 +220,11 @@ class TestWebSocketEndpoint:
         """Create a test client for the FastAPI app."""
         return TestClient(app)
 
-    # Test 11: WebSocket endpoint exists
     def test_websocket_endpoint_exists(self, client):
         """Test that WebSocket endpoint is registered."""
         routes = [str(r.path) for r in app.routes]
-        ws_routes = [r for r in routes if 'ws' in r.lower() or 'websocket' in r.lower()]
         assert any('/notebooks/' in r and '/ws/' in r for r in routes) or True
 
-    # Test 12: WebSocket connection handling (obsolete jupyter_proxy)
-    @pytest.mark.skip(reason="`jupyter_proxy` module removed; live exec moved in-process via KernelSandbox.")
-    def test_websocket_proxies_to_jupyter(self):
-        from src.server.services.jupyter_proxy import jupyter_service  # noqa
-        assert hasattr(jupyter_service, 'proxy_websocket')
-
-    # Test 13: WebSocket URL structure validation
     def test_websocket_url_structure(self, client):
         """Test WebSocket URL structure is correct."""
         job_id = str(uuid.uuid4())
@@ -403,31 +288,12 @@ class TestNotebookEndpointIntegration:
             created_at=datetime.now()
         )
 
-    # Test 14: Complete workflow - view notebook and start live session
-    @pytest.mark.skip(reason="Tests obsolete jupyter_service proxy. See TestLiveSessionEndpoint skip.")
-    @patch('src.server.routes.notebooks.jupyter_service')
-    def test_complete_notebook_workflow(self, mock_jupyter, client, mock_db_session, completed_job_with_notebook):
-        """Test complete workflow: get HTML, then start live session."""
-        mock_db_returns(mock_db_session, completed_job_with_notebook)
+    # ``test_complete_notebook_workflow`` removed: it tested the
+    # HTML-then-jupyter-session sequence; the second step targeted the
+    # retired ``jupyter_service`` proxy. The HTML half is covered by the
+    # other tests in this class.
 
-        mock_jupyter.get_status = AsyncMock(return_value={"status": "ok"})
-        mock_jupyter.create_kernel = AsyncMock(return_value="workflow-kernel-123")
-
-        job_id = completed_job_with_notebook.id
-
-        # Step 1: Get HTML
-        html_response = client.get(f'{API_PREFIX}/notebooks/{job_id}/html')
-        assert html_response.status_code == 200
-        assert 'html' in html_response.json()
-
-        # Step 2: Start live session
-        session_response = client.post(f'{API_PREFIX}/notebooks/{job_id}/session')
-        assert session_response.status_code == 200
-        session_data = session_response.json()
-        assert session_data['status'] == 'ready'
-        assert 'kernel_id' in session_data
-
-    # Test 15: HTML conversion preserves code cells
+    # Test: HTML conversion preserves code cells
     def test_html_preserves_code_cells(self, client, mock_db_session, tmp_path):
         """Test that HTML conversion includes code cell content."""
         notebook_content = {
@@ -501,58 +367,11 @@ class TestNotebookEndpointIntegration:
         html_content = response.json()['html']
         assert 'Unique Markdown Header 98765' in html_content
 
-    # Test 17: Multiple live sessions can be created
-    @pytest.mark.skip(reason="Tests obsolete jupyter_service proxy. See TestLiveSessionEndpoint skip.")
-    @patch('src.server.routes.notebooks.jupyter_service')
-    def test_multiple_live_sessions(self, mock_jupyter, client):
-        """Test that multiple live sessions can be created."""
-        mock_jupyter.get_status = AsyncMock(return_value={"status": "ok"})
-
-        kernel_counter = [0]
-
-        def create_unique_kernel():
-            kernel_counter[0] += 1
-            return f"kernel-{kernel_counter[0]}"
-
-        mock_jupyter.create_kernel = AsyncMock(side_effect=create_unique_kernel)
-
-        job_id = str(uuid.uuid4())
-
-        # Create multiple sessions
-        responses = [
-            client.post(f'{API_PREFIX}/notebooks/{job_id}/session')
-            for _ in range(3)
-        ]
-
-        assert all(r.status_code == 200 for r in responses)
-        kernel_ids = [r.json()['kernel_id'] for r in responses]
-
-        # All kernel IDs should be unique
-        assert len(set(kernel_ids)) == 3
-
-    # Test 18: Response format validation
-    @pytest.mark.skip(reason="Tests obsolete jupyter_service proxy. See TestLiveSessionEndpoint skip.")
-    @patch('src.server.routes.notebooks.jupyter_service')
-    def test_session_response_format(self, mock_jupyter, client):
-        """Test that session response has correct format."""
-        mock_jupyter.get_status = AsyncMock(return_value={"status": "ok"})
-        mock_jupyter.create_kernel = AsyncMock(return_value="format-test-kernel")
-
-        job_id = str(uuid.uuid4())
-        response = client.post(f'{API_PREFIX}/notebooks/{job_id}/session')
-
-        assert response.status_code == 200
-        data = response.json()
-
-        # Required fields
-        required_fields = ['job_id', 'kernel_id', 'status']
-        for field in required_fields:
-            assert field in data
-
-        # Type validation
-        assert isinstance(data['job_id'], str)
-        assert isinstance(data['kernel_id'], str)
-        assert isinstance(data['status'], str)
+    # ``test_multiple_live_sessions`` and ``test_session_response_format``
+    # removed: both targeted the retired ``jupyter_service`` proxy. Live-
+    # session functionality is now exercised by
+    # ``test_execute_cell_in_session`` etc. against the in-process
+    # KernelSandbox.
 
     # Test 19: HTML endpoint handles encoding correctly
     def test_html_handles_unicode(self, client, mock_db_session, tmp_path):
