@@ -12,6 +12,7 @@ from src.server.db.database import SessionLocal
 from src.server.db.models import Job, JobStatus
 from src.server.services.cost_estimator import calculate_cost
 from src.config import settings
+from src.utils.errors import swallow_log
 from src.utils.logger import get_logger
 from src.utils.path_validator import ensure_dir
 
@@ -224,7 +225,7 @@ def setup_job_logging(
     root_logger.addHandler(file_handler)
 
     aggregator = None
-    try:
+    with swallow_log(f"MetricsAggregator failed to start for {job_id}"):
         from src.server.services.metrics_aggregator import MetricsAggregator
         aggregator = MetricsAggregator(
             job_id,
@@ -232,24 +233,18 @@ def setup_job_logging(
             previous_metrics=previous_metrics,
         )
         aggregator.start()
-    except Exception as e:
-        logger.debug(f"MetricsAggregator failed to start for {job_id}: {e}")
 
     # Reset any stale phase state from a previous run so the rail starts clean.
-    try:
+    with swallow_log(f"PhaseStateTracker clear failed for {job_id}"):
         from src.server.services.phase_state import PhaseStateTracker
         PhaseStateTracker().clear(job_id)
-    except Exception as e:
-        logger.debug(f"PhaseStateTracker clear failed for {job_id}: {e}")
 
     try:
         yield
     finally:
         if aggregator is not None:
-            try:
+            with swallow_log(f"MetricsAggregator stop failed for {job_id}"):
                 aggregator.stop()
-            except Exception as e:
-                logger.debug(f"MetricsAggregator stop failed for {job_id}: {e}")
         root_logger.removeHandler(socket_handler)
         root_logger.removeHandler(file_handler)
         file_handler.close()
@@ -393,13 +388,10 @@ def execution_task(self, job_id: str, csv_path: Optional[str] = None, mode: str 
                 job.error_message = _sanitize_error(e)  # type: ignore
             finally:
                 # Mark progress as complete/failed in Redis
-                try:
+                with swallow_log(f"ProgressTracker.mark_complete failed for {job_id}"):
                     from src.server.services.progress_tracker import ProgressTracker
-                    tracker = ProgressTracker()
-                    tracker.mark_complete(
+                    ProgressTracker().mark_complete(
                         job_id,
                         success=(job.status == JobStatus.COMPLETED),
                     )
-                except Exception as e:
-                    logger.debug(f"ProgressTracker.mark_complete failed for {job_id}: {e}")
                 session.commit()

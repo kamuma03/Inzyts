@@ -4,10 +4,74 @@ testcontainers so that SQL integration tests hit a real database.
 
 The container is shared across all tests in the session (scope="session")
 and automatically destroyed when pytest exits.
+
+Also exposes shared FastAPI test fixtures (``mock_db_returns`` helper,
+``client_with_overrides`` factory) so per-route test files don't have to
+re-derive them.
 """
+
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy import create_engine, text
+
+
+def mock_db_returns(db: Any, value: Any, *, kind: str = "one") -> MagicMock:
+    """Wire a mock async DB session so its next ``execute()`` returns ``value``.
+
+    Replaces the 3-line ``mock_result = MagicMock(); mock_result.X.return_value
+    = value; db.execute = AsyncMock(return_value=mock_result)`` pattern that
+    was repeated 40+ times across the route-test suite.
+
+    ``kind="one"`` (default) configures ``scalar_one_or_none``; ``kind="many"``
+    configures ``scalars().all()`` for list-returning queries.
+    """
+    mock_result = MagicMock()
+    if kind == "many":
+        mock_result.scalars.return_value.all.return_value = value
+    else:
+        mock_result.scalar_one_or_none.return_value = value
+    db.execute = AsyncMock(return_value=mock_result)
+    return mock_result
+
+
+@pytest.fixture
+def mock_db_session():
+    """A bare AsyncSession mock with `execute` and `commit` pre-configured."""
+    from sqlalchemy.ext.asyncio import AsyncSession
+    session = AsyncMock(spec=AsyncSession)
+    session.execute = AsyncMock()
+    session.commit = AsyncMock()
+    return session
+
+
+@pytest.fixture
+def auth_client(mock_db_session):
+    """FastAPI ``TestClient`` with the auth + DB dependencies pre-overridden.
+
+    Used by route tests that don't care about which user is calling — the
+    override returns a stable token. Each test's overrides are cleared on
+    teardown by the session-level snapshot fixture in ``tests/conftest.py``.
+    """
+    from fastapi.testclient import TestClient
+    from src.server.db.database import get_db
+    from src.server.main import fastapi_app
+    from src.server.middleware.auth import verify_token
+
+    async def _override_get_db():
+        yield mock_db_session
+
+    fastapi_app.dependency_overrides[get_db] = _override_get_db
+    fastapi_app.dependency_overrides[verify_token] = lambda: "test-token"
+
+    with TestClient(fastapi_app, raise_server_exceptions=False) as c:
+        yield c
+
+    # The session-scoped snapshot fixture in tests/conftest.py restores the
+    # baseline overrides on teardown, but clear() here keeps per-test
+    # behaviour predictable for files that haven't migrated yet.
+    fastapi_app.dependency_overrides.clear()
 
 
 @pytest.fixture(scope="session")

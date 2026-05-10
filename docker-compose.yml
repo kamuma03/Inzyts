@@ -1,3 +1,30 @@
+# Shared environment block — backend and worker need the same DB / Redis /
+# JWT / admin / HOME settings. Anchored once here, layered into each
+# service's `environment:` via the `<<:` merge key. Adding a new env var
+# means editing one place.
+x-shared-env: &shared-env
+  POSTGRES_USER: ${POSTGRES_USER:-postgres}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+  POSTGRES_DB: ${POSTGRES_DB:-inzyts}
+  POSTGRES_HOST: db
+  # Explicitly map for Pydantic BaseSettings with prefix
+  INZYTS__DB__HOST: db
+  INZYTS__DB__USER: ${POSTGRES_USER:-postgres}
+  INZYTS__DB__PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+  INZYTS__DB__DB: ${POSTGRES_DB:-inzyts}
+  INZYTS__DB__PORT: 5432
+  REDIS_URL: redis://redis:6379/0
+  # Override Ollama URL for Docker to reach host machine
+  INZYTS__LLM__OLLAMA_BASE_URL: http://host.docker.internal:11434
+  # JWT signing secret — REQUIRED. Generate: openssl rand -hex 32
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set in .env}
+  # Default admin credentials (used only on first boot when no users exist)
+  ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set in .env}
+  # crewai's db_storage_path() uses HOME to create ~/.local/share/app at import time.
+  # The inzyts user has no home dir (--no-create-home), so point HOME to /app.
+  HOME: /app
+
 services:
   db:
     image: postgres:15.5-alpine
@@ -60,27 +87,7 @@ services:
     env_file:
       - .env
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
-      POSTGRES_DB: ${POSTGRES_DB:-inzyts}
-      POSTGRES_HOST: db
-      # Explicitly map for Pydantic BaseSettings with prefix
-      INZYTS__DB__HOST: db
-      INZYTS__DB__USER: ${POSTGRES_USER:-postgres}
-      INZYTS__DB__PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
-      INZYTS__DB__DB: ${POSTGRES_DB:-inzyts}
-      INZYTS__DB__PORT: 5432
-      REDIS_URL: redis://redis:6379/0
-      # Override Ollama URL for Docker to reach host machine
-      INZYTS__LLM__OLLAMA_BASE_URL: http://host.docker.internal:11434
-      # JWT signing secret — REQUIRED. Generate: openssl rand -hex 32
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set in .env}
-      # Default admin credentials (used only on first boot when no users exist)
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set in .env}
-      # crewai's db_storage_path() uses HOME to create ~/.local/share/app at import time.
-      # The inzyts user has no home dir (--no-create-home), so point HOME to /app.
-      HOME: /app
+      <<: *shared-env
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
@@ -132,27 +139,7 @@ services:
     env_file:
       - .env
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
-      POSTGRES_DB: ${POSTGRES_DB:-inzyts}
-      POSTGRES_HOST: db
-      # Explicitly map for Pydantic BaseSettings with prefix
-      INZYTS__DB__HOST: db
-      INZYTS__DB__USER: ${POSTGRES_USER:-postgres}
-      INZYTS__DB__PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
-      INZYTS__DB__DB: ${POSTGRES_DB:-inzyts}
-      INZYTS__DB__PORT: 5432
-      REDIS_URL: redis://redis:6379/0
-      # Override Ollama URL for Docker to reach host machine
-      INZYTS__LLM__OLLAMA_BASE_URL: http://host.docker.internal:11434
-      # JWT signing secret — REQUIRED. Generate: openssl rand -hex 32
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set in .env}
-      # Default admin credentials (used only on first boot when no users exist)
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set in .env}
-      # crewai's db_storage_path() uses HOME to create ~/.local/share/app at import time.
-      # The inzyts user has no home dir (--no-create-home), so point HOME to /app.
-      HOME: /app
+      <<: *shared-env
     deploy:
       resources:
         limits:

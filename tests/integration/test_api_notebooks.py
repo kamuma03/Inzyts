@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from src.server.main import fastapi_app as app
 from src.server.db.models import Job, JobStatus
 from src.server.db.database import get_db
+from tests.integration.conftest import mock_db_returns  # noqa: F401
 
 # API prefix for v2 routes
 API_PREFIX = "/api/v2"
@@ -88,9 +89,7 @@ class TestNotebookHTMLEndpoint:
     # Test 1: Get notebook HTML - successful conversion
     def test_get_notebook_html_success(self, client, mock_db_session, sample_job):
         """Test successful notebook HTML conversion."""
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = sample_job
-        mock_db_session.execute = AsyncMock(return_value=mock_result)
+        mock_db_returns(mock_db_session, sample_job)
 
         response = client.get(f'{API_PREFIX}/notebooks/{sample_job.id}/html')
 
@@ -105,9 +104,7 @@ class TestNotebookHTMLEndpoint:
     # Test 2: Get notebook HTML - job not found
     def test_get_notebook_html_job_not_found(self, client, mock_db_session):
         """Test notebook HTML retrieval for non-existent job."""
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_db_session.execute = AsyncMock(return_value=mock_result)
+        mock_db_returns(mock_db_session, None)
 
         fake_job_id = str(uuid.uuid4())
         response = client.get(f'{API_PREFIX}/notebooks/{fake_job_id}/html')
@@ -127,9 +124,7 @@ class TestNotebookHTMLEndpoint:
             created_at=datetime.now()
         )
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_db_session.execute = AsyncMock(return_value=mock_result)
+        mock_db_returns(mock_db_session, job)
 
         response = client.get(f'{API_PREFIX}/notebooks/{job.id}/html')
 
@@ -148,9 +143,7 @@ class TestNotebookHTMLEndpoint:
             created_at=datetime.now()
         )
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_db_session.execute = AsyncMock(return_value=mock_result)
+        mock_db_returns(mock_db_session, job)
 
         response = client.get(f'{API_PREFIX}/notebooks/{job.id}/html')
 
@@ -172,9 +165,7 @@ class TestNotebookHTMLEndpoint:
             created_at=datetime.now()
         )
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_db_session.execute = AsyncMock(return_value=mock_result)
+        mock_db_returns(mock_db_session, job)
 
         response = client.get(f'{API_PREFIX}/notebooks/{job.id}/html')
 
@@ -221,9 +212,7 @@ class TestLiveSessionEndpoint:
         mock_jupyter.get_status = AsyncMock(return_value={"status": "ok"})
         mock_jupyter.create_kernel = AsyncMock(return_value="test-kernel-12345")
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = sample_job
-        mock_db_session.execute = AsyncMock(return_value=mock_result)
+        mock_db_returns(mock_db_session, sample_job)
 
         response = client.post(f'{API_PREFIX}/notebooks/{sample_job.id}/session')
 
@@ -242,9 +231,7 @@ class TestLiveSessionEndpoint:
         """Test live session creation when Jupyter is unavailable."""
         mock_jupyter.get_status = AsyncMock(return_value={"status": "unreachable", "error": "Connection refused"})
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = sample_job
-        mock_db_session.execute = AsyncMock(return_value=mock_result)
+        mock_db_returns(mock_db_session, sample_job)
 
         response = client.post(f'{API_PREFIX}/notebooks/{sample_job.id}/session')
 
@@ -258,9 +245,7 @@ class TestLiveSessionEndpoint:
         mock_jupyter.get_status = AsyncMock(return_value={"status": "ok"})
         mock_jupyter.create_kernel = AsyncMock(side_effect=Exception("Kernel creation failed"))
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = sample_job
-        mock_db_session.execute = AsyncMock(return_value=mock_result)
+        mock_db_returns(mock_db_session, sample_job)
 
         response = client.post(f'{API_PREFIX}/notebooks/{sample_job.id}/session')
 
@@ -288,9 +273,7 @@ class TestLiveSessionEndpoint:
         mock_jupyter.get_status = AsyncMock(return_value={"status": "ok"})
         mock_jupyter.create_kernel = AsyncMock(return_value="test-kernel-12345")
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = sample_job
-        mock_db_session.execute = AsyncMock(return_value=mock_result)
+        mock_db_returns(mock_db_session, sample_job)
 
         response = client.post(f'{API_PREFIX}/notebooks/{sample_job.id}/session')
 
@@ -389,9 +372,7 @@ class TestNotebookEndpointIntegration:
     @patch('src.server.routes.notebooks.jupyter_service')
     def test_complete_notebook_workflow(self, mock_jupyter, client, mock_db_session, completed_job_with_notebook):
         """Test complete workflow: get HTML, then start live session."""
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = completed_job_with_notebook
-        mock_db_session.execute = AsyncMock(return_value=mock_result)
+        mock_db_returns(mock_db_session, completed_job_with_notebook)
 
         mock_jupyter.get_status = AsyncMock(return_value={"status": "ok"})
         mock_jupyter.create_kernel = AsyncMock(return_value="workflow-kernel-123")
@@ -440,9 +421,7 @@ class TestNotebookEndpointIntegration:
             created_at=datetime.now()
         )
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_db_session.execute = AsyncMock(return_value=mock_result)
+        mock_db_returns(mock_db_session, job)
 
         response = client.get(f'{API_PREFIX}/notebooks/{job.id}/html')
 
@@ -478,9 +457,7 @@ class TestNotebookEndpointIntegration:
             created_at=datetime.now()
         )
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_db_session.execute = AsyncMock(return_value=mock_result)
+        mock_db_returns(mock_db_session, job)
 
         response = client.get(f'{API_PREFIX}/notebooks/{job.id}/html')
 
@@ -567,9 +544,7 @@ class TestNotebookEndpointIntegration:
             created_at=datetime.now()
         )
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_db_session.execute = AsyncMock(return_value=mock_result)
+        mock_db_returns(mock_db_session, job)
 
         response = client.get(f'{API_PREFIX}/notebooks/{job.id}/html')
 
@@ -600,9 +575,7 @@ class TestNotebookEndpointIntegration:
             created_at=datetime.now()
         )
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_db_session.execute = AsyncMock(return_value=mock_result)
+        mock_db_returns(mock_db_session, job)
 
         # Make concurrent requests
         responses = [client.get(f'{API_PREFIX}/notebooks/{job.id}/html') for _ in range(5)]

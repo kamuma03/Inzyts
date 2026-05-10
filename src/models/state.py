@@ -11,6 +11,14 @@ from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, ConfigDict, PrivateAttr
 
+
+class TokenMetrics(BaseModel):
+    """Per-phase token usage. Read-only structured view returned from
+    ``AnalysisState.phase_tokens``."""
+    total: int = 0
+    prompt: int = 0
+    completion: int = 0
+
 from src.models.handoffs import (
     UserIntent,
     ProfilerToCodeGenHandoff,
@@ -235,7 +243,9 @@ class AnalysisState(BaseModel):
 
     # Per-phase token attribution (sum equals the global totals).
     # Drives /jobs/{id}/cost so the Command Center CostBreakdown panel
-    # shows where the money was spent.
+    # shows where the money was spent. The flat fields below remain the
+    # source of truth (and the keys langgraph's reducer writes to); the
+    # ``phase_tokens`` property returns a structured view for new readers.
     phase1_tokens_used: int = 0
     phase1_prompt_tokens: int = 0
     phase1_completion_tokens: int = 0
@@ -245,6 +255,24 @@ class AnalysisState(BaseModel):
     extensions_tokens_used: int = 0
     extensions_prompt_tokens: int = 0
     extensions_completion_tokens: int = 0
+
+    @property
+    def phase_tokens(self) -> Dict[str, "TokenMetrics"]:
+        """Structured per-phase view of the flat token fields.
+
+        Lets new consumers read ``state.phase_tokens["phase1"].prompt``
+        instead of memorising the ``phase1_prompt_tokens`` field name.
+        Generated on demand so the source of truth stays the flat fields
+        that langgraph writes via ``_attribute_tokens``.
+        """
+        return {
+            phase: TokenMetrics(
+                total=getattr(self, f"{phase}_tokens_used", 0),
+                prompt=getattr(self, f"{phase}_prompt_tokens", 0),
+                completion=getattr(self, f"{phase}_completion_tokens", 0),
+            )
+            for phase in ("phase1", "phase2", "extensions")
+        }
 
     # Final Output
     final_notebook_path: Optional[str] = None

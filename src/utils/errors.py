@@ -5,7 +5,33 @@ Defines the standard exception hierarchy for the application to ensure
 consistent error handling, logging, and user feedback.
 """
 
-from typing import Optional, Any, Dict
+from contextlib import contextmanager
+from typing import Any, Callable, Dict, Iterator, Optional
+
+
+@contextmanager
+def swallow_log(label: str, log_fn: Optional[Callable[[str], None]] = None) -> Iterator[None]:
+    """Swallow any exception raised inside the block, logging it at DEBUG.
+
+    Replaces the repeated 5-line ``try/except Exception as e:
+    logger.debug(...)`` blocks scattered across the server services. Use
+    only for *truly* optional side-effects (telemetry writes, best-effort
+    cleanup) — anything load-bearing must keep an explicit handler so the
+    caller can react.
+
+    Usage:
+
+        with swallow_log("MetricsAggregator failed to start"):
+            tracker.start(job_id)
+    """
+    try:
+        yield
+    except Exception as e:
+        if log_fn is not None:
+            log_fn(f"{label}: {e}")
+        else:
+            from src.utils.logger import get_logger
+            get_logger().debug(f"{label}: {e}")
 
 
 class InzytsError(Exception):

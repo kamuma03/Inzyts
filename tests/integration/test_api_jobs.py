@@ -12,6 +12,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.server.db.database import get_db
+from tests.integration.conftest import mock_db_returns  # noqa: F401
 
 from src.server.main import fastapi_app as app
 from src.server.db.models import Job, JobStatus
@@ -19,31 +20,18 @@ from src.server.middleware.auth import verify_token
 
 
 class TestJobsAPI:
-    """Test suite for jobs API endpoints."""
+    """Test suite for jobs API endpoints. Shared `mock_db_session` and
+    `auth_client` fixtures live in tests/integration/conftest.py."""
+
+    # Local aliases preserve the original parameter names without re-declaring
+    # the fixture body. Tests still take ``mock_get_db`` and ``client``.
+    @pytest.fixture
+    def mock_get_db(self, mock_db_session):
+        return mock_db_session
 
     @pytest.fixture
-    def mock_get_db(self):
-        """Create a mock database session."""
-        session = AsyncMock(spec=AsyncSession)
-        session.execute = AsyncMock()
-        session.commit = AsyncMock()
-        return session
-
-    @pytest.fixture
-    def client(self, mock_get_db):
-        """Create a test client for the FastAPI app."""
-        async def override_get_db():
-            yield mock_get_db
-
-        def override_verify_token():
-            return "test-token"
-
-        app.dependency_overrides[get_db] = override_get_db
-        app.dependency_overrides[verify_token] = override_verify_token
-        
-        with TestClient(app, raise_server_exceptions=False) as c:
-            yield c
-        app.dependency_overrides.clear()
+    def client(self, auth_client):
+        return auth_client
 
     @pytest.fixture
     def sample_jobs(self):
@@ -91,9 +79,7 @@ class TestJobsAPI:
     def test_list_jobs_success(self, mock_get_db, client, sample_jobs):
         """Test successful job listing."""
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = sample_jobs
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, sample_jobs, kind="many")
 
         response = client.get('/api/v2/jobs')
 
@@ -107,9 +93,7 @@ class TestJobsAPI:
     def test_list_jobs_pagination(self, mock_get_db, client, sample_jobs):
         """Test job listing with pagination parameters."""
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = sample_jobs[:2]
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, sample_jobs[:2], kind="many")
 
         response = client.get('/api/v2/jobs?skip=0&limit=2')
 
@@ -122,9 +106,7 @@ class TestJobsAPI:
     def test_list_jobs_schema(self, mock_get_db, client, sample_jobs):
         """Test that job listing returns correct schema."""
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = sample_jobs[:1]
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, sample_jobs[:1], kind="many")
 
         response = client.get('/api/v2/jobs')
 
@@ -143,9 +125,7 @@ class TestJobsAPI:
     def test_list_jobs_empty(self, mock_get_db, client):
         """Test job listing when no jobs exist."""
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = []
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, [], kind="many")
 
         response = client.get('/api/v2/jobs')
 
@@ -159,9 +139,7 @@ class TestJobsAPI:
         """Test successful job status retrieval."""
         job = sample_jobs[0]
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, job)
 
         response = client.get(f'/api/v2/jobs/{job.id}')
 
@@ -175,9 +153,7 @@ class TestJobsAPI:
     def test_get_job_status_not_found(self, mock_get_db, client):
         """Test job status retrieval for non-existent job."""
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, None)
 
         fake_job_id = str(uuid.uuid4())
         response = client.get(f'/api/v2/jobs/{fake_job_id}')
@@ -191,9 +167,7 @@ class TestJobsAPI:
         """Test that job status response has all required fields."""
         job = sample_jobs[0]
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, job)
 
         response = client.get(f'/api/v2/jobs/{job.id}')
 
@@ -210,9 +184,7 @@ class TestJobsAPI:
         """Test job status for failed job includes error message."""
         job = sample_jobs[2]  # Failed job
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, job)
 
         response = client.get(f'/api/v2/jobs/{job.id}')
 
@@ -227,9 +199,7 @@ class TestJobsAPI:
         """Test job status for completed job includes result path."""
         job = sample_jobs[0]  # Completed job
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, job)
 
         response = client.get(f'/api/v2/jobs/{job.id}')
 
@@ -244,9 +214,7 @@ class TestJobsAPI:
         """Test that job status includes token usage information."""
         job = sample_jobs[0]
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, job)
 
         response = client.get(f'/api/v2/jobs/{job.id}')
 
@@ -262,9 +230,7 @@ class TestJobsAPI:
         """Test successful job cancellation."""
         job = sample_jobs[1]  # Running job
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, job)
         mock_get_db.commit = AsyncMock()
 
         response = client.post(f'/api/v2/jobs/{job.id}/cancel')
@@ -281,9 +247,7 @@ class TestJobsAPI:
     def test_cancel_job_not_found(self, mock_celery, mock_get_db, client):
         """Test cancelling a non-existent job."""
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, None)
 
         fake_job_id = str(uuid.uuid4())
         response = client.post(f'/api/v2/jobs/{fake_job_id}/cancel')
@@ -298,9 +262,7 @@ class TestJobsAPI:
         """Test cancelling an already completed job."""
         job = sample_jobs[0]  # Completed job
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, job)
         mock_get_db.commit = AsyncMock()
 
         response = client.post(f'/api/v2/jobs/{job.id}/cancel')
@@ -315,9 +277,7 @@ class TestJobsAPI:
         """Test that cancelling a job updates the database status."""
         job = sample_jobs[1]  # Running job
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, job)
         mock_get_db.commit = AsyncMock()
 
         response = client.post(f'/api/v2/jobs/{job.id}/cancel')
@@ -336,9 +296,7 @@ class TestJobsAPI:
         reversed_jobs = list(reversed(sample_jobs))
 
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = reversed_jobs
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, reversed_jobs, kind="many")
 
         response = client.get('/api/v2/jobs')
 
@@ -352,9 +310,7 @@ class TestJobsAPI:
     def test_list_jobs_large_skip(self, mock_get_db, client):
         """Test job listing with skip value larger than total jobs."""
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = []
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, [], kind="many")
 
         response = client.get('/api/v2/jobs?skip=1000')
 
@@ -367,9 +323,7 @@ class TestJobsAPI:
     def test_list_jobs_zero_limit(self, mock_get_db, client):
         """Test job listing with limit=0."""
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = []
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, [], kind="many")
 
         response = client.get('/api/v2/jobs?limit=0')
 
@@ -382,9 +336,7 @@ class TestJobsAPI:
     def test_job_summary_cost_estimate(self, mock_get_db, client, sample_jobs):
         """Test that job summaries include cost estimates."""
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = sample_jobs[:1]
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, sample_jobs[:1], kind="many")
 
         response = client.get('/api/v2/jobs')
 
@@ -397,9 +349,7 @@ class TestJobsAPI:
     def test_job_summary_csv_path(self, mock_get_db, client, sample_jobs):
         """Test that job summaries include CSV path."""
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = sample_jobs[:1]
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, sample_jobs[:1], kind="many")
 
         response = client.get('/api/v2/jobs')
 
@@ -414,9 +364,7 @@ class TestJobsAPI:
         """Test that job status correctly handles enum values."""
         job = sample_jobs[0]
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, job)
 
         response = client.get(f'/api/v2/jobs/{job.id}')
 
@@ -431,9 +379,7 @@ class TestJobsAPI:
     def test_list_jobs_enum_conversion(self, mock_get_db, client, sample_jobs):
         """Test that job listing correctly converts enum values to strings."""
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = sample_jobs[:1]
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, sample_jobs[:1], kind="many")
 
         response = client.get('/api/v2/jobs')
 
@@ -452,9 +398,7 @@ class TestJobsAPI:
         mock_celery.control.revoke.side_effect = Exception("Celery error")
 
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, job)
         mock_get_db.commit = AsyncMock()
 
         # Should handle error but still update DB
@@ -479,9 +423,7 @@ class TestJobsAPI:
         )
 
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, job)
 
         response = client.get(f'/api/v2/jobs/{job.id}')
 
@@ -495,9 +437,7 @@ class TestJobsAPI:
     def test_list_jobs_multiple_modes(self, mock_get_db, client, sample_jobs):
         """Test that job listing handles different pipeline modes."""
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = sample_jobs
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, sample_jobs, kind="many")
 
         response = client.get('/api/v2/jobs')
 
@@ -520,9 +460,7 @@ class TestJobsAPI:
     def test_list_jobs_default_pagination(self, mock_get_db, client, sample_jobs):
         """Test that default pagination values are used when not specified."""
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = sample_jobs
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, sample_jobs, kind="many")
 
         response = client.get('/api/v2/jobs')
 
@@ -534,9 +472,7 @@ class TestJobsAPI:
     def test_job_summary_error_message(self, mock_get_db, client, sample_jobs):
         """Test that job summaries include error messages for failed jobs."""
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [sample_jobs[2]]  # Failed job
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, [sample_jobs[2]], kind="many")  # Failed job
 
         response = client.get('/api/v2/jobs')
 
@@ -562,9 +498,7 @@ class TestJobsAPI:
         """Test multiple concurrent job status requests."""
         job = sample_jobs[0]
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = job
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, job)
 
         # Make multiple requests
         responses = [client.get(f'/api/v2/jobs/{job.id}') for _ in range(5)]
@@ -588,9 +522,7 @@ class TestJobsAPI:
         ]
 
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = many_jobs[:20]  # Default limit
-        mock_get_db.execute.return_value = mock_result
+        mock_db_returns(mock_get_db, many_jobs[:20], kind="many")  # Default limit
 
         response = client.get('/api/v2/jobs')
 

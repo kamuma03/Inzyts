@@ -496,275 +496,163 @@ def calculate_file_hash(path: str) -> str:
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
 
+_FILE_TYPE_BY_EXT = {
+    '.csv': 'CSV', '.xlsx': 'EXCEL', '.xls': 'EXCEL',
+    '.json': 'JSON', '.parquet': 'PARQUET',
+}
+
+
+def _build_multi_file_input(valid_files: List[str]) -> Dict[str, Any]:
+    """Construct the MultiFileInput payload from a list of valid file paths."""
+    return {
+        "files": [
+            {
+                "file_path": str(Path(f).resolve()),
+                "file_hash": calculate_file_hash(f),
+                "file_type": _FILE_TYPE_BY_EXT.get(Path(f).suffix.lower(), "UNKNOWN"),
+                "alias": Path(f).stem,
+            }
+            for f in valid_files
+        ]
+    }
+
+
+def _run_one_job(
+    *,
+    client: InzytsAPIClient,
+    label: str,
+    csv_path: str,
+    mode: str,
+    title: str,
+    dict_path: Optional[str],
+    multi_file_input: Optional[Dict[str, Any]],
+    analysis_mode: str,
+    verbose: bool,
+    timeout: int,
+) -> TestResult:
+    """Submit one analysis job, poll until done, build a TestResult.
+
+    Shared body for the merged + sequential paths so the only difference
+    between them is the payload-building step.
+    """
+    start_time = datetime.now()
+    print(f"\n   📄 {label}")
+    try:
+        print("      📤 Submitting analysis job...")
+        submit_response = client.submit_analysis(
+            csv_path=csv_path,
+            mode=mode,
+            dict_path=dict_path,
+            title=title,
+            use_cache=False,
+            multi_file_input=multi_file_input,
+        )
+        job_id = submit_response.get("job_id")
+        if not job_id:
+            raise Exception(f"No job_id in response: {submit_response}")
+        print(f"      📋 Job ID: {job_id}")
+
+        print("      ⏳ Waiting for job to complete...")
+        final_status = client.wait_for_completion(job_id=job_id, timeout=timeout, verbose=verbose)
+        end_time = datetime.now()
+        duration = (end_time - start_time).total_seconds()
+
+        job_status = final_status.get("status", "unknown")
+        result_path = final_status.get("result_path")
+        error = final_status.get("error")
+        token_usage = final_status.get("token_usage", {}) or {}
+        tokens_used = token_usage.get("input", 0) + token_usage.get("output", 0)
+
+        if job_status == "completed" and result_path:
+            print(f"      ✅ SUCCESS: {label}")
+            print(f"         Duration: {duration:.1f}s")
+            return TestResult(
+                dataset_name=label, success=True, start_time=start_time, end_time=end_time,
+                duration_seconds=duration, job_id=job_id, notebook_path=result_path,
+                tokens_used=tokens_used, analysis_mode=analysis_mode, job_status=job_status,
+            )
+
+        error_msg = error or f"Job ended with status: {job_status}"
+        print(f"      ❌ FAILED: {label}")
+        print(f"         Error: {error_msg}")
+        return TestResult(
+            dataset_name=label, success=False, start_time=start_time, end_time=end_time,
+            duration_seconds=duration, job_id=job_id, error_message=error_msg,
+            tokens_used=tokens_used, analysis_mode=analysis_mode, job_status=job_status,
+        )
+
+    except TimeoutError as e:
+        end_time = datetime.now()
+        print(f"      ⏰ TIMEOUT: {label}")
+        return TestResult(
+            dataset_name=label, success=False, start_time=start_time, end_time=end_time,
+            duration_seconds=(end_time - start_time).total_seconds(),
+            error_message=str(e), analysis_mode=analysis_mode, job_status="timeout",
+        )
+    except Exception as e:
+        end_time = datetime.now()
+        print(f"      ❌ FAILED: {label}")
+        print(f"         Exception: {e}")
+        if verbose:
+            tb.print_exc()
+        return TestResult(
+            dataset_name=label, success=False, start_time=start_time, end_time=end_time,
+            duration_seconds=(end_time - start_time).total_seconds(),
+            error_message=str(e), analysis_mode=analysis_mode,
+        )
+
+
 def run_dataset_files_tests(
     dataset: DatasetConfig,
     client: InzytsAPIClient,
     verbose: bool = False,
     timeout: int = DEFAULT_TIMEOUT,
-    merge: bool = False
+    merge: bool = False,
 ) -> List[TestResult]:
     """Run tests on all files within a dataset configuration."""
-    results = []
-    
-    # Filter valid files
     valid_files = [f for f in dataset.files if f and Path(f).exists()]
-    
     if not valid_files:
-        # Fallback to reporting error on primary file if none exist
-        print(f"\n{'='*60}")
-        print(f"🧪 Testing: {dataset.name}")
-        print(f"   Mode: {dataset.analysis_mode}")
-        print("   Status: No valid files found")
-        print(f"{'='*60}")
-        
-        results.append(TestResult(
-            dataset_name=dataset.name,
-            success=False,
-            start_time=datetime.now(),
-            end_time=datetime.now(),
-            duration_seconds=0.0,
-            error_message="No valid data files found",
-            analysis_mode=dataset.analysis_mode
-        ))
-        return results
+        print(f"\n{'='*60}\n🧪 Testing: {dataset.name}\n   Mode: {dataset.analysis_mode}\n   Status: No valid files found\n{'='*60}")
+        return [TestResult(
+            dataset_name=dataset.name, success=False,
+            start_time=datetime.now(), end_time=datetime.now(), duration_seconds=0.0,
+            error_message="No valid data files found", analysis_mode=dataset.analysis_mode,
+        )]
 
-    # Determine if we should Merge
+    dict_path = dataset.data_dictionary if dataset.data_dictionary and Path(dataset.data_dictionary).exists() else None
     is_multi_file = merge or "multi-file" in dataset.analysis_mode.lower() or len(valid_files) > 1
-    
+
     if is_multi_file and len(valid_files) > 1:
-        # Merge Mode
-        print(f"\n{'='*60}")
-        print(f"🧪 Testing Dataset Group: {dataset.name} (MERGED)")
-        print(f"   Found {len(valid_files)} files to merge")
-        print(f"{'='*60}")
-        
-        # Construct MultiFileInput
-        file_inputs = []
-        for f in valid_files:
-            p = Path(f)
-            # Determine type
-            ext = p.suffix.lower()
-            ft = "UNKNOWN"
-            if ext == '.csv': ft = "CSV"
-            elif ext in ['.xlsx', '.xls']: ft = "EXCEL"
-            elif ext == '.json': ft = "JSON"
-            elif ext == '.parquet': ft = "PARQUET"
-            
-            file_inputs.append({
-                "file_path": str(p.resolve()),
-                "file_hash": calculate_file_hash(str(p)),
-                "file_type": ft,
-                "alias": p.stem
-            })
-            
-        multi_file_input = {"files": file_inputs}
-        
-        # Use first file as primary
-        primary_path = Path(valid_files[0])
-        start_time = datetime.now()
-        
-        print(f"\n   📄 Merging {len(valid_files)} files...")
-        
-        try:
-             # Submit Analysis
-            print("      📤 Submitting merger job...")
-            submit_response = client.submit_analysis(
-                csv_path=str(primary_path.resolve()),
-                mode=dataset.api_mode,
-                dict_path=dataset.data_dictionary if dataset.data_dictionary and Path(dataset.data_dictionary).exists() else None,
-                title=f"{dataset.name} (Merged)",
-                use_cache=False,
-                multi_file_input=multi_file_input
-            )
-            
-            job_id = submit_response.get("job_id")
-            if not job_id:
-                raise Exception(f"No job_id in response: {submit_response}")
-            
-            print(f"      📋 Job ID: {job_id}")
-            
-            # Wait for completion
-            print("      ⏳ Waiting for job to complete...")
-            final_status = client.wait_for_completion(
-                job_id=job_id,
-                timeout=timeout,
-                verbose=verbose
-            )
-            
-            end_time = datetime.now()
-            duration = (end_time - start_time).total_seconds()
-            
-            job_status = final_status.get("status", "unknown")
-            result_path = final_status.get("result_path")
-            error = final_status.get("error")
-            token_usage = final_status.get("token_usage", {})
-            
-            if job_status == "completed" and result_path:
-                print(f"      ✅ SUCCESS: {dataset.name} (Merged)")
-                print(f"         Duration: {duration:.1f}s")
-                results.append(TestResult(
-                    dataset_name=f"{dataset.name} (Merged)",
-                    success=True,
-                    start_time=start_time,
-                    end_time=end_time,
-                    duration_seconds=duration,
-                    job_id=job_id,
-                    notebook_path=result_path,
-                    tokens_used=token_usage.get("input", 0) + token_usage.get("output", 0),
-                    analysis_mode=dataset.analysis_mode,
-                    job_status=job_status
-                ))
-            else:
-                error_msg = error or f"Job ended with status: {job_status}"
-                print(f"      ❌ FAILED: {dataset.name} (Merged)")
-                print(f"         Error: {error_msg}")
-                results.append(TestResult(
-                    dataset_name=f"{dataset.name} (Merged)",
-                    success=False,
-                    start_time=start_time,
-                    end_time=end_time,
-                    duration_seconds=duration,
-                    job_id=job_id,
-                    error_message=error_msg,
-                    tokens_used=token_usage.get("input", 0) + token_usage.get("output", 0) if token_usage else 0,
-                    analysis_mode=dataset.analysis_mode,
-                    job_status=job_status
-                ))
+        print(f"\n{'='*60}\n🧪 Testing Dataset Group: {dataset.name} (MERGED)\n   Found {len(valid_files)} files to merge\n{'='*60}")
+        return [_run_one_job(
+            client=client,
+            label=f"{dataset.name} (Merged)",
+            csv_path=str(Path(valid_files[0]).resolve()),
+            mode=dataset.api_mode,
+            title=f"{dataset.name} (Merged)",
+            dict_path=dict_path,
+            multi_file_input=_build_multi_file_input(valid_files),
+            analysis_mode=dataset.analysis_mode,
+            verbose=verbose,
+            timeout=timeout,
+        )]
 
-        except Exception as e:
-            end_time = datetime.now()
-            duration = (end_time - start_time).total_seconds()
-            print(f"      ❌ FAILED: {dataset.name} (Merged)")
-            print(f"         Exception: {str(e)}")
-            results.append(TestResult(
-                    dataset_name=f"{dataset.name} (Merged)",
-                    success=False,
-                    start_time=start_time,
-                    end_time=end_time,
-                    duration_seconds=duration,
-                    job_id=None,
-                    error_message=str(e),
-                    analysis_mode=dataset.analysis_mode
-            ))
-
-        return results
-
-    # Normal Sequential Mode
-    print(f"\n{'='*60}")
-    print(f"🧪 Testing Dataset Group: {dataset.name}")
-    print(f"   Found {len(valid_files)} file(s)")
-    print(f"{'='*60}")
-
-    for file_path in valid_files:
-        start_time = datetime.now()
-        path_obj = Path(file_path)
-        file_name = path_obj.name
-        
-        print(f"\n   📄 File: {file_name}")
-        
-        try:
-            # 1. Submit the analysis job
-            print("      📤 Submitting analysis job...")
-            submit_response = client.submit_analysis(
-                csv_path=str(path_obj.resolve()),
-                mode=dataset.api_mode,
-                dict_path=dataset.data_dictionary if dataset.data_dictionary and Path(dataset.data_dictionary).exists() else None,
-                title=dataset.name,
-                use_cache=False  # Fresh run for testing
-            )
-            
-            job_id = submit_response.get("job_id")
-            if not job_id:
-                raise Exception(f"No job_id in response: {submit_response}")
-            
-            print(f"      📋 Job ID: {job_id}")
-            
-            # 2. Wait for completion
-            print("      ⏳ Waiting for job to complete...")
-            final_status = client.wait_for_completion(
-                job_id=job_id,
-                timeout=timeout,
-                verbose=verbose
-            )
-            
-            end_time = datetime.now()
-            duration = (end_time - start_time).total_seconds()
-            
-            job_status = final_status.get("status", "unknown")
-            result_path = final_status.get("result_path")
-            error = final_status.get("error")
-            token_usage = final_status.get("token_usage", {})
-            
-            if job_status == "completed" and result_path:
-                print(f"      ✅ SUCCESS: {file_name}")
-                print(f"         Duration: {duration:.1f}s")
-                
-                results.append(TestResult(
-                    dataset_name=f"{dataset.name} ({file_name})",
-                    success=True,
-                    start_time=start_time,
-                    end_time=end_time,
-                    duration_seconds=duration,
-                    job_id=job_id,
-                    notebook_path=result_path,
-                    tokens_used=token_usage.get("input", 0) + token_usage.get("output", 0),
-                    analysis_mode=dataset.analysis_mode,
-                    job_status=job_status
-                ))
-            else:
-                error_msg = error or f"Job ended with status: {job_status}"
-                print(f"      ❌ FAILED: {file_name}")
-                print(f"         Error: {error_msg}")
-                
-                results.append(TestResult(
-                    dataset_name=f"{dataset.name} ({file_name})",
-                    success=False,
-                    start_time=start_time,
-                    end_time=end_time,
-                    duration_seconds=duration,
-                    job_id=job_id,
-                    error_message=error_msg,
-                    tokens_used=token_usage.get("input", 0) + token_usage.get("output", 0) if token_usage else 0,
-                    analysis_mode=dataset.analysis_mode,
-                    job_status=job_status
-                ))
-                
-        except TimeoutError as e:
-            end_time = datetime.now()
-            duration = (end_time - start_time).total_seconds()
-            print(f"      ⏰ TIMEOUT: {file_name}")
-            
-            results.append(TestResult(
-                dataset_name=f"{dataset.name} ({file_name})",
-                success=False,
-                start_time=start_time,
-                end_time=end_time,
-                duration_seconds=duration,
-                error_message=str(e),
-                analysis_mode=dataset.analysis_mode,
-                job_status="timeout"
-            ))
-            
-        except Exception as e:
-            end_time = datetime.now()
-            duration = (end_time - start_time).total_seconds()
-            error_msg = str(e)
-            print(f"      ❌ FAILED: {file_name}")
-            print(f"         Exception: {error_msg}")
-            if verbose:
-                tb.print_exc()
-            
-            results.append(TestResult(
-                dataset_name=f"{dataset.name} ({file_name})",
-                success=False,
-                start_time=start_time,
-                end_time=end_time,
-                duration_seconds=duration,
-                error_message=error_msg,
-                analysis_mode=dataset.analysis_mode
-            ))
-            
-    return results
+    print(f"\n{'='*60}\n🧪 Testing Dataset Group: {dataset.name}\n   Found {len(valid_files)} file(s)\n{'='*60}")
+    return [
+        _run_one_job(
+            client=client,
+            label=f"{dataset.name} ({Path(file_path).name})",
+            csv_path=str(Path(file_path).resolve()),
+            mode=dataset.api_mode,
+            title=dataset.name,
+            dict_path=dict_path,
+            multi_file_input=None,
+            analysis_mode=dataset.analysis_mode,
+            verbose=verbose,
+            timeout=timeout,
+        )
+        for file_path in valid_files
+    ]
 
 
 def run_tests(
