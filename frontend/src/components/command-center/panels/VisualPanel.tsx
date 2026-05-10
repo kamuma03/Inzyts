@@ -29,6 +29,7 @@ export const VisualPanel: FC<VisualPanelProps> = ({ job }) => {
                 resultPath={job.result_path ?? null}
                 status={job.status}
                 mode={job.mode}
+                embedded
             />
         </div>
     );

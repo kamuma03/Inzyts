@@ -30,6 +30,10 @@ interface NotebookViewerProps {
     resultPath: string | null;
     status?: string; // 'running', 'completed', 'failed'
     mode?: string;
+    /** When true, the consumer (e.g. CommandCenterView's tab panel) already
+     *  provides the outer chrome — drop our border + radius to avoid the
+     *  border-inside-a-border-inside-a-border stack. */
+    embedded?: boolean;
 }
 
 interface ExecutiveSummary {
@@ -49,7 +53,7 @@ interface PIIScanResult {
 type ViewMode = 'static' | 'live' | 'interactive';
 type ExportFormat = 'pdf' | 'html' | 'pptx' | 'markdown' | 'ipynb';
 
-export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPath, status = 'completed' }) => {
+export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPath, status = 'completed', embedded = false }) => {
     const [htmlContent, setHtmlContent] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -210,7 +214,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
     if (status !== 'completed') {
         const isRunning = status === 'running';
         return (
-            <div className="mt-0 border border-[var(--rule)] rounded-lg flex-1 flex flex-col items-center justify-center gap-4 bg-[var(--surface-1)] min-h-[300px]">
+            <div className={`mt-0 flex-1 flex flex-col items-center justify-center gap-4 bg-[var(--surface-1)] min-h-[300px] ${embedded ? '' : 'border border-[var(--rule)] rounded-lg'}`}>
                 {isRunning ? (
                     <>
                         <Clock size={40} color="var(--text-secondary)" className="animate-spin opacity-50" />
@@ -270,7 +274,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
     }
 
     return (
-        <div className="mt-0 border border-[var(--rule)] rounded-lg overflow-hidden flex-1 flex flex-col min-h-0">
+        <div className={`mt-0 overflow-hidden flex-1 flex flex-col min-h-0 ${embedded ? '' : 'border border-[var(--rule)] rounded-lg'}`}>
             {/* Header */}
             <div className="p-4 border-b border-[var(--rule)] bg-[var(--surface-1)] flex justify-between items-center shrink-0">
                 <h3 className="m-0 font-semibold text-[var(--text-primary)] flex items-center gap-2">
