@@ -3,7 +3,6 @@ import React from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useJobContext } from '../context/JobContext';
 import { Sidebar } from '../components/Sidebar';
-import { ContextPanel } from '../components/ContextPanel';
 import { Toast } from '../components/Toast';
 import { isAdmin, getStoredUsername, getStoredRole } from '../api';
 
@@ -18,8 +17,6 @@ export const MainLayout: React.FC = () => {
         clearInitialFormState
     } = useJobContext();
 
-    const selectedJob = jobs.find(j => j.id === activeJobId);
-
     // Navigation Handlers
     const handleSelectJob = (jobId: string) => {
         navigate(`/jobs/${jobId}`);
@@ -33,10 +30,6 @@ export const MainLayout: React.FC = () => {
     const onUpgradeJobWrapper = (job: any) => {
         handleUpgradeJob(job);
         navigate('/'); // Go to form
-    };
-
-    const handleShowTemplates = () => {
-        navigate('/templates');
     };
 
     return (
@@ -58,22 +51,30 @@ export const MainLayout: React.FC = () => {
 
                 </div>
                 <div className="flex items-center gap-4">
-                    {isAdmin() && (
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={() => navigate('/admin/users')}
-                                className="text-xs px-3 py-1.5 bg-[var(--surface-2)] hover:bg-[var(--rule-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--rule)] rounded-md transition-colors"
-                            >
-                                Users
-                            </button>
-                            <button
-                                onClick={() => navigate('/admin/audit')}
-                                className="text-xs px-3 py-1.5 bg-[var(--surface-2)] hover:bg-[var(--rule-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--rule)] rounded-md transition-colors"
-                            >
-                                Audit log
-                            </button>
-                        </div>
-                    )}
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => navigate('/templates')}
+                            className="text-xs px-3 py-1.5 bg-[var(--surface-2)] hover:bg-[var(--rule-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--rule)] rounded-md transition-colors"
+                        >
+                            Templates
+                        </button>
+                        {isAdmin() && (
+                            <>
+                                <button
+                                    onClick={() => navigate('/admin/users')}
+                                    className="text-xs px-3 py-1.5 bg-[var(--surface-2)] hover:bg-[var(--rule-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--rule)] rounded-md transition-colors"
+                                >
+                                    Users
+                                </button>
+                                <button
+                                    onClick={() => navigate('/admin/audit')}
+                                    className="text-xs px-3 py-1.5 bg-[var(--surface-2)] hover:bg-[var(--rule-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--rule)] rounded-md transition-colors"
+                                >
+                                    Audit log
+                                </button>
+                            </>
+                        )}
+                    </div>
                     <div className={`px-3 py-1 rounded-md text-[12px] font-semibold border ${
                         isConnected
                             ? 'bg-[color-mix(in_srgb,var(--ok)_15%,transparent)] text-[var(--ok)] border-[color-mix(in_srgb,var(--ok)_35%,transparent)]'
@@ -115,20 +116,12 @@ export const MainLayout: React.FC = () => {
                     />
                 </div>
 
-                {/* Center Content (Outlet) */}
-                <div className="flex-1 flex gap-6 min-h-0 min-w-0">
-                    <div className="flex-1 flex flex-col min-h-0 min-w-0 pr-2">
-                        <Outlet />
-                    </div>
-                </div>
-
-                {/* Right Panel: Context */}
-                <div className="shrink-0 overflow-y-auto max-h-full hidden lg:block">
-                    <ContextPanel
-                        selectedJob={selectedJob}
-                        isConnected={isConnected}
-                        onShowTemplates={handleShowTemplates}
-                    />
+                {/* Center Content (Outlet) — full remaining width now that the
+                    right rail is gone. The TopStrip already surfaces filename,
+                    mode, and connection state, and the StatusBar carries
+                    retries + shortcut hints. */}
+                <div className="flex-1 flex flex-col min-h-0 min-w-0">
+                    <Outlet />
                 </div>
             </div>
         </div>
