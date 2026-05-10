@@ -102,16 +102,10 @@ class CellEditAgent(BaseAgent):
         return "\n".join(parts)
 
     def _extract_code(self, response: str) -> str:
-        """Extract Python code from the LLM response."""
-        cleaned = response.strip()
+        """Extract Python code from the LLM response, or return raw."""
+        from src.utils.llm_output import extract_fenced
 
-        # Try to find code inside ```python ... ```
-        match = re.search(r"```(?:python)?\s*(.*?)\s*```", cleaned, re.DOTALL)
-        if match:
-            return match.group(1).strip()
-
-        # If no code block, return the raw response (assume it's just code)
-        return cleaned
+        return extract_fenced(response)
 
     def edit_cell(
         self, instruction: str, current_code: str, df_context: str = ""

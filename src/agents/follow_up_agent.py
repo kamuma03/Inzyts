@@ -167,12 +167,9 @@ class FollowUpAgent(BaseAgent):
         - JSON wrapped in ```json ... ``` fences
         - Fallback: wrap raw text as a single markdown cell
         """
-        cleaned = response.strip()
+        from src.utils.llm_output import extract_fenced
 
-        # Try to extract JSON from code fences
-        match = re.search(r"```(?:json)?\s*(.*?)\s*```", cleaned, re.DOTALL)
-        if match:
-            cleaned = match.group(1).strip()
+        cleaned = extract_fenced(response)
 
         try:
             parsed = json.loads(cleaned)

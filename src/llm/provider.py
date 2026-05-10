@@ -227,34 +227,11 @@ class LLMAgent:
             f"{prompt}\n\nRespond ONLY with valid JSON. No markdown, no explanation."
         )
         response = self.invoke(json_prompt)
+        from src.utils.llm_output import extract_fenced, extract_json_bounded
 
-        import re
-        
-        # Strip markdown code blocks if present
-        cleaned_response = response.strip()
-        
-        # Look for JSON between ```json and ```
-        json_match = re.search(r"```(?:json)?\s*(.*?)\s*```", cleaned_response, re.DOTALL)
-        if json_match:
-            cleaned_response = json_match.group(1)
-        else:
-            # Try to find the first { or [ and last } or ]
-            start_idx = -1
-            end_idx = -1
-            
-            # Find first { or [
-            for i, char in enumerate(cleaned_response):
-                if char in ('{', '['):
-                    start_idx = i
-                    break
-                    
-            # Find last } or ]
-            for i in range(len(cleaned_response)-1, -1, -1):
-                if cleaned_response[i] in ('}', ']'):
-                    end_idx = i
-                    break
-                    
-            if start_idx != -1 and end_idx != -1 and start_idx <= end_idx:
-                cleaned_response = cleaned_response[start_idx:end_idx+1]
-
-        return cleaned_response.strip()
+        # Try fenced block first; fall back to bounding-bracket slice for
+        # responses that include prose around the JSON payload.
+        fenced = extract_fenced(response)
+        if fenced != response.strip():
+            return fenced
+        return extract_json_bounded(response)

@@ -222,32 +222,12 @@ class Phase2ValidationCriteria:
     meaningful (models trained, metrics computed, insights generated).
     """
 
-    # Standard Predictive / Default Criteria
-    DEFAULT_CRITERIA = {
+    # Two criteria are scored for every mode; declare them once.
+    _SHARED = {
         "execution_success": {
             "description": "All cells execute without errors",
             "threshold": 1.0,
             "weight": 0.25,
-        },
-        "model_training_success": {
-            "description": "At least one model trained successfully",
-            "threshold": 1,  # Minimum count
-            "weight": 0.25,
-        },
-        "metrics_computed": {
-            "description": "All specified evaluation metrics computed",
-            "threshold": 1.0,
-            "weight": 0.20,
-        },
-        "results_visualization": {
-            "description": "At least 2 results visualizations rendered",
-            "threshold": 2,
-            "weight": 0.10,
-        },
-        "conclusions_quality": {
-            "description": "Conclusions section with >= 3 insights",
-            "threshold": 3,
-            "weight": 0.10,
         },
         "code_style": {
             "description": "PEP8 compliance score",
@@ -256,89 +236,62 @@ class Phase2ValidationCriteria:
         },
     }
 
-    DIAGNOSTIC_CRITERIA = {
-        "execution_success": {"threshold": 1.0, "weight": 0.25},
-        "root_cause_identified": {
-            "threshold": 1.0,
-            "weight": 0.25,
-            "description": "Root causes identified via decomposition or correlation",
+    # Mode-specific criteria. Each dict is merged with `_SHARED` at lookup
+    # time, so the order in `get_criteria_for_mode()` is shared-first then
+    # mode-specific (matching the previous explicit dict layout).
+    _MODE_SPECIFIC: Dict[str, Dict[str, Any]] = {
+        "predictive": {
+            "model_training_success": {
+                "description": "At least one model trained successfully",
+                "threshold": 1, "weight": 0.25,
+            },
+            "metrics_computed": {
+                "description": "All specified evaluation metrics computed",
+                "threshold": 1.0, "weight": 0.20,
+            },
+            "results_visualization": {
+                "description": "At least 2 results visualizations rendered",
+                "threshold": 2, "weight": 0.10,
+            },
+            "conclusions_quality": {
+                "description": "Conclusions section with >= 3 insights",
+                "threshold": 3, "weight": 0.10,
+            },
         },
-        "factors_ranked": {
-            "threshold": 1.0,
-            "weight": 0.20,
-            "description": "Contributing factors ranked by impact",
+        "diagnostic": {
+            "root_cause_identified": {"threshold": 1.0, "weight": 0.25,
+                "description": "Root causes identified via decomposition or correlation"},
+            "factors_ranked": {"threshold": 1.0, "weight": 0.20,
+                "description": "Contributing factors ranked by impact"},
+            "evidence_provided": {"threshold": 1.0, "weight": 0.20,
+                "description": "Statistical or visual evidence for root causes"},
         },
-        "evidence_provided": {
-            "threshold": 1.0,
-            "weight": 0.20,
-            "description": "Statistical or visual evidence for root causes",
+        "comparative": {
+            "tests_completed": {"threshold": 1.0, "weight": 0.25,
+                "description": "Statistical tests (t-test, ANOVA, etc.) completed"},
+            "p_values_computed": {"threshold": 1.0, "weight": 0.20,
+                "description": "P-values or confidence intervals computed"},
+            "effect_sizes": {"threshold": 1.0, "weight": 0.20,
+                "description": "Effect sizes reported"},
         },
-        "code_style": {"threshold": 0.8, "weight": 0.10},
-    }
-
-    COMPARATIVE_CRITERIA = {
-        "execution_success": {"threshold": 1.0, "weight": 0.25},
-        "tests_completed": {
-            "threshold": 1.0,
-            "weight": 0.25,
-            "description": "Statistical tests (t-test, ANOVA, etc.) completed",
+        "forecasting": {
+            "forecast_generated": {"threshold": 1.0, "weight": 0.25,
+                "description": "Future values forecast generated"},
+            "confidence_intervals": {"threshold": 1.0, "weight": 0.15,
+                "description": "Confidence intervals for forecast"},
+            "accuracy_metrics": {"threshold": 1.0, "weight": 0.15,
+                "description": "Backtesting metrics (MAE, RMSE, MAPE)"},
+            "visualizations": {"threshold": 2, "weight": 0.10,
+                "description": "Forecast plots with history"},
         },
-        "p_values_computed": {
-            "threshold": 1.0,
-            "weight": 0.20,
-            "description": "P-values or confidence intervals computed",
+        "segmentation": {
+            "clusters_generated": {"threshold": 1.0, "weight": 0.25,
+                "description": "Clusters/Segments created"},
+            "optimal_k_justified": {"threshold": 1.0, "weight": 0.15,
+                "description": "Method for optimal clusters (Elbow, Silhouette) used"},
+            "segment_profiles": {"threshold": 1.0, "weight": 0.25,
+                "description": "Segments profiled and described"},
         },
-        "effect_sizes": {
-            "threshold": 1.0,
-            "weight": 0.20,
-            "description": "Effect sizes reported",
-        },
-        "code_style": {"threshold": 0.8, "weight": 0.10},
-    }
-
-    FORECASTING_CRITERIA = {
-        "execution_success": {"threshold": 1.0, "weight": 0.25},
-        "forecast_generated": {
-            "threshold": 1.0,
-            "weight": 0.25,
-            "description": "Future values forecast generated",
-        },
-        "confidence_intervals": {
-            "threshold": 1.0,
-            "weight": 0.15,
-            "description": "Confidence intervals for forecast",
-        },
-        "accuracy_metrics": {
-            "threshold": 1.0,
-            "weight": 0.15,
-            "description": "Backtesting metrics (MAE, RMSE, MAPE)",
-        },
-        "visualizations": {
-            "threshold": 2,
-            "weight": 0.10,
-            "description": "Forecast plots with history",
-        },
-        "code_style": {"threshold": 0.8, "weight": 0.10},
-    }
-
-    SEGMENTATION_CRITERIA = {
-        "execution_success": {"threshold": 1.0, "weight": 0.25},
-        "clusters_generated": {
-            "threshold": 1.0,
-            "weight": 0.25,
-            "description": "Clusters/Segments created",
-        },
-        "optimal_k_justified": {
-            "threshold": 1.0,
-            "weight": 0.15,
-            "description": "Method for optimal clusters (Elbow, Silhouette) used",
-        },
-        "segment_profiles": {
-            "threshold": 1.0,
-            "weight": 0.25,
-            "description": "Segments profiled and described",
-        },
-        "code_style": {"threshold": 0.8, "weight": 0.10},
     }
 
     COMPLETION_THRESHOLD = 0.75
@@ -346,17 +299,18 @@ class Phase2ValidationCriteria:
     @classmethod
     def get_criteria_for_mode(cls, mode: str) -> Dict[str, Any]:
         """Retrieve validation criteria based on pipeline mode."""
-        mode = mode.lower() if mode else "predictive"
-        if mode == "diagnostic":
-            return cls.DIAGNOSTIC_CRITERIA
-        elif mode == "comparative":
-            return cls.COMPARATIVE_CRITERIA
-        elif mode == "forecasting":
-            return cls.FORECASTING_CRITERIA
-        elif mode == "segmentation":
-            return cls.SEGMENTATION_CRITERIA
-        else:
-            return cls.DEFAULT_CRITERIA
+        mode = (mode or "predictive").lower()
+        specific = cls._MODE_SPECIFIC.get(mode, cls._MODE_SPECIFIC["predictive"])
+        return {**cls._SHARED, **specific}
+
+
+# Legacy public aliases — keep external `Phase2ValidationCriteria.X_CRITERIA`
+# lookups working without forcing callers to migrate to `get_criteria_for_mode`.
+Phase2ValidationCriteria.DEFAULT_CRITERIA = Phase2ValidationCriteria.get_criteria_for_mode("predictive")
+Phase2ValidationCriteria.DIAGNOSTIC_CRITERIA = Phase2ValidationCriteria.get_criteria_for_mode("diagnostic")
+Phase2ValidationCriteria.COMPARATIVE_CRITERIA = Phase2ValidationCriteria.get_criteria_for_mode("comparative")
+Phase2ValidationCriteria.FORECASTING_CRITERIA = Phase2ValidationCriteria.get_criteria_for_mode("forecasting")
+Phase2ValidationCriteria.SEGMENTATION_CRITERIA = Phase2ValidationCriteria.get_criteria_for_mode("segmentation")
 
 
 def calculate_phase2_quality(
