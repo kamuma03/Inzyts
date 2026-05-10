@@ -18,9 +18,11 @@ export const InteractiveCell: React.FC<InteractiveCellProps> = ({ cell, index, j
     const [editStatus, setEditStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [errorMsg, setErrorMsg] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
+    // Tracked so the unmount cleanup below clears them — prevents
+    // setState on unmounted components after a successful edit (the
+    // 2s/4s reset timers fire async after the edit resolves).
     const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-    // Clear all pending timeouts on unmount to prevent state updates on unmounted component
     useEffect(() => {
         return () => {
             timersRef.current.forEach(clearTimeout);
@@ -93,8 +95,10 @@ export const InteractiveCell: React.FC<InteractiveCellProps> = ({ cell, index, j
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => { if (!isEditing) setIsHovered(false); }}
         >
-            {/* Cell type indicator */}
-            <div className="shrink-0 w-[60px] py-2 px-1 flex justify-end items-start">
+            {/* Cell type indicator. 40px gutter is enough for ~2-digit cell
+                indices ("In [12]"); the wider gutter only kicks in when
+                indices reach three digits. */}
+            <div className={`shrink-0 ${index >= 100 ? 'w-[60px]' : 'w-10'} py-2 pr-2 flex justify-end items-start`}>
                 <span className="text-[0.7rem] font-mono text-[var(--text-secondary)] opacity-70">
                     {isCode ? `In [${index}]` : 'Md'}
                 </span>
