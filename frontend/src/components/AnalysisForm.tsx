@@ -59,7 +59,6 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'upload' | 'manual' | 'database' | 'cloud' | 'api'>('upload');
-    const [isDragOver, setIsDragOver] = useState(false);
 
     // Mode suggestion
     const {
@@ -285,7 +284,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
                     <FileUploadSection
                         files={files} setFiles={setFiles}
                         uploadedPaths={uploadedPaths} uploadedFiles={uploadedFiles}
-                        loading={loading} isDragOver={isDragOver} setIsDragOver={setIsDragOver}
+                        loading={loading}
                         fileInputRef={fileInputRef} setError={setError}
                         onUpload={handleUpload} onClearFiles={handleClearFiles}
                     />

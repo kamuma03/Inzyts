@@ -1,5 +1,6 @@
-import React, { useCallback, type FC, type ChangeEvent, type DragEvent } from 'react';
+import React, { useCallback, type FC, type ChangeEvent } from 'react';
 import { UploadCloud } from 'lucide-react';
+import { useDragDrop } from '../../hooks/useDragDrop';
 
 interface UploadedFile {
     filename: string;
@@ -13,8 +14,6 @@ interface FileUploadSectionProps {
     uploadedPaths: string[];
     uploadedFiles: UploadedFile[];
     loading: boolean;
-    isDragOver: boolean;
-    setIsDragOver: (v: boolean) => void;
     fileInputRef: React.RefObject<HTMLInputElement>;
     setError: (err: string | null) => void;
     onUpload: () => void;
@@ -24,31 +23,13 @@ interface FileUploadSectionProps {
 const VALID_EXTENSIONS = ['.csv', '.parquet', '.log', '.xlsx', '.xls', '.json'];
 
 export const FileUploadSection: FC<FileUploadSectionProps> = ({
-    files, setFiles, uploadedPaths, uploadedFiles, loading, isDragOver,
-    setIsDragOver, fileInputRef, setError, onUpload, onClearFiles,
+    files, setFiles, uploadedPaths, uploadedFiles, loading,
+    fileInputRef, setError, onUpload, onClearFiles,
 }) => {
-    const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragOver(true);
-    }, [setIsDragOver]);
-
-    const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragOver(false);
-    }, [setIsDragOver]);
-
-    const handleDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragOver(false);
-
-        const droppedFiles = Array.from(e.dataTransfer.files);
-        const validFiles = droppedFiles.filter(f =>
+    const handleDroppedFiles = useCallback((dropped: File[]) => {
+        const validFiles = dropped.filter(f =>
             VALID_EXTENSIONS.some(ext => f.name.toLowerCase().endsWith(ext))
         );
-
         if (validFiles.length === 0) {
             setError("No valid files. Accepted: CSV, Parquet, JSON, XLSX, LOG");
             return;
@@ -57,10 +38,12 @@ export const FileUploadSection: FC<FileUploadSectionProps> = ({
             setError("Maximum 6 files allowed.");
             return;
         }
-
         setFiles(validFiles);
         setError(null);
-    }, [setFiles, setError, setIsDragOver]);
+    }, [setFiles, setError]);
+
+    const { isDragOver, onDragOver: handleDragOver, onDragLeave: handleDragLeave, onDrop: handleDrop } =
+        useDragDrop(handleDroppedFiles);
 
     const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {

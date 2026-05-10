@@ -1,7 +1,8 @@
-import { useState, useCallback, useRef, type FC, type ChangeEvent, type DragEvent } from 'react';
+import { useCallback, useRef, type FC, type ChangeEvent } from 'react';
 import type { AnalysisRequest } from '../../api';
 import { ModeSelector } from '../ModeSelector';
 import { UploadCloud, FileText, X, ChevronRight } from 'lucide-react';
+import { useDragDrop } from '../../hooks/useDragDrop';
 
 interface ConfigPanelProps {
     dictPath: string;
@@ -34,35 +35,17 @@ export const ConfigPanel: FC<ConfigPanelProps> = ({
     question, setQuestion,
     useCache, setUseCache, onDictClear,
 }) => {
-    const [isDragOver, setIsDragOver] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragOver(true);
-    }, []);
-
-    const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragOver(false);
-    }, []);
-
-    const handleDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragOver(false);
-
-        const droppedFiles = Array.from(e.dataTransfer.files);
-        const validFile = droppedFiles.find(f =>
+    const handleDictFiles = useCallback((files: File[]) => {
+        const validFile = files.find(f =>
             DICT_EXTENSIONS.some(ext => f.name.toLowerCase().endsWith(ext))
         );
-
-        if (validFile && onDictFileDrop) {
-            onDictFileDrop(validFile);
-        }
+        if (validFile && onDictFileDrop) onDictFileDrop(validFile);
     }, [onDictFileDrop]);
+
+    const { isDragOver, onDragOver: handleDragOver, onDragLeave: handleDragLeave, onDrop: handleDrop } =
+        useDragDrop(handleDictFiles);
 
     return (
         <>

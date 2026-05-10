@@ -147,6 +147,24 @@ export interface AnalysisResponse {
     message: string;
 }
 
+/** URL builder for the per-job v2 endpoints. Avoids repeating
+ * `encodeURIComponent(jobId)` (and the surrounding template literal) at
+ * every call site. ``suffix`` may begin with or without a leading slash. */
+const jobUrl = (jobId: string, suffix: string = ''): string => {
+    const trimmed = suffix.startsWith('/') ? suffix : (suffix ? `/${suffix}` : '');
+    return `/jobs/${encodeURIComponent(jobId)}${trimmed}`;
+};
+
+const notebookUrl = (jobId: string, suffix: string = ''): string => {
+    const trimmed = suffix.startsWith('/') ? suffix : (suffix ? `/${suffix}` : '');
+    return `/notebooks/${encodeURIComponent(jobId)}${trimmed}`;
+};
+
+const reportUrl = (jobId: string, suffix: string = ''): string => {
+    const trimmed = suffix.startsWith('/') ? suffix : (suffix ? `/${suffix}` : '');
+    return `/reports/${encodeURIComponent(jobId)}${trimmed}`;
+};
+
 export const AnalysisAPI = {
     login: async (username: string, password: string) => {
         const formData = new URLSearchParams();
@@ -184,12 +202,12 @@ export const AnalysisAPI = {
     },
 
     getJobStatus: async (jobId: string) => {
-        const response = await api.get(`/jobs/${encodeURIComponent(jobId)}`);
+        const response = await api.get(jobUrl(jobId));
         return response.data;
     },
 
     cancelJob: async (jobId: string) => {
-        const response = await api.post(`/jobs/${encodeURIComponent(jobId)}/cancel`);
+        const response = await api.post(jobUrl(jobId, 'cancel'));
         return response.data;
     },
 
@@ -239,7 +257,7 @@ export const AnalysisAPI = {
     },
 
     getNotebookHtml: async (jobId: string) => {
-        const response = await api.get(`/notebooks/${encodeURIComponent(jobId)}/html`);
+        const response = await api.get(notebookUrl(jobId, 'html'));
         return response.data; // { html: string, job_id: string }
     },
 
@@ -268,20 +286,17 @@ export const AnalysisAPI = {
     },
 
     downloadNotebook: async (jobId: string) => {
-        const response = await api.get(
-            `/notebooks/${encodeURIComponent(jobId)}/download`,
-            { responseType: 'blob' },
-        );
+        const response = await api.get(notebookUrl(jobId, 'download'), { responseType: 'blob' });
         return response;
     },
 
     getNotebookCells: async (jobId: string) => {
-        const response = await api.get(`/notebooks/${encodeURIComponent(jobId)}/cells`);
+        const response = await api.get(notebookUrl(jobId, 'cells'));
         return response.data; // { cells: [...], job_id: string }
     },
 
     editCell: async (jobId: string, cellIndex: number, currentCode: string, instruction: string) => {
-        const response = await api.post(`/notebooks/${encodeURIComponent(jobId)}/cells/edit`, {
+        const response = await api.post(notebookUrl(jobId, 'cells/edit'), {
             cell_index: cellIndex,
             current_code: currentCode,
             instruction: instruction,
@@ -292,10 +307,9 @@ export const AnalysisAPI = {
     // --- Live cell execution (PR1 sandbox API) ----------------------------
 
     executeLiveCell: async (jobId: string, code: string, executionId: string) => {
-        const response = await api.post(
-            `/notebooks/${encodeURIComponent(jobId)}/cells/execute`,
-            { code, execution_id: executionId },
-        );
+        const response = await api.post(notebookUrl(jobId, 'cells/execute'), {
+            code, execution_id: executionId,
+        });
         return response.data as {
             execution_id: string;
             success: boolean;
@@ -308,54 +322,42 @@ export const AnalysisAPI = {
     },
 
     restartLiveKernel: async (jobId: string) => {
-        const response = await api.post(
-            `/notebooks/${encodeURIComponent(jobId)}/cells/restart`,
-        );
+        const response = await api.post(notebookUrl(jobId, 'cells/restart'));
         return response.data as { job_id: string; status: string };
     },
 
     interruptLiveKernel: async (jobId: string) => {
-        const response = await api.post(
-            `/notebooks/${encodeURIComponent(jobId)}/cells/interrupt`,
-        );
+        const response = await api.post(notebookUrl(jobId, 'cells/interrupt'));
         return response.data as { job_id: string; status: string };
     },
 
     askFollowUp: async (jobId: string, question: string) => {
-        const response = await api.post(`/notebooks/${encodeURIComponent(jobId)}/ask`, { question });
+        const response = await api.post(notebookUrl(jobId, 'ask'), { question });
         return response.data; // { summary, cells, success, error, conversation_length }
     },
 
     getConversationHistory: async (jobId: string) => {
-        const response = await api.get(`/notebooks/${encodeURIComponent(jobId)}/conversation`);
+        const response = await api.get(notebookUrl(jobId, 'conversation'));
         return response.data; // { job_id, messages: [{role, content, cells, created_at}] }
     },
 
     // --- Report export endpoints ---
 
     exportReport: async (jobId: string, format: string = 'html', options?: { include_executive_summary?: boolean; include_pii_masking?: boolean }) => {
+        const url = reportUrl(jobId, 'export');
         if (options) {
-            const response = await api.post(
-                `/reports/${encodeURIComponent(jobId)}/export`,
-                { format, ...options },
-                { responseType: 'blob' },
-            );
-            return response;
+            return await api.post(url, { format, ...options }, { responseType: 'blob' });
         }
-        const response = await api.get(
-            `/reports/${encodeURIComponent(jobId)}/export`,
-            { params: { format }, responseType: 'blob' },
-        );
-        return response;
+        return await api.get(url, { params: { format }, responseType: 'blob' });
     },
 
     getExecutiveSummary: async (jobId: string) => {
-        const response = await api.get(`/reports/${encodeURIComponent(jobId)}/executive-summary`);
+        const response = await api.get(reportUrl(jobId, 'executive-summary'));
         return response.data;
     },
 
     getPIIScan: async (jobId: string) => {
-        const response = await api.get(`/reports/${encodeURIComponent(jobId)}/pii-scan`);
+        const response = await api.get(reportUrl(jobId, 'pii-scan'));
         return response.data;
     },
 
@@ -494,11 +496,11 @@ export interface CostBreakdownResponse {
 // Adds Command Center API methods to AnalysisAPI surface.
 export const CommandCenterAPI = {
     getColumns: async (jobId: string): Promise<ColumnProfile[]> => {
-        const response = await api.get<ColumnProfile[]>(`/jobs/${encodeURIComponent(jobId)}/columns`);
+        const response = await api.get<ColumnProfile[]>(jobUrl(jobId, 'columns'));
         return response.data;
     },
     getCost: async (jobId: string): Promise<CostBreakdownResponse> => {
-        const response = await api.get<CostBreakdownResponse>(`/jobs/${encodeURIComponent(jobId)}/cost`);
+        const response = await api.get<CostBreakdownResponse>(jobUrl(jobId, 'cost'));
         return response.data;
     },
 };
