@@ -5,6 +5,7 @@ import { LivePanel } from './command-center/panels/live/LivePanel';
 import { InteractiveCell } from './InteractiveCell';
 import { FollowUpChat } from './FollowUpChat';
 import { DARK_NOTEBOOK_OVERRIDES } from './notebookDarkOverrides';
+import { SkeletonCard, Spinner, ErrorState, ProgressPill } from './state';
 import { CellOutput, NotebookCellData } from '../types/notebook';
 
 type NotebookTheme = 'light' | 'dark';
@@ -88,7 +89,12 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
         [htmlContent, notebookTheme],
     );
 
-    // Load static HTML
+    // Bumped by the ErrorState retry button to re-fire the static-HTML
+    // effect without unmounting the component.
+    const [retryToken, setRetryToken] = useState(0);
+    const retryNotebook = useCallback(() => setRetryToken((t) => t + 1), []);
+
+    // Load static HTML — re-runs when retryToken bumps.
     useEffect(() => {
         if (!jobId || !resultPath || status !== 'completed') return;
         let mounted = true;
@@ -105,10 +111,10 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
         }).catch((err) => {
             if (!mounted) return;
             if (import.meta.env.DEV) console.error("Failed to load notebook", err);
-            setError("Could not load notebook preview.");
+            setError(err?.message ?? "Could not load notebook preview.");
         }).finally(() => { if (mounted) setLoading(false); });
         return () => { mounted = false; };
-    }, [jobId, resultPath, status]);
+    }, [jobId, resultPath, status, retryToken]);
 
     // Fetch executive summary & PII scan on mount when completed
     useEffect(() => {
@@ -229,28 +235,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                                 The notebook will appear here once the analysis completes.
                             </div>
                         </div>
-                        {/* Skeleton preview — mirrors the executive-summary card
-                            (header line, summary paragraph, then two columns of
-                            bullets) so the page doesn't visibly snap on load. */}
-                        <div className="w-4/5 max-w-[500px] flex flex-col gap-2 mt-2">
-                            <div className="skeleton h-4 w-2/5" />
-                            <div className="skeleton h-3 w-full" />
-                            <div className="skeleton h-3 w-11/12" />
-                            <div className="grid grid-cols-2 gap-3 mt-2">
-                                <div className="flex flex-col gap-1.5">
-                                    <div className="skeleton h-2.5 w-1/2" />
-                                    <div className="skeleton h-2.5 w-full" />
-                                    <div className="skeleton h-2.5 w-5/6" />
-                                    <div className="skeleton h-2.5 w-3/4" />
-                                </div>
-                                <div className="flex flex-col gap-1.5">
-                                    <div className="skeleton h-2.5 w-1/2" />
-                                    <div className="skeleton h-2.5 w-full" />
-                                    <div className="skeleton h-2.5 w-2/3" />
-                                    <div className="skeleton h-2.5 w-5/6" />
-                                </div>
-                            </div>
-                        </div>
+                        <SkeletonCard variant="notebook" className="w-4/5 max-w-[500px] mt-2" />
                     </>
                 ) : status === 'failed' ? (
                     <>
@@ -435,11 +420,11 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                 </div>
             )}
 
-            {/* Summary loading indicator */}
+            {/* Summary loading indicator — ambient background op while the
+                executive summary streams in. */}
             {summaryLoading && status === 'completed' && (
-                <div className="px-4 py-2 border-b border-[var(--rule)] bg-[var(--surface-0)] flex items-center gap-2 text-[0.8rem] text-[var(--text-secondary)] shrink-0">
-                    <Loader className="animate-spin" size={14} />
-                    Generating executive summary...
+                <div className="px-4 py-2 border-b border-[var(--rule)] bg-[var(--surface-0)] shrink-0">
+                    <ProgressPill intent="accent" caption="Generating summary" />
                 </div>
             )}
 
@@ -459,9 +444,8 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
 
                 {viewMode === 'interactive' ? (
                     cellsLoading ? (
-                        <div className="flex items-center justify-center h-[200px] gap-2 text-[var(--text-secondary)]">
-                            <Loader className="animate-spin" size={20} />
-                            Loading interactive cells...
+                        <div className="h-[200px] flex items-center justify-center">
+                            <Spinner size="md" caption="Loading cells" />
                         </div>
                     ) : (
                         <div className="p-4 flex flex-col gap-1">
@@ -486,9 +470,13 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                     />
                 ) : (
                     error ? (
-                        <div className="p-8 text-center text-[var(--bad)]">
-                            {error}
-                        </div>
+                        <ErrorState
+                            title="Couldn't load notebook"
+                            body="Your job results are still safe — try again or check the status tab."
+                            onRetry={retryNotebook}
+                            retrying={loading}
+                            details={error}
+                        />
                     ) : themedHtmlContent ? (
                         <iframe
                             key={notebookTheme}
