@@ -30,6 +30,22 @@ pytestmark = pytest.mark.skipif(
 TEST_DIR = Path("tests/temp_core_modes")
 TEST_CSV = TEST_DIR / "test_churn.csv"
 
+
+@pytest.fixture(scope="module", autouse=True)
+def _ensure_test_csv():
+    """Build the synthetic dataset once per module run, tear down afterwards.
+
+    The original ``setup_data()`` helper below was never invoked from any
+    test, so both tests used to fail with ``FileNotFoundError`` even with
+    INZYTS_RUN_LIVE_E2E=1. Wrapping it in an autouse module fixture makes
+    the fixture lifecycle explicit and survives test reorderings.
+    """
+    setup_data()
+    yield
+    if TEST_DIR.exists():
+        shutil.rmtree(TEST_DIR)
+
+
 def setup_data():
     if TEST_DIR.exists():
         shutil.rmtree(TEST_DIR)
