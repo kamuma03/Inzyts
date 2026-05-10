@@ -23,7 +23,7 @@ export const DataPreview: React.FC<DataPreviewProps> = ({ filePath }) => {
 
     if (!filePath) return null;
     if (loading) return <div className="p-4 italic text-[var(--text-secondary)]">Loading preview...</div>;
-    if (error) return <div className="p-4 text-red-400">{error}</div>;
+    if (error) return <div className="p-4 text-[var(--bad)]">{error}</div>;
     if (!preview) return null;
 
     return (

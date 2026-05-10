@@ -35,7 +35,7 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({ selectedJob, isConne
                         Context
                     </h3>
                     <div
-                        className={`w-2 h-2 rounded-full ${isConnected ? 'bg-[var(--accent)]' : 'bg-red-500'}`}
+                        className={`w-2 h-2 rounded-full ${isConnected ? 'bg-[var(--accent)]' : 'bg-[var(--bad)]'}`}
                         title={isConnected ? "Connected" : "Disconnected"}
                     />
                 </div>

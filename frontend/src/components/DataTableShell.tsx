@@ -23,10 +23,10 @@ export const DataTableShell: React.FC<DataTableShellProps> = ({
 }) => {
     const px = padding === 'sm' ? 'px-3' : 'px-4';
     return (
-        <div className={`bg-slate-800/40 rounded-xl border border-slate-700/50 overflow-hidden ${wrapperClass}`.trim()}>
+        <div className={`bg-[var(--surface-1)] rounded-lg border border-[var(--rule)] overflow-hidden ${wrapperClass}`.trim()}>
             <table className="w-full text-sm">
                 <thead>
-                    <tr className="border-b border-slate-700/50 text-slate-400 text-left">
+                    <tr className="border-b border-[var(--rule)] text-[var(--text-secondary)] text-left">
                         {columns.map((c, i) => {
                             const col = typeof c === 'string' ? { label: c } : c;
                             const align = col.align === 'right' ? 'text-right' : '';

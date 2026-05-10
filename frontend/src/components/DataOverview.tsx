@@ -79,12 +79,12 @@ export const DataOverview: React.FC<DataOverviewProps> = ({ jobId }) => {
 
     if (error) {
         return (
-            <div className="p-8 border border-red-500/30 rounded-lg bg-red-500/[0.08] text-red-300">
+            <div className="p-8 border border-[color-mix(in_srgb,var(--bad)_30%,transparent)] rounded-lg bg-[color-mix(in_srgb,var(--bad)_8%,transparent)] text-[var(--bad)]">
                 <div className="flex items-center gap-2 mb-2">
                     <AlertTriangle size={20} />
-                    <strong>Error Loading Data</strong>
+                    <strong>Error loading data</strong>
                 </div>
-                <span className="text-red-200">{error}</span>
+                <span className="opacity-80">{error}</span>
             </div>
         );
     }
@@ -139,12 +139,12 @@ export const DataOverview: React.FC<DataOverviewProps> = ({ jobId }) => {
                                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.1)" />
                                                         <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
                                                         <YAxis tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
-                                                        <Tooltip contentStyle={{ backgroundColor: '#03045e', borderColor: '#0077b6', color: '#fff' }} />
+                                                        <Tooltip contentStyle={{ backgroundColor: 'var(--surface-1)', borderColor: 'var(--rule)', color: 'var(--text-primary)' }} />
                                                         <Bar dataKey="count" fill="var(--accent)" radius={[4, 4, 0, 0]} />
                                                     </RechartsBar>
                                                 </ResponsiveContainer>
                                             ) : (
-                                                <div className="h-full flex items-center justify-center text-slate-400 text-[0.9rem]">
+                                                <div className="h-full flex items-center justify-center text-[var(--text-secondary)] text-[0.9rem]">
                                                     No distribution data
                                                 </div>
                                             )}
@@ -178,7 +178,7 @@ export const DataOverview: React.FC<DataOverviewProps> = ({ jobId }) => {
                                     <tr key={idx} className={idx < metrics.preview.length - 1 ? 'border-b border-white/10' : ''}>
                                         {metrics.columns.map(col => (
                                             <td key={`${idx}-${col.name}`} className="px-4 py-3 text-[var(--text-primary)]">
-                                                {row[col.name]?.toString() ?? <span className="text-white/30 italic">null</span>}
+                                                {row[col.name]?.toString() ?? <span className="text-[var(--text-dim)] italic">null</span>}
                                             </td>
                                         ))}
                                     </tr>

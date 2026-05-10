@@ -29,8 +29,8 @@ export const LogViewer: React.FC<LogViewerProps> = ({ logs }) => {
                     </span>
                     <span
                         className={
-                            log.level === 'ERROR' ? 'text-red-400' :
-                            log.level === 'WARNING' ? 'text-yellow-400' : 'text-[var(--text-primary)]'
+                            log.level === 'ERROR' ? 'text-[var(--bad)]' :
+                            log.level === 'WARNING' ? 'text-[var(--warn)]' : 'text-[var(--text-primary)]'
                         }
                         title={log.message}
                     >

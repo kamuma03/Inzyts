@@ -59,7 +59,7 @@ const LoginPage: React.FC = () => {
             <div className="bg-[var(--surface-1)]/80 backdrop-blur-md rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.3)] p-8 w-full max-w-[420px] border border-[var(--rule)]/50">
                 <form onSubmit={handleSubmit} className="space-y-6">
                     {error && (
-                        <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400 text-sm flex items-start gap-2">
+                        <div className="p-3 bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] border border-[color-mix(in_srgb,var(--bad)_40%,transparent)] rounded-lg text-[var(--bad)] text-sm flex items-start gap-2">
                             <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
@@ -77,7 +77,7 @@ const LoginPage: React.FC = () => {
                                 id="username"
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
-                                className="w-full px-5 py-3.5 bg-[var(--surface-0)]/50 border border-[var(--rule)] rounded-xl text-white placeholder-[var(--text-secondary)]/50 focus:ring-2 focus:ring-[var(--accent)]/50 focus:border-[var(--accent)] outline-none transition-all"
+                                className="w-full px-5 py-3.5 bg-[var(--surface-0)]/50 border border-[var(--rule)] rounded-xl text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:ring-2 focus:ring-[var(--accent)]/50 focus:border-[var(--accent)] outline-none transition-all"
                                 placeholder="Enter username"
                                 required
                             />
@@ -94,7 +94,7 @@ const LoginPage: React.FC = () => {
                                 id="password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="w-full px-5 py-3.5 bg-[var(--surface-0)]/50 border border-[var(--rule)] rounded-xl text-white placeholder-[var(--text-secondary)]/50 focus:ring-2 focus:ring-[var(--accent)]/50 focus:border-[var(--accent)] outline-none transition-all"
+                                className="w-full px-5 py-3.5 bg-[var(--surface-0)]/50 border border-[var(--rule)] rounded-xl text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:ring-2 focus:ring-[var(--accent)]/50 focus:border-[var(--accent)] outline-none transition-all"
                                 placeholder="Enter password"
                                 required
                             />
@@ -104,9 +104,9 @@ const LoginPage: React.FC = () => {
                     <button
                         type="submit"
                         disabled={isLoading}
-                        className="w-full mt-2 bg-gradient-to-r from-[var(--accent)] to-[var(--accent)] hover:brightness-110 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:-translate-y-0.5 shadow-lg shadow-[var(--accent)]/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex justify-center items-center"
+                        className="w-full mt-2 bg-[var(--accent)] hover:brightness-110 text-[var(--accent-ink)] font-semibold py-4 px-6 rounded-xl transition-all duration-200 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center"
                     >
-                        {isLoading ? <Loader className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" /> : 'Sign In'}
+                        {isLoading ? <Loader className="animate-spin -ml-1 mr-3 h-5 w-5" /> : 'Sign in'}
                     </button>
                 </form>
             </div>

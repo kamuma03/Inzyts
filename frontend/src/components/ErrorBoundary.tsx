@@ -28,12 +28,12 @@ export default class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <div className="p-8 text-center text-[var(--text-primary)] bg-[var(--surface-0)] min-h-screen">
-          <h2 className="text-red-400">Oops, something went wrong.</h2>
+          <h2 className="text-[var(--bad)]">Oops, something went wrong.</h2>
           <button
                 onClick={() => window.location.reload()}
-                className="px-5 py-2.5 bg-[var(--rule-strong)] border-none rounded cursor-pointer text-white mt-4 hover:bg-[var(--accent)] transition-colors"
+                className="px-5 py-2.5 bg-[var(--surface-2)] border border-[var(--rule)] rounded cursor-pointer text-[var(--text-primary)] mt-4 hover:bg-[var(--rule-strong)] transition-colors"
             >
-            Reload Page
+            Reload page
           </button>
         </div>
       );

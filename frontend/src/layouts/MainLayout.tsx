@@ -62,27 +62,27 @@ export const MainLayout: React.FC = () => {
                         <div className="flex items-center gap-2">
                             <button
                                 onClick={() => navigate('/admin/users')}
-                                className="text-xs px-3 py-1.5 bg-slate-700/60 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-colors"
+                                className="text-xs px-3 py-1.5 bg-[var(--surface-2)] hover:bg-[var(--rule-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--rule)] rounded-md transition-colors"
                             >
                                 Users
                             </button>
                             <button
                                 onClick={() => navigate('/admin/audit')}
-                                className="text-xs px-3 py-1.5 bg-slate-700/60 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-colors"
+                                className="text-xs px-3 py-1.5 bg-[var(--surface-2)] hover:bg-[var(--rule-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--rule)] rounded-md transition-colors"
                             >
-                                Audit Log
+                                Audit log
                             </button>
                         </div>
                     )}
-                    <div className={`px-4 py-2 rounded-[20px] text-[0.9rem] font-semibold ${
+                    <div className={`px-3 py-1 rounded-md text-[12px] font-semibold border ${
                         isConnected
-                            ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-700/50'
-                            : 'bg-red-900/30 text-red-400 border border-red-700/50'
+                            ? 'bg-[color-mix(in_srgb,var(--ok)_15%,transparent)] text-[var(--ok)] border-[color-mix(in_srgb,var(--ok)_35%,transparent)]'
+                            : 'bg-[color-mix(in_srgb,var(--bad)_12%,transparent)] text-[var(--bad)] border-[color-mix(in_srgb,var(--bad)_30%,transparent)]'
                     }`}>
                         {isConnected ? '● Connected' : '○ Disconnected'}
                     </div>
-                    <span className="text-slate-400 text-xs">
-                        {getStoredUsername()} <span className="text-slate-600">({getStoredRole()})</span>
+                    <span className="text-[var(--text-secondary)] text-xs">
+                        {getStoredUsername()} <span className="text-[var(--text-dim)]">({getStoredRole()})</span>
                     </span>
                     <button
                         onClick={() => {
@@ -91,7 +91,7 @@ export const MainLayout: React.FC = () => {
                             sessionStorage.removeItem('inzyts_username');
                             navigate('/login');
                         }}
-                        className="text-slate-400 hover:text-white transition-colors duration-200"
+                        className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors duration-200"
                         title="Sign Out"
                         aria-label="Sign out"
                     >

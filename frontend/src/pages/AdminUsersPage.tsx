@@ -82,43 +82,43 @@ export const AdminUsersPage: React.FC = () => {
     return (
         <div className="p-6 max-w-4xl mx-auto">
             <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-white">User Management</h2>
+                <h2 className="text-[1.4rem] font-semibold text-[var(--text-primary)]">User management</h2>
                 <button
                     onClick={() => setShowCreate(!showCreate)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors text-sm font-medium"
+                    className="px-4 py-2 bg-[var(--accent)] hover:brightness-110 text-[var(--accent-ink)] rounded-md transition text-sm font-semibold"
                 >
-                    {showCreate ? 'Cancel' : '+ New User'}
+                    {showCreate ? 'Cancel' : '+ New user'}
                 </button>
             </div>
 
             {error && (
-                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400 text-sm">
+                <div className="mb-4 p-3 bg-[color-mix(in_srgb,var(--bad)_10%,transparent)] border border-[color-mix(in_srgb,var(--bad)_40%,transparent)] rounded-md text-[var(--bad)] text-sm">
                     {error}
-                    <button onClick={() => setError('')} className="ml-2 text-red-300 hover:text-white">&times;</button>
+                    <button onClick={() => setError('')} className="ml-2 opacity-70 hover:opacity-100">&times;</button>
                 </div>
             )}
 
             {showCreate && (
-                <form onSubmit={handleCreate} className="mb-6 p-4 bg-slate-800/60 rounded-xl border border-slate-700/50 space-y-3">
+                <form onSubmit={handleCreate} className="mb-6 p-4 bg-[var(--surface-2)] rounded-md border border-[var(--rule)] space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                         <input
                             type="text" placeholder="Username" required minLength={2}
                             value={newUsername} onChange={e => setNewUsername(e.target.value)}
-                            className="px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 text-sm"
+                            className="px-3 py-2 bg-[rgba(0,0,0,0.2)] border border-[var(--rule)] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-dim)] text-sm"
                         />
                         <input
                             type="password" placeholder="Password" required minLength={6}
                             value={newPassword} onChange={e => setNewPassword(e.target.value)}
-                            className="px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 text-sm"
+                            className="px-3 py-2 bg-[rgba(0,0,0,0.2)] border border-[var(--rule)] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-dim)] text-sm"
                         />
                         <input
                             type="email" placeholder="Email (optional)"
                             value={newEmail} onChange={e => setNewEmail(e.target.value)}
-                            className="px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 text-sm"
+                            className="px-3 py-2 bg-[rgba(0,0,0,0.2)] border border-[var(--rule)] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-dim)] text-sm"
                         />
                         <select
                             value={newRole} onChange={e => setNewRole(e.target.value as UserRole)}
-                            className="px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-white text-sm"
+                            className="px-3 py-2 bg-[rgba(0,0,0,0.2)] border border-[var(--rule)] rounded-md text-[var(--text-primary)] text-sm"
                         >
                             <option value="viewer">Viewer</option>
                             <option value="analyst">Analyst</option>
@@ -127,23 +127,23 @@ export const AdminUsersPage: React.FC = () => {
                     </div>
                     <button
                         type="submit" disabled={creating}
-                        className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                        className="px-4 py-2 bg-[var(--ok)] hover:brightness-110 text-[var(--ok-ink)] rounded-md text-sm font-semibold disabled:opacity-50 transition"
                     >
-                        {creating ? 'Creating...' : 'Create User'}
+                        {creating ? 'Creating…' : 'Create user'}
                     </button>
                 </form>
             )}
 
             {loading ? (
-                <div className="text-slate-400 text-center py-12">Loading users...</div>
+                <div className="text-[var(--text-secondary)] text-center py-12">Loading users…</div>
             ) : (
                 <DataTableShell
                     columns={['Username', 'Email', 'Role', 'Status', 'Created', { label: 'Actions', align: 'right' }]}
                 >
                     {users.map(user => (
-                        <tr key={user.id} className="border-b border-slate-700/30 hover:bg-slate-700/20">
-                            <td className="px-4 py-3 text-white font-medium">{user.username}</td>
-                            <td className="px-4 py-3 text-slate-400">{user.email || '—'}</td>
+                        <tr key={user.id} className="border-b border-[var(--rule)] hover:bg-white/[0.03]">
+                            <td className="px-4 py-3 text-[var(--text-primary)] font-medium">{user.username}</td>
+                            <td className="px-4 py-3 text-[var(--text-secondary)]">{user.email || '—'}</td>
                             <td className="px-4 py-3">
                                 <select
                                     value={user.role}
@@ -158,18 +158,22 @@ export const AdminUsersPage: React.FC = () => {
                             <td className="px-4 py-3">
                                 <button
                                     onClick={() => handleToggleActive(user)}
-                                    className={`px-2 py-1 rounded text-xs font-medium ${user.is_active ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}
+                                    className={`px-2 py-1 rounded text-xs font-medium ${
+                                        user.is_active
+                                            ? 'bg-[color-mix(in_srgb,var(--ok)_20%,transparent)] text-[var(--ok)]'
+                                            : 'bg-[color-mix(in_srgb,var(--warn)_20%,transparent)] text-[var(--warn)]'
+                                    }`}
                                 >
                                     {user.is_active ? 'Active' : 'Disabled'}
                                 </button>
                             </td>
-                            <td className="px-4 py-3 text-slate-400 text-xs">
+                            <td className="px-4 py-3 text-[var(--text-secondary)] text-xs">
                                 {user.created_at ? new Date(user.created_at).toLocaleDateString() : '—'}
                             </td>
                             <td className="px-4 py-3 text-right">
                                 <button
                                     onClick={() => handleDelete(user)}
-                                    className="text-red-400 hover:text-red-300 text-xs"
+                                    className="text-[var(--bad)] hover:brightness-125 text-xs"
                                     title="Delete user"
                                 >
                                     Delete
