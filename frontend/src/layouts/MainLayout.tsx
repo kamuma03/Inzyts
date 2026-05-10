@@ -4,6 +4,7 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { useJobContext } from '../context/JobContext';
 import { Sidebar } from '../components/Sidebar';
 import { Toast } from '../components/Toast';
+import { ProgressPill } from '../components/state';
 import { isAdmin, getStoredUsername, getStoredRole } from '../api';
 
 export const MainLayout: React.FC = () => {
@@ -75,13 +76,10 @@ export const MainLayout: React.FC = () => {
                             </>
                         )}
                     </div>
-                    <div className={`px-3 py-1 rounded-md text-[12px] font-semibold border ${
-                        isConnected
-                            ? 'bg-[color-mix(in_srgb,var(--ok)_15%,transparent)] text-[var(--ok)] border-[color-mix(in_srgb,var(--ok)_35%,transparent)]'
-                            : 'bg-[color-mix(in_srgb,var(--bad)_12%,transparent)] text-[var(--bad)] border-[color-mix(in_srgb,var(--bad)_30%,transparent)]'
-                    }`}>
-                        {isConnected ? '● Connected' : '○ Disconnected'}
-                    </div>
+                    <ProgressPill
+                        intent={isConnected ? 'ok' : 'bad'}
+                        caption={isConnected ? 'Connected' : 'Disconnected'}
+                    />
                     <span className="text-[var(--text-secondary)] text-xs">
                         {getStoredUsername()} <span className="text-[var(--text-dim)]">({getStoredRole()})</span>
                     </span>

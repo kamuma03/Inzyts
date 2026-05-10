@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AnalysisAPI } from '../api';
-import { Loader, Send, MessageSquare, AlertTriangle, Sparkles } from 'lucide-react';
+import { Loader, Send, MessageSquare, Sparkles } from 'lucide-react';
 import { formatMarkdown } from '../utils/formatMarkdown';
+import { Spinner, InlineError } from './state';
 
 interface FollowUpCell {
     cell_type: string;
@@ -184,15 +185,9 @@ export const FollowUpChat: React.FC<FollowUpChatProps> = ({ jobId }) => {
                         </div>
                     ))}
 
-                    {/* Loading indicator — spinner stays accent (it's signal),
-                        text drops to dim so it doesn't compete with the user's
-                        next action. */}
                     {isLoading && (
-                        <div className="animate-[slideIn_0.2s_ease-out]">
-                            <div className="flex items-center gap-2 text-[0.85rem] text-[var(--text-dim)] py-2">
-                                <Loader size={16} className="animate-spin text-[var(--accent)]" />
-                                <span>Analysing…</span>
-                            </div>
+                        <div className="animate-[slideIn_0.2s_ease-out] py-2">
+                            <Spinner size="sm" caption="Analysing" />
                         </div>
                     )}
 
@@ -200,11 +195,9 @@ export const FollowUpChat: React.FC<FollowUpChatProps> = ({ jobId }) => {
                 </div>
             )}
 
-            {/* Error */}
             {error && (
-                <div className="flex items-center gap-1.5 px-4 py-2 text-[0.8rem] text-[var(--bad)] bg-[color-mix(in_srgb,var(--bad)_8%,transparent)] border-t border-[color-mix(in_srgb,var(--bad)_15%,transparent)]">
-                    <AlertTriangle size={14} />
-                    <span>{error}</span>
+                <div className="px-4 py-2 border-t border-[color-mix(in_srgb,var(--bad)_15%,transparent)]">
+                    <InlineError onDismiss={() => setError('')}>{error}</InlineError>
                 </div>
             )}
 

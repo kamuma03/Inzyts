@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { LogMessage } from '../hooks/useSocket';
+import { EmptyState } from './state';
 
 interface LogViewerProps {
     logs: LogMessage[];
@@ -14,8 +15,12 @@ export const LogViewer: React.FC<LogViewerProps> = ({ logs }) => {
 
     if (logs.length === 0) {
         return (
-            <div className="bg-[var(--surface-0)] text-[var(--text-secondary)] font-mono p-4 rounded-lg flex-1 min-h-0 border border-[var(--rule)] flex items-center justify-center">
-                No logs available.
+            <div className="bg-[var(--surface-0)] rounded-lg flex-1 min-h-0 border border-[var(--rule)] flex items-center justify-center">
+                <EmptyState
+                    icon="terminal"
+                    title="No logs yet"
+                    body="Pipeline output will appear here as the run progresses."
+                />
             </div>
         );
     }

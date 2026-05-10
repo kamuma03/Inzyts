@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState, type FC } from 'react';
 import { List, type RowComponentProps } from 'react-window';
 import type { AgentEvent } from '../../hooks/useSocket';
-import { Filter, Inbox } from 'lucide-react';
+import { Filter } from 'lucide-react';
+import { EmptyState } from '../state';
 
 interface EventStreamProps {
     events: AgentEvent[];
@@ -163,17 +164,15 @@ export const EventStream: FC<EventStreamProps> = ({ events, onSelect }) => {
 
             <div className="flex-1 min-h-0">
                 {filtered.length === 0 ? (
-                    <div className="flex flex-col items-center gap-2 py-8 text-center">
-                        <Inbox size={24} className="text-[var(--text-dim)] opacity-50" />
-                        <div className="text-[13px] text-[var(--text-secondary)]">
-                            {events.length === 0 ? 'No events yet' : 'No events match the current filter'}
-                        </div>
-                        <div className="text-[12px] text-[var(--text-dim)]">
-                            {events.length === 0
-                                ? 'Agent activity will appear here as the run progresses.'
-                                : 'Try clearing the filter or search box.'}
-                        </div>
-                    </div>
+                    <EmptyState
+                        icon={events.length === 0 ? 'activity' : 'search'}
+                        title={events.length === 0 ? 'Waiting for events' : 'No events match the filter'}
+                        body={
+                            events.length === 0
+                                ? 'Events will stream here as the pipeline runs.'
+                                : 'Try clearing the filter or search box.'
+                        }
+                    />
                 ) : useVirtual ? (
                     <List
                         rowCount={filtered.length}

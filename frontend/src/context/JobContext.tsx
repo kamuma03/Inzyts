@@ -70,6 +70,12 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
 
     // -- Job Logic --
     const fetchJobs = async () => {
+        // Skip the call entirely on the public/login surface — without a
+        // token the backend returns 401, and the resulting console.error
+        // trips the e2e "no console errors on login" assertion.
+        if (!sessionStorage.getItem('inzyts_jwt_token')) {
+            return;
+        }
         try {
             const data = await AnalysisAPI.getJobs();
             setJobs(data);

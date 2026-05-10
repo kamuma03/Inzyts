@@ -1,6 +1,6 @@
 import React from 'react';
 import { AnalysisAPI } from '../api';
-import { AlertTriangle, BarChart, Hash } from 'lucide-react';
+import { BarChart, Hash } from 'lucide-react';
 import {
     BarChart as RechartsBar,
     Bar,
@@ -11,6 +11,7 @@ import {
     ResponsiveContainer,
 } from 'recharts';
 import { useFetchData } from '../hooks/useFetchData';
+import { ErrorState, EmptyState } from './state';
 
 interface DataOverviewProps {
     jobId: string;
@@ -46,7 +47,7 @@ interface MetricsResponse {
 }
 
 export const DataOverview: React.FC<DataOverviewProps> = ({ jobId }) => {
-    const { data: metrics, loading, error } = useFetchData<MetricsResponse>(
+    const { data: metrics, loading, error, refetch } = useFetchData<MetricsResponse>(
         () => AnalysisAPI.getJobMetrics(jobId),
         [jobId],
         { enabled: !!jobId }
@@ -79,17 +80,25 @@ export const DataOverview: React.FC<DataOverviewProps> = ({ jobId }) => {
 
     if (error) {
         return (
-            <div className="p-8 border border-[color-mix(in_srgb,var(--bad)_30%,transparent)] rounded-lg bg-[color-mix(in_srgb,var(--bad)_8%,transparent)] text-[var(--bad)]">
-                <div className="flex items-center gap-2 mb-2">
-                    <AlertTriangle size={20} />
-                    <strong>Error loading data</strong>
-                </div>
-                <span className="opacity-80">{error}</span>
-            </div>
+            <ErrorState
+                title="Couldn't load data preview"
+                body="Your job results are still safe — try again or check the status tab."
+                onRetry={refetch}
+                retrying={loading}
+                details={error}
+            />
         );
     }
 
-    if (!metrics) return null;
+    if (!metrics) {
+        return (
+            <EmptyState
+                icon="database"
+                title="No preview yet"
+                body="Data preview will appear once the analysis completes."
+            />
+        );
+    }
 
     return (
         <div className="flex-1 overflow-y-auto min-w-0 max-w-full">

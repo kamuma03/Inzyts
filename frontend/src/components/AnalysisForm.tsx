@@ -1,9 +1,22 @@
 import React, { useState, useEffect, useMemo, type FC, type ChangeEvent } from 'react';
 import { AnalysisAPI, AnalysisRequest } from '../api';
-import { Play, X, ArrowRight } from 'lucide-react';
+import { Play, ArrowRight } from 'lucide-react';
 import { Tabs } from './Tabs';
 import { useModeSuggestion } from '../hooks/useModeSuggestion';
 import { FileUploadSection, DatabaseSection, CloudSection, APISection, ConfigPanel } from './analysis-form';
+import { InlineError } from './state';
+
+/** Strip stack frames and noisy prefixes from network/Pydantic error
+ *  messages so the InlineError shows a single readable sentence. */
+const sanitiseFormError = (raw: string | null): string => {
+    if (!raw) return '';
+    // Take the first line — drop multi-line stack frames.
+    const firstLine = raw.split('\n')[0].trim();
+    // Drop common HTTP-ish prefixes ("Error:", "AxiosError:", "Request failed with status code 422:")
+    return firstLine
+        .replace(/^(Error|AxiosError|TypeError|RangeError):\s*/i, '')
+        .replace(/^Request failed with status code \d+:?\s*/i, '');
+};
 
 const DATA_SOURCE_TABS = [
     { id: 'upload', label: 'Upload Files' },
@@ -449,11 +462,10 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
             </div>
 
             {error && (
-                <div className="shrink-0 mt-3 text-[#fc8181] py-2 px-3 bg-[rgba(245,101,101,0.1)] border border-[rgba(245,101,101,0.3)] rounded-md flex items-center justify-between text-[0.85rem]">
-                    <span>{error}</span>
-                    <button onClick={() => setError(null)} className="bg-none border-none text-[#fc8181] cursor-pointer pl-2">
-                        <X size={14} />
-                    </button>
+                <div className="shrink-0 mt-3">
+                    <InlineError onDismiss={() => setError(null)}>
+                        {sanitiseFormError(error)}
+                    </InlineError>
                 </div>
             )}
         </div>
