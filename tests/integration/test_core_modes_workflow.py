@@ -4,6 +4,7 @@ import os
 import shutil
 import pandas as pd
 import numpy as np
+import pytest
 from pathlib import Path
 
 # Add src to path
@@ -17,6 +18,13 @@ from src.config import settings
 # Force lower thresholds for testing synthetic data
 settings.phase1.quality_threshold = 0.0
 settings.phase2.quality_threshold = 0.0
+
+# Live-LLM tests — skipped unless explicitly opted in. Each invokes the
+# real LLM and runs the kernel sandbox; not a candidate for default CI.
+pytestmark = pytest.mark.skipif(
+    os.environ.get("INZYTS_RUN_LIVE_E2E") != "1",
+    reason="Live E2E (real LLM + kernel sandbox). Run with INZYTS_RUN_LIVE_E2E=1.",
+)
 
 # Settings
 TEST_DIR = Path("tests/temp_core_modes")

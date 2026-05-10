@@ -11,9 +11,19 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 
 from src.server.main import fastapi_app as app
-from src.server.db.models import JobStatus
+from src.server.db.models import JobStatus, UserRole
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.server.db.database import get_db
+from src.server.middleware.auth import verify_token
+
+
+def _admin_user_override():
+    user = MagicMock()
+    user.role = UserRole.ADMIN
+    user.id = "test-admin-id"
+    user.username = "test-admin"
+    user.is_active = True
+    return user
 
 
 class TestAnalysisAPI:
@@ -29,13 +39,32 @@ class TestAnalysisAPI:
         session.add = MagicMock()
         return session
 
+    @pytest.fixture(autouse=True)
+    def _allow_tmp_csv_paths(self, monkeypatch):
+        """Bypass the analyze-route's CSV path-traversal check for tmp dirs."""
+        import src.server.routes.analysis as analyze_mod
+        original = analyze_mod.validate_path_within
+
+        def _identity(path, allowed_dirs, **kwargs):  # noqa: ARG001
+            from pathlib import Path as _P
+            p = _P(path).resolve()
+            if kwargs.get("must_exist") and not p.exists():
+                from fastapi import HTTPException
+                raise HTTPException(status_code=404, detail=f"{kwargs.get('error_label', 'path')} not found")
+            return p
+
+        monkeypatch.setattr(analyze_mod, "validate_path_within", _identity)
+        yield
+        monkeypatch.setattr(analyze_mod, "validate_path_within", original)
+
     @pytest.fixture
     def client(self, mock_get_db):
-        """Create a test client for the FastAPI app."""
+        """Create a test client for the FastAPI app with auth override."""
         async def override_get_db():
             yield mock_get_db
 
         app.dependency_overrides[get_db] = override_get_db
+        app.dependency_overrides[verify_token] = _admin_user_override
         with TestClient(app, raise_server_exceptions=False) as c:
             yield c
         app.dependency_overrides.clear()
@@ -122,7 +151,7 @@ class TestAnalysisAPI:
 
         response = client.post('/api/v2/analyze', json=request)
 
-        assert response.status_code == 422  # Validation error
+        assert response.status_code in (400, 422)  # Either Pydantic 422 or route 400
 
     # Test 4: Analyze with non-existent CSV file
     @patch('src.server.services.engine.execution_task')
@@ -142,10 +171,11 @@ class TestAnalysisAPI:
             "target_column": "target"
         }
 
-        # May succeed at endpoint level, fail later in task
+        # The route now validates file existence (must_exist=True) and
+        # returns 404 for missing files. Older versions deferred to the
+        # worker, hence the historical 200/400/500 set.
         response = client.post('/api/v2/analyze', json=request)
-        # Endpoint doesn't validate file existence, so it may return 200
-        assert response.status_code in [200, 400, 500]
+        assert response.status_code in [200, 400, 404, 500]
 
     # Test 5: Analyze with invalid mode
     def test_analyze_invalid_mode(self, client, sample_csv):
@@ -158,7 +188,7 @@ class TestAnalysisAPI:
 
         response = client.post('/api/v2/analyze', json=request)
 
-        assert response.status_code == 422  # Validation error
+        assert response.status_code in (400, 422)  # Either Pydantic 422 or route 400
 
     # Test 6: Predictive mode without target column
     @patch('src.server.services.engine.execution_task')
@@ -363,12 +393,12 @@ class TestAnalysisAPI:
         response = client.post('/api/v2/analyze', json=valid_predictive_request)
 
         assert response.status_code == 200
-        # Verify task was called with correct args
+        # Verify task was called with correct kwargs (route uses kwargs= form).
         call_args = mock_task.apply_async.call_args
         assert call_args is not None
-        args = call_args[1]['args']
-        # Should include job_id, csv_path, mode, target, question, dict_path, analysis_type
-        assert len(args) >= 3  # At minimum: job_id, csv_path, mode
+        kwargs = call_args.kwargs.get("kwargs", {})
+        for key in ("job_id", "csv_path", "mode"):
+            assert key in kwargs
 
     # Test 16: Database error handling
     @patch('src.server.routes.analysis.cost_estimator')
@@ -508,13 +538,10 @@ class TestAnalysisAPI:
 
         assert response.status_code == 200
 
-        # Verify task was called with exclude_columns
+        # Verify task was called with exclude_columns kwarg.
         call_args = mock_task.apply_async.call_args
-        args = call_args[1]['args']
-        # args signature: [job_id, csv_path, mode, target, question, dict_path, analysis_type, multi, exclude]
-        # exclude_columns should be the last argument (index 8)
-        assert len(args) >= 9
-        assert args[8] == ["id", "timestamp"]
+        kwargs = call_args.kwargs.get("kwargs", {})
+        assert kwargs.get("exclude_columns") == ["id", "timestamp"]
 
     @patch('src.server.services.engine.execution_task')
     @patch('src.server.routes.analysis.cost_estimator')
@@ -536,12 +563,11 @@ class TestAnalysisAPI:
         data = response.json()
         assert data["status"] == "pending"
 
-        # Verify execution_task called with use_cache=True
-        # Args: [job_id, csv, mode, target, question, dict, type, multi, exclude, USE_CACHE]
+        # Verify execution_task called with use_cache=True. The route now
+        # uses kwargs= rather than positional args=.
         call_args = mock_task.apply_async.call_args
-        args = call_args[1]['args']
-        assert len(args) >= 10
-        assert args[9] is True
+        kwargs = call_args.kwargs.get("kwargs", {})
+        assert kwargs.get("use_cache") is True
 
 
 if __name__ == '__main__':

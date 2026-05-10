@@ -245,15 +245,18 @@ class TestJobsAPI:
     @patch('src.server.celery_app.celery_app')
 
     def test_cancel_job_not_found(self, mock_celery, mock_get_db, client):
-        """Test cancelling a non-existent job."""
+        """Test cancelling a non-existent job returns 404.
 
+        Earlier behaviour was idempotent-200 ("don't enumerate"), but the
+        cancel route now returns 404 like every other ownership-checked
+        endpoint, which is consistent with the rest of the API.
+        """
         mock_db_returns(mock_get_db, None)
 
         fake_job_id = str(uuid.uuid4())
         response = client.post(f'/api/v2/jobs/{fake_job_id}/cancel')
 
-        # Should still return success (idempotent)
-        assert response.status_code == 200
+        assert response.status_code == 404
 
     # Test 13: Cancel already completed job
     @patch('src.server.celery_app.celery_app')
@@ -347,16 +350,19 @@ class TestJobsAPI:
     # Test 19: Job summary includes CSV path
 
     def test_job_summary_csv_path(self, mock_get_db, client, sample_jobs):
-        """Test that job summaries include CSV path."""
+        """Test that job summaries surface the dataset they were run against.
 
+        The list endpoint no longer leaks raw filesystem paths (security:
+        paths can reveal upload-dir layout); it exposes ``has_data`` instead.
+        """
         mock_db_returns(mock_get_db, sample_jobs[:1], kind="many")
 
         response = client.get('/api/v2/jobs')
 
         assert response.status_code == 200
         data = response.json()
-        assert 'csv_path' in data[0]
-        assert data[0]['csv_path'] is not None
+        # ``has_data`` reflects whether the job had a CSV/SQL/API source.
+        assert 'has_data' in data[0]
 
     # Test 20: Get job status handles enum values
 

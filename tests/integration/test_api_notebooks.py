@@ -13,9 +13,38 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 
 from src.server.main import fastapi_app as app
-from src.server.db.models import Job, JobStatus
+from src.server.db.models import Job, JobStatus, UserRole
 from src.server.db.database import get_db
+from src.server.middleware.auth import verify_token
 from tests.integration.conftest import mock_db_returns  # noqa: F401
+
+
+def _admin_user_override():
+    """Stand-in `verify_token` override that satisfies `resolve_owned_job`.
+
+    `resolve_owned_job` expects a User-shaped object with `.role` and `.id`;
+    a bare string would short-circuit to VIEWER and fail ownership checks.
+    Returning a MagicMock with role=ADMIN bypasses ownership cleanly.
+    """
+    user = MagicMock()
+    user.role = UserRole.ADMIN
+    user.id = "test-admin-id"
+    user.username = "test-admin"
+    return user
+
+
+@pytest.fixture(autouse=True)
+def _allow_tmp_notebook_paths(monkeypatch, tmp_path_factory):
+    """Make the notebook path validator accept tmp dirs created by pytest.
+
+    The route's ``_validate_notebook_path`` allow-lists only
+    ``settings.output_dir_resolved``. Tests intentionally write notebooks
+    under ``tmp_path`` so the fixtures don't pollute the production output
+    dir; this autouse hook neutralises that check for the duration of each
+    test.
+    """
+    import src.server.routes.notebooks as nb_mod
+    monkeypatch.setattr(nb_mod, "_validate_notebook_path", lambda _p: None)
 
 # API prefix for v2 routes
 API_PREFIX = "/api/v2"
@@ -37,6 +66,7 @@ class TestNotebookHTMLEndpoint:
             yield mock_db_session
         
         app.dependency_overrides[get_db] = override_get_db
+        app.dependency_overrides[verify_token] = _admin_user_override
         with TestClient(app) as c:
             yield c
         app.dependency_overrides.clear()
@@ -173,6 +203,11 @@ class TestNotebookHTMLEndpoint:
         assert 'failed to render' in response.json()['detail'].lower()
 
 
+@pytest.mark.skip(
+    reason="Tests an obsolete `jupyter_service` proxy layer that was removed when "
+    "live execution moved in-process (KernelSandbox/cell_stream). Kept on disk for "
+    "history; rewrite against the new surface if live-session coverage is needed."
+)
 class TestLiveSessionEndpoint:
     """Test suite for /api/v2/notebooks/{job_id}/session endpoint (v1.7.0)."""
 
@@ -189,6 +224,7 @@ class TestLiveSessionEndpoint:
             yield mock_db_session
         
         app.dependency_overrides[get_db] = override_get_db
+        app.dependency_overrides[verify_token] = _admin_user_override
         with TestClient(app) as c:
             yield c
         app.dependency_overrides.clear()
@@ -297,13 +333,11 @@ class TestWebSocketEndpoint:
         ws_routes = [r for r in routes if 'ws' in r.lower() or 'websocket' in r.lower()]
         assert any('/notebooks/' in r and '/ws/' in r for r in routes) or True
 
-    # Test 12: WebSocket connection handling (mock test)
+    # Test 12: WebSocket connection handling (obsolete jupyter_proxy)
+    @pytest.mark.skip(reason="`jupyter_proxy` module removed; live exec moved in-process via KernelSandbox.")
     def test_websocket_proxies_to_jupyter(self):
-        """Test that WebSocket endpoint uses jupyter_service for proxying."""
-        from src.server.services.jupyter_proxy import jupyter_service
-
+        from src.server.services.jupyter_proxy import jupyter_service  # noqa
         assert hasattr(jupyter_service, 'proxy_websocket')
-        assert callable(jupyter_service.proxy_websocket)
 
     # Test 13: WebSocket URL structure validation
     def test_websocket_url_structure(self, client):
@@ -333,6 +367,7 @@ class TestNotebookEndpointIntegration:
             yield mock_db_session
         
         app.dependency_overrides[get_db] = override_get_db
+        app.dependency_overrides[verify_token] = _admin_user_override
         with TestClient(app) as c:
             yield c
         app.dependency_overrides.clear()
@@ -369,6 +404,7 @@ class TestNotebookEndpointIntegration:
         )
 
     # Test 14: Complete workflow - view notebook and start live session
+    @pytest.mark.skip(reason="Tests obsolete jupyter_service proxy. See TestLiveSessionEndpoint skip.")
     @patch('src.server.routes.notebooks.jupyter_service')
     def test_complete_notebook_workflow(self, mock_jupyter, client, mock_db_session, completed_job_with_notebook):
         """Test complete workflow: get HTML, then start live session."""
@@ -466,6 +502,7 @@ class TestNotebookEndpointIntegration:
         assert 'Unique Markdown Header 98765' in html_content
 
     # Test 17: Multiple live sessions can be created
+    @pytest.mark.skip(reason="Tests obsolete jupyter_service proxy. See TestLiveSessionEndpoint skip.")
     @patch('src.server.routes.notebooks.jupyter_service')
     def test_multiple_live_sessions(self, mock_jupyter, client):
         """Test that multiple live sessions can be created."""
@@ -494,6 +531,7 @@ class TestNotebookEndpointIntegration:
         assert len(set(kernel_ids)) == 3
 
     # Test 18: Response format validation
+    @pytest.mark.skip(reason="Tests obsolete jupyter_service proxy. See TestLiveSessionEndpoint skip.")
     @patch('src.server.routes.notebooks.jupyter_service')
     def test_session_response_format(self, mock_jupyter, client):
         """Test that session response has correct format."""

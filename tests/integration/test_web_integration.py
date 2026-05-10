@@ -19,8 +19,42 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.server.main import fastapi_app as app
 from src.server.db.database import get_db
-from src.server.db.models import JobStatus
+from src.server.db.models import JobStatus, UserRole
+from src.server.middleware.auth import verify_token
 from src.utils.cache_manager import CacheManager
+
+
+def _admin_user_override():
+    """`verify_token` override yielding an admin User-shaped MagicMock."""
+    user = MagicMock()
+    user.role = UserRole.ADMIN
+    user.id = "test-admin-id"
+    user.username = "test-admin"
+    return user
+
+
+@pytest.fixture(autouse=True)
+def _allow_tmp_csv_paths(monkeypatch):
+    """Bypass the analyze-route's CSV path-traversal check for pytest tmp dirs.
+
+    The route's `validate_path_within` only allows files inside the
+    configured upload/datasets dirs. Tests intentionally write CSVs to
+    tmp_path, which would otherwise return 403.
+    """
+    import src.server.routes.analysis as analyze_mod
+    original = analyze_mod.validate_path_within
+
+    def _identity(path, allowed_dirs, **kwargs):  # noqa: ARG001
+        from pathlib import Path as _P
+        p = _P(path).resolve()
+        if kwargs.get("must_exist") and not p.exists():
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail=f"{kwargs.get('error_label', 'path')} not found")
+        return p
+
+    monkeypatch.setattr(analyze_mod, "validate_path_within", _identity)
+    yield
+    monkeypatch.setattr(analyze_mod, "validate_path_within", original)
 
 
 @pytest.fixture
@@ -36,11 +70,12 @@ def mock_db():
 
 @pytest.fixture
 def client(mock_db):
-    """Create FastAPI test client with mocked DB."""
+    """Create FastAPI test client with DB + auth dependencies overridden."""
     async def override_get_db():
         yield mock_db
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[verify_token] = _admin_user_override
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
     app.dependency_overrides.clear()
@@ -73,7 +108,9 @@ class TestAPIEndpoints:
     def test_analyze_endpoint_missing_csv(self, client):
         """Test /api/v2/analyze rejects request without CSV path."""
         response = client.post('/api/v2/analyze', json={})
-        assert response.status_code == 422  # FastAPI validation error
+        # Either FastAPI's body-level 422 or the route's 400 "missing source"
+        # is a valid rejection — earlier code raised 422; newer raises 400.
+        assert response.status_code in (400, 422)
 
     @patch('src.server.services.engine.execution_task')
     @patch('src.server.routes.analysis.cost_estimator')
@@ -193,7 +230,10 @@ class TestEndToEndWorkflows:
         assert response.status_code == 200
         job_id = response.json()['job_id']
 
-        # Step 2: Mock job lookup for status check
+        # Step 2: Mock job lookup for status check. Explicitly set every
+        # field the route reads — bare MagicMock auto-attributes (e.g.
+        # ``logs_location``) become MagicMock objects that fail the route's
+        # path-validation step.
         mock_job = MagicMock()
         mock_job.id = job_id
         mock_job.status = JobStatus.PENDING
@@ -201,6 +241,11 @@ class TestEndToEndWorkflows:
         mock_job.error_message = None
         mock_job.token_usage = {"input": 0, "output": 0}
         mock_job.created_at = datetime.now()
+        mock_job.logs_location = None
+        mock_job.user_id = "test-admin-id"  # matches _admin_user_override
+        mock_job.cost_estimate = None
+        mock_job.csv_path = sample_csv
+        mock_job.mode = 'exploratory'
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_job
         mock_db.execute.return_value = mock_result

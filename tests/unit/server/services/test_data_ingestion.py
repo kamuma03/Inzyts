@@ -86,8 +86,14 @@ def test_ingest_from_sql_db_error(mock_engine, mock_read_sql, tmp_path):
 
 # --- Unit tests for validate_db_uri ---
 
-def test_validate_db_uri_allows_postgresql():
-    """No exception should be raised for allowed schemes."""
+def test_validate_db_uri_allows_postgresql(monkeypatch):
+    """No exception should be raised for allowed schemes.
+
+    Pinned to ``INZYTS_DB_URI_ALLOW_LOOPBACK=1`` because this test's intent
+    is to verify scheme handling, not the loopback policy. Loopback
+    rejection is covered by the dedicated ``_is_db_host_blocked`` tests.
+    """
+    monkeypatch.setenv("INZYTS_DB_URI_ALLOW_LOOPBACK", "1")
     validate_db_uri("postgresql://user:pass@localhost/db")
     validate_db_uri("postgresql+psycopg2://user:pass@localhost/db")
     validate_db_uri("mysql://user:pass@localhost/db")

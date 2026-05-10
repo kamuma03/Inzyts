@@ -61,6 +61,7 @@ def mock_state(segmentation_data, segmentation_profile):
     # Mock Profile Lock
     state.profile_lock = MagicMock(spec=ProfileLock)
     state.profile_lock.is_locked.return_value = True
+    state.profile_lock.lock_hash = "fake_lock_hash"
     state.profile_lock.get_locked_handoff.return_value = segmentation_profile
     
     state.user_intent = None
@@ -96,4 +97,4 @@ class TestSegmentationMode:
             assert "segmentation" in prompt_text.lower() or "clustering" in prompt_text.lower()
             assert "spend" in prompt_text
             
-            assert result["strategy_outputs"][0].analysis_type == AnalysisType.CLUSTERING
+            assert result["handoff"].analysis_type == AnalysisType.CLUSTERING

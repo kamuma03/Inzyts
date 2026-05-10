@@ -25,10 +25,20 @@ from src.models.state import Phase
 
 CSV_PATH = "tests/fixtures/iris.csv"
 
+@pytest.mark.skipif(
+    os.environ.get("INZYTS_RUN_LIVE_E2E") != "1",
+    reason="Live E2E test — invokes the LLM, runs the kernel sandbox, and "
+    "writes a notebook. Costs real tokens. Run explicitly with "
+    "INZYTS_RUN_LIVE_E2E=1 (and INZYTS_SANDBOX_REQUIRE_SETSID=0 in nested-"
+    "sandbox environments).",
+)
 def test_full_workflow_execution():
     """Run the full workflow and verify output."""
     print(f"\n[Test] Running analysis on {CSV_PATH}...")
-    
+    # Allow the kernel sandbox to start without a new session in nested
+    # environments (Docker-in-Docker, Claude sandbox, restrictive CI).
+    os.environ.setdefault("INZYTS_SANDBOX_REQUIRE_SETSID", "0")
+
     # Ensure fixture exists
     if not os.path.exists(CSV_PATH):
         # Create dummy iris if missing

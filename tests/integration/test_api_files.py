@@ -8,9 +8,20 @@ src/server/routes/files.py
 import pytest
 import os
 from fastapi.testclient import TestClient
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from src.server.main import fastapi_app as app
+from src.server.db.models import UserRole
+from src.server.middleware.auth import verify_token, require_role
+
+
+def _admin_user_override():
+    user = MagicMock()
+    user.role = UserRole.ADMIN
+    user.id = "test-admin-id"
+    user.username = "test-admin"
+    user.is_active = True
+    return user
 
 
 class TestFileUploadAPI:
@@ -25,8 +36,15 @@ class TestFileUploadAPI:
 
     @pytest.fixture
     def client(self):
-        """Create a test client for the FastAPI app."""
-        return TestClient(app)
+        """Create a test client for the FastAPI app with auth override."""
+        app.dependency_overrides[verify_token] = _admin_user_override
+        # Override the require_role(...) dependency factory's curried
+        # version. ``require_role`` returns a fresh closure per call, so we
+        # also override the underlying token check above.
+        try:
+            yield TestClient(app)
+        finally:
+            app.dependency_overrides.clear()
 
     @pytest.fixture
     def sample_csv(self, tmp_path):
@@ -64,8 +82,11 @@ Charlie,35,Chicago
         assert 'size' in data
         assert data['filename'] == 'test_data.csv'
         assert data['size'] > 0
-        # Verify file exists
-        assert os.path.exists(data['saved_path'])
+        # ``saved_path`` is the relative filename (security: don't expose
+        # the upload-dir layout). The autouse `mock_upload_dir` fixture
+        # patches UPLOAD_DIR to ``tmp_path`` so we can resolve it here.
+        from src.server.routes.files import UPLOAD_DIR as _UPLOAD_DIR
+        assert os.path.exists(os.path.join(_UPLOAD_DIR, data['saved_path']))
 
     # Test 2: Upload file with unique naming
     def test_upload_unique_filenames(self, client, sample_csv):
@@ -204,16 +225,19 @@ Charlie,35,Chicago
         # Verify upload directory exists
         assert os.path.exists('data/uploads')
 
-    # Test 13: Upload returns absolute path
+    # Test 13: Upload returns a UUID-prefixed filename
     def test_upload_returns_absolute_path(self, client, sample_csv):
-        """Test that upload endpoint returns absolute path."""
+        """The upload endpoint returns the relative filename (security:
+        avoids leaking the upload-dir layout). The filename is a uuid plus
+        the original extension."""
         with open(sample_csv, 'rb') as f:
             files = {'file': ('test.csv', f, 'text/csv')}
             response = client.post('/api/v2/files/upload', files=files)
 
         assert response.status_code == 200
         saved_path = response.json()['saved_path']
-        assert os.path.isabs(saved_path)
+        assert saved_path.endswith('.csv')
+        assert '/' not in saved_path  # relative, not absolute
 
     # Test 14: Preview returns correct column count
     def test_preview_column_count(self, client, sample_csv):
@@ -333,7 +357,10 @@ Charlie,35,Chicago
 
     # Test 24: Upload binary file handling
     def test_upload_binary_file(self, client, tmp_path):
-        """Test uploading binary file (edge case)."""
+        """Random binary content with `.bin` extension is rejected: the
+        MIME validator only allows CSV/Parquet/Excel/JSON. Older versions
+        of the route accepted any file type; the security hardening pass
+        moved to an explicit allow-list."""
         binary_file = tmp_path / "binary.bin"
         binary_file.write_bytes(b'\x00\x01\x02\x03\x04')
 
@@ -341,8 +368,8 @@ Charlie,35,Chicago
             files = {'file': ('binary.bin', f, 'application/octet-stream')}
             response = client.post('/api/v2/files/upload', files=files)
 
-        # Should accept any file type
-        assert response.status_code == 200
+        assert response.status_code == 400
+        assert "invalid file type" in response.json()["detail"].lower()
 
     # Test 25: Preview filename extraction
     def test_preview_extracts_filename(self, client, sample_csv):
@@ -360,7 +387,8 @@ Charlie,35,Chicago
             files = {'file': ('persistent.csv', f, 'text/csv')}
             response = client.post('/api/v2/files/upload', files=files)
 
-        saved_path = response.json()['saved_path']
+        from src.server.routes.files import UPLOAD_DIR as _UPLOAD_DIR
+        saved_path = os.path.join(_UPLOAD_DIR, response.json()['saved_path'])
 
         # File should still exist after request
         assert os.path.exists(saved_path)
@@ -370,7 +398,7 @@ Charlie,35,Chicago
 
     # Test 27: Upload empty file
     def test_upload_empty_file(self, client, tmp_path):
-        """Test uploading an empty file."""
+        """Test that empty files are rejected (security/UX policy)."""
         empty_file = tmp_path / "empty.csv"
         empty_file.write_text("")
 
@@ -378,8 +406,10 @@ Charlie,35,Chicago
             files = {'file': ('empty.csv', f, 'text/csv')}
             response = client.post('/api/v2/files/upload', files=files)
 
-        assert response.status_code == 200
-        assert response.json()['size'] == 0
+        # The route rejects empty uploads with 400 — they're never useful
+        # downstream and indicate a stray fixture or browser race.
+        assert response.status_code == 400
+        assert "empty" in response.json()["detail"].lower()
 
     # Test 28: Preview CSV with Unicode characters
     def test_preview_unicode_csv(self, client, tmp_path):

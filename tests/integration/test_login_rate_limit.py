@@ -34,17 +34,34 @@ _TEST_REDIS_DB = int(os.environ.get("INZYTS_TEST_REDIS_DB", "5"))
 def app_with_clean_limiter(monkeypatch):
     """Build a FastAPI app with the rate limiter pointed at a fresh Redis
     DB so previous tests' counters don't pollute this one. Also override
-    the DB dependency so the test doesn't need a real Postgres."""
-    monkeypatch.setenv(
-        "REDIS_URL",
-        f"redis://localhost:6399/{_TEST_REDIS_DB}",
-    )
-    # Re-import rate_limiter and main so they pick up the new REDIS_URL.
-    import importlib
-    import src.server.rate_limiter as rl
-    importlib.reload(rl)
-    import src.server.main as main
-    importlib.reload(main)
+    the DB dependency so the test doesn't need a real Postgres.
+
+    The session conftest disables rate limiting globally for tests; this
+    fixture re-enables it explicitly so we can verify the per-route
+    10/min limit on /auth/login.
+    """
+    # The session conftest sets INZYTS_DISABLE_RATE_LIMIT=1 to keep other
+    # tests from tripping the per-route limits. Re-enable the limiter on
+    # the *live* singleton (whatever module has imported it) so the
+    # already-decorated /auth/login route sees the throttle without
+    # needing a module reload (which leaves stale `limiter` bindings in
+    # auth.py / main.py).
+    from src.server.rate_limiter import limiter as live_limiter
+    from src.server.routes.auth import limiter as auth_limiter
+
+    # Both names should refer to the same singleton — assert it loudly so
+    # any future divergence is caught immediately.
+    assert live_limiter is auth_limiter, "rate_limiter singleton diverged"
+
+    prior_enabled = live_limiter.enabled
+    live_limiter.enabled = True
+
+    # Reset the limiter's per-IP counters between runs so previous tests'
+    # /analyze hits don't bleed into this test's /auth/login budget.
+    try:
+        live_limiter.reset()
+    except Exception:
+        pass
 
     # Override get_db so the login route doesn't try to talk to Postgres.
     # AsyncMock that returns "no user found" for any select() — the route
@@ -60,14 +77,13 @@ def app_with_clean_limiter(monkeypatch):
         session.execute = AsyncMock(return_value=result)
         yield session
 
-    main.fastapi_app.dependency_overrides[get_db] = _no_db
+    from src.server.main import fastapi_app
+    fastapi_app.dependency_overrides[get_db] = _no_db
     try:
-        yield main.fastapi_app
+        yield fastapi_app
     finally:
-        main.fastapi_app.dependency_overrides.clear()
-        monkeypatch.delenv("REDIS_URL", raising=False)
-        importlib.reload(rl)
-        importlib.reload(main)
+        fastapi_app.dependency_overrides.clear()
+        live_limiter.enabled = prior_enabled
 
 
 def _attempt_login(client: TestClient, username: str = "noone") -> int:

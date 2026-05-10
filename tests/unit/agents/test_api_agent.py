@@ -146,6 +146,9 @@ def test_api_agent_ssrf_private_ip(agent_with_mock_llm):
 
 
 def test_api_agent_success(agent_with_mock_llm, tmp_path):
+    # Patch ``_safe_get`` (not ``requests.get``) — the agent goes through a
+    # session with manual redirect-following, so a top-level ``requests.get``
+    # patch never fires and the code makes a real network call.
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.content = b'[{"id":1,"name":"Alice"}]'
@@ -153,12 +156,11 @@ def test_api_agent_success(agent_with_mock_llm, tmp_path):
     mock_response.headers = {}
 
     with patch("src.agents.api_agent._is_private_ip", return_value=False), \
-         patch("src.agents.api_agent.requests.get", return_value=mock_response), \
+         patch("src.agents.api_agent._safe_get", return_value=mock_response), \
          patch("src.agents.api_agent.ensure_dir"), \
          patch("src.agents.api_agent.settings") as mock_settings:
         mock_settings.upload_dir = str(tmp_path)
 
-        # Need to actually write the CSV for the path to exist
         with patch("src.agents.api_agent.pd.json_normalize") as mock_norm:
             mock_df = MagicMock()
             mock_df.__len__ = lambda self: 1
@@ -175,7 +177,7 @@ def test_api_agent_success(agent_with_mock_llm, tmp_path):
 def test_api_agent_timeout(agent_with_mock_llm):
     import requests
     with patch("src.agents.api_agent._is_private_ip", return_value=False), \
-         patch("src.agents.api_agent.requests.get", side_effect=requests.exceptions.Timeout):
+         patch("src.agents.api_agent._safe_get", side_effect=requests.exceptions.Timeout):
         state = _make_state(api_url="https://api.example.com/slow", question="Get data")
         result = agent_with_mock_llm.process(state)
     assert "errors" in result
@@ -189,7 +191,7 @@ def test_api_agent_http_error(agent_with_mock_llm):
     exc = requests.exceptions.HTTPError(response=mock_response)
 
     with patch("src.agents.api_agent._is_private_ip", return_value=False), \
-         patch("src.agents.api_agent.requests.get", side_effect=exc):
+         patch("src.agents.api_agent._safe_get", side_effect=exc):
         state = _make_state(api_url="https://api.example.com/forbidden", question="Get data")
         result = agent_with_mock_llm.process(state)
     assert "errors" in result
@@ -204,7 +206,7 @@ def test_api_agent_empty_response(agent_with_mock_llm):
     mock_response.headers = {}
 
     with patch("src.agents.api_agent._is_private_ip", return_value=False), \
-         patch("src.agents.api_agent.requests.get", return_value=mock_response):
+         patch("src.agents.api_agent._safe_get", return_value=mock_response):
         state = _make_state(api_url="https://api.example.com/empty", question="Get data")
         result = agent_with_mock_llm.process(state)
     assert "errors" in result
@@ -219,7 +221,7 @@ def test_api_agent_with_bearer_auth(agent_with_mock_llm, tmp_path):
     mock_response.headers = {}
 
     with patch("src.agents.api_agent._is_private_ip", return_value=False), \
-         patch("src.agents.api_agent.requests.get", return_value=mock_response) as mock_get, \
+         patch("src.agents.api_agent._safe_get", return_value=mock_response) as mock_get, \
          patch("src.agents.api_agent.ensure_dir"), \
          patch("src.agents.api_agent.pd.json_normalize") as mock_norm, \
          patch("src.agents.api_agent.settings") as mock_settings:
@@ -236,7 +238,7 @@ def test_api_agent_with_bearer_auth(agent_with_mock_llm, tmp_path):
         )
         result = agent_with_mock_llm.process(state)
 
-    # Verify auth header was passed
+    # Verify auth header was passed (kwargs key is ``headers``).
     call_kwargs = mock_get.call_args
-    assert "Authorization" in call_kwargs[1]["headers"]
+    assert "Authorization" in call_kwargs.kwargs["headers"]
     assert call_kwargs[1]["headers"]["Authorization"] == "Bearer mytoken"

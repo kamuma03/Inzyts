@@ -47,7 +47,7 @@ const LoginPage: React.FC = () => {
             <div className="flex flex-col items-center justify-center mb-12 mt-[-10vh]">
                 <div className="flex items-center gap-4 mb-2">
                     <img src="/Inzyts_icon.png" alt="Inzyts Logo" className="w-14 h-14 object-contain" />
-                    <h1 className="m-0 text-5xl font-bold text-[var(--text-primary)] font-['Libre_Caslon_Display',serif]">
+                    <h1 className="m-0 text-5xl font-bold text-[var(--text-primary)]">
                         Inzyts
                     </h1>
                 </div>

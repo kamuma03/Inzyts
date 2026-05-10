@@ -69,6 +69,7 @@ def mock_state(comparative_data, comparative_profile):
     # Mock Profile Lock
     state.profile_lock = MagicMock(spec=ProfileLock)
     state.profile_lock.is_locked.return_value = True
+    state.profile_lock.lock_hash = "fake_lock_hash"
     state.profile_lock.get_locked_handoff.return_value = comparative_profile
     
     state.user_intent = None
@@ -167,4 +168,4 @@ class TestComparativeMode:
             assert "chi_square" in prompt_text
             assert "t_test" in prompt_text
             
-            assert result["strategy_outputs"][0].analysis_type == AnalysisType.COMPARATIVE
+            assert result["handoff"].analysis_type == AnalysisType.COMPARATIVE

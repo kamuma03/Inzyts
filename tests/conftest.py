@@ -65,6 +65,11 @@ def _ensure_redis() -> None:
 _ensure_redis()
 os.environ.setdefault("REDIS_URL", _REDIS_URL)
 
+# Disable rate limiting for the test session — tests using a shared
+# TestClient hit the same IP and trip per-route limits like 10/min.
+# Tests that *want* to exercise the limiter explicitly clear this var.
+os.environ.setdefault("INZYTS_DISABLE_RATE_LIMIT", "1")
+
 
 # ---------------------------------------------------------------------------
 # Test-isolation safety net for FastAPI ``dependency_overrides``.

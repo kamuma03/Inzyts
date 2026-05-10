@@ -8,7 +8,9 @@ Handles storage and retrieval of Phase 1 profiles to support:
 
 import hashlib
 import json
+import os
 import shutil
+import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -34,6 +36,40 @@ from src.utils.path_validator import ensure_dir
 logger = get_logger()
 
 
+def _resolve_cache_dir() -> Path:
+    """Pick a writable cache directory.
+
+    Resolution order:
+    1. ``INZYTS_CACHE_DIR`` environment override.
+    2. ``<project>/.cache/inzyts`` (Docker-mounted default).
+    3. ``~/.cache/inzyts`` (XDG-style fallback for dev environments).
+    4. ``$TMPDIR/inzyts-cache`` (last resort when both above are unwritable
+       — e.g., running as a non-owner of the project tree).
+
+    Each candidate is probed with a write test; the first success wins.
+    """
+    candidates: List[Path] = []
+    env_override = os.environ.get("INZYTS_CACHE_DIR")
+    if env_override:
+        candidates.append(Path(env_override))
+    candidates.append(Path(__file__).parent.parent.parent / ".cache" / "inzyts")
+    candidates.append(Path.home() / ".cache" / "inzyts")
+    candidates.append(Path(tempfile.gettempdir()) / "inzyts-cache")
+
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            probe = candidate / ".write-probe"
+            probe.write_text("ok")
+            probe.unlink(missing_ok=True)
+            return candidate
+        except (PermissionError, OSError):
+            continue
+
+    # Should be unreachable — TMPDIR is always writable on a sane host.
+    raise RuntimeError("No writable cache directory found")
+
+
 class CacheCheckResult(BaseModel):
     status: CacheStatus
     cache: Optional[ProfileCache]
@@ -43,9 +79,11 @@ class CacheCheckResult(BaseModel):
 class CacheManager:
     """Manages profile cache for upgrade path and efficiency."""
 
-    # Use project-mounted .cache directory for Docker accessibility
-    # This allows clearing cache from host: rm -rf .cache/inzyts
-    CACHE_DIR = Path(__file__).parent.parent.parent / ".cache" / "inzyts"
+    # Resolved at import time. Falls back through `~/.cache/inzyts` and
+    # `$TMPDIR/inzyts-cache` if the project-mounted `.cache/` is read-only,
+    # so test runs and unprivileged dev environments don't flood logs with
+    # `Permission denied` errors.
+    CACHE_DIR = _resolve_cache_dir()
     CACHE_TTL_DAYS = 7
     VERSION = "1.5.0"
 

@@ -46,13 +46,30 @@ def mock_db_session():
     return session
 
 
+def _admin_user_override():
+    """Stand-in `verify_token` override that satisfies `resolve_owned_job`.
+
+    The route's `resolve_owned_job` expects a User-shaped object with
+    `.role` and `.id`; a bare string would short-circuit to VIEWER and fail
+    every ownership check. This MagicMock with `role=ADMIN` bypasses
+    ownership cleanly so the test can focus on the route logic itself.
+    """
+    from src.server.db.models import UserRole
+    user = MagicMock()
+    user.role = UserRole.ADMIN
+    user.id = "test-admin-id"
+    user.username = "test-admin"
+    return user
+
+
 @pytest.fixture
 def auth_client(mock_db_session):
     """FastAPI ``TestClient`` with the auth + DB dependencies pre-overridden.
 
-    Used by route tests that don't care about which user is calling — the
-    override returns a stable token. Each test's overrides are cleared on
-    teardown by the session-level snapshot fixture in ``tests/conftest.py``.
+    Used by route tests that don't care about which user is calling. The
+    override returns an admin User-shaped MagicMock so ``resolve_owned_job``
+    is satisfied. Each test's overrides are cleared on teardown by the
+    session-level snapshot fixture in ``tests/conftest.py``.
     """
     from fastapi.testclient import TestClient
     from src.server.db.database import get_db
@@ -63,14 +80,11 @@ def auth_client(mock_db_session):
         yield mock_db_session
 
     fastapi_app.dependency_overrides[get_db] = _override_get_db
-    fastapi_app.dependency_overrides[verify_token] = lambda: "test-token"
+    fastapi_app.dependency_overrides[verify_token] = _admin_user_override
 
     with TestClient(fastapi_app, raise_server_exceptions=False) as c:
         yield c
 
-    # The session-scoped snapshot fixture in tests/conftest.py restores the
-    # baseline overrides on teardown, but clear() here keeps per-test
-    # behaviour predictable for files that haven't migrated yet.
     fastapi_app.dependency_overrides.clear()
 
 

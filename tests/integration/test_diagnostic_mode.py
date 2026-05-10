@@ -70,6 +70,7 @@ def mock_state(diagnostic_data, diagnostic_profile):
     # Mock Profile Lock
     state.profile_lock = MagicMock(spec=ProfileLock)
     state.profile_lock.is_locked.return_value = True
+    state.profile_lock.lock_hash = "fake_lock_hash"
     state.profile_lock.get_locked_handoff.return_value = diagnostic_profile
     
     state.user_intent = None
@@ -180,4 +181,4 @@ class TestDiagnosticMode:
             assert "decomposition" in prompt_text # recommendation being passed through
             
             # Verify Result
-            assert result["strategy_outputs"][0].analysis_type == AnalysisType.CAUSAL
+            assert result["handoff"].analysis_type == AnalysisType.CAUSAL

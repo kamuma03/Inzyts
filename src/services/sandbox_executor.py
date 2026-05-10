@@ -125,24 +125,33 @@ def _build_preexec_fn(policy: SandboxPolicy) -> Callable[[], None]:
 
     def _apply() -> None:
         # New session/process group so the parent owns it for SIGKILL.
-        # If setsid() fails we MUST exit the child immediately — leaving the
-        # child in the parent's process group means a later _killpg can
-        # SIGKILL the parent (test runner, worker, shell, desktop session).
-        # Print a marker before _exit so the parent can diagnose afterwards.
         #
-        # The explicit ``return`` after ``os._exit`` is defensive: if a test
-        # mocks ``os._exit`` (which would otherwise terminate the process),
-        # we still skip the rlimit application below. Without the return,
-        # mocked _exit + setsid-failure path would silently apply
-        # RLIMIT_NPROC / RLIMIT_AS to the test runner — historically this
-        # caused ``RuntimeError: can't start new thread`` in subsequent
-        # tests because the test runner inherited a 64-process cap.
+        # If setsid() fails the historical behaviour was to ``_exit(127)`` so
+        # rlimits never get applied to the parent's pgid (which would tank a
+        # shared test runner). That's still the right call inside Docker,
+        # but in nested-sandbox environments (rootless containers, CI runners
+        # with PID-namespace constraints, Claude Code's own sandbox) setsid
+        # fails legitimately — we don't want to hard-fail the whole pipeline
+        # there.
+        #
+        # The downstream ``_killpg`` already detects ``pgid == parent_pgid``
+        # and falls back to ``kill(pid, SIGKILL)`` of just the kernel, so a
+        # kernel without its own session is recoverable. The dangerous case
+        # is rlimits: applying RLIMIT_NPROC to the parent's pgid persists
+        # (it's process-group-wide), so we still skip those when setsid
+        # failed. The kernel runs with no resource limits — acceptable in a
+        # sandbox-of-sandbox, where the outer layer enforces them.
         try:
             os.setsid()
         except OSError as e:
-            os.write(2, f"FATAL: kernel preexec setsid failed: {e}\n".encode())
-            os._exit(127)
-            return  # unreachable in production; safety net for mocked _exit
+            if os.environ.get("INZYTS_SANDBOX_REQUIRE_SETSID", "1") != "0":
+                # Strict mode (production): fail fast.
+                os.write(2, f"FATAL: kernel preexec setsid failed: {e}\n".encode())
+                os._exit(127)
+                return  # unreachable; safety net for mocked _exit
+            # Permissive mode: warn, skip rlimits, let the kernel start.
+            os.write(2, f"WARN: setsid failed ({e}); kernel will run without a new session\n".encode())
+            return
 
         for rlimit_name, rlimit_const, value in (
             ("RLIMIT_AS", getattr(resource, "RLIMIT_AS", None), memory_bytes),

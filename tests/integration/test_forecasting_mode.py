@@ -57,10 +57,12 @@ def mock_state(forecasting_data, forecasting_profile):
     state.pipeline_mode = PipelineMode.FORECASTING
     state.csv_data = forecasting_data.to_dict(orient='records')
     
-    # Mock Profile Lock
+    # Mock Profile Lock — `spec=ProfileLock` doesn't expose Pydantic
+    # instance fields (only class attributes), so set `lock_hash` directly.
     state.profile_lock = MagicMock(spec=ProfileLock)
     state.profile_lock.is_locked.return_value = True
     state.profile_lock.get_locked_handoff.return_value = forecasting_profile
+    state.profile_lock.lock_hash = "fake_lock_hash"
     
     state.user_intent = None
     return state
@@ -156,4 +158,4 @@ class TestForecastingMode:
             assert "Prophet" in prompt_text # recommenation passed
             assert "frequency" in prompt_text
             
-            assert result["strategy_outputs"][0].analysis_type == AnalysisType.TIME_SERIES
+            assert result["handoff"].analysis_type == AnalysisType.TIME_SERIES

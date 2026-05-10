@@ -45,7 +45,7 @@ export const MainLayout: React.FC = () => {
                 <div className="flex items-center gap-3">
                     <img src="/Inzyts_icon.png" alt="Inzyts Logo" className="w-8 h-8" />
                     <div className="mr-6 max-md:mr-2">
-                        <h1 className="m-0 text-[1.4rem] font-bold text-[var(--text-primary)] font-['Libre_Caslon_Display',serif] leading-tight max-md:text-[1.1rem]">Inzyts</h1>
+                        <h1 className="m-0 text-[1.4rem] font-bold text-[var(--text-primary)] leading-tight max-md:text-[1.1rem]">Inzyts</h1>
                         <p className="m-0 text-[0.75rem] text-[var(--text-secondary)] max-md:text-[0.7rem]">Analyze. Predict. Discover.</p>
                     </div>
 
