@@ -166,11 +166,13 @@ def validate_select_only(sql_query: str) -> Optional[str]:
         ) from e
 
     try:
-        statement = sqlglot.parse_one(sql_query)
-        if not isinstance(statement, exp.Select):
-            return "Query is not a SELECT statement."
+        # parse() returns every top-level statement; parse_one() would stop
+        # at the first ``;`` and silently ignore trailing DML like
+        # ``SELECT ; DROP TABLE users; --`` (sqlglot < 29 quirk).
+        statements = sqlglot.parse(sql_query)
+        if not statements:
+            return "Query is empty."
 
-        # Reject any DML nodes anywhere in the AST (covers CTE abuse).
         # sqlglot renamed Truncate -> TruncateTable in v26+; support both.
         _truncate = getattr(exp, "TruncateTable", None) or getattr(exp, "Truncate", None)
         dml_types = tuple(
@@ -184,13 +186,22 @@ def validate_select_only(sql_query: str) -> Optional[str]:
             )
             if t is not None
         )
-        for node in statement.walk():
-            if isinstance(node, dml_types):
-                return (
-                    f"Query contains a disallowed DML operation "
-                    f"({type(node).__name__}). Only read-only SELECT "
-                    f"statements are permitted."
-                )
+
+        for statement in statements:
+            if statement is None:
+                # An empty statement between two ``;;`` — harmless on its
+                # own, but indicates the input is multi-statement and the
+                # other statements still need validation.
+                continue
+            if not isinstance(statement, exp.Select):
+                return "Query is not a SELECT statement."
+            for node in statement.walk():
+                if isinstance(node, dml_types):
+                    return (
+                        f"Query contains a disallowed DML operation "
+                        f"({type(node).__name__}). Only read-only SELECT "
+                        f"statements are permitted."
+                    )
         return None
     except Exception as parse_err:
         # If sqlglot cannot parse the query, reject it conservatively.
