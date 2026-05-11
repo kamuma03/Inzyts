@@ -8,14 +8,18 @@ import { Columns } from 'lucide-react';
 
 interface ColumnInspectorProps {
     jobId: string;
+    /** Current job status — when "running"/"pending" the inspector polls
+     *  the backend every few seconds so the column list appears as soon
+     *  as profiling materialises it. */
+    jobStatus?: string;
     /** Selection state lifted to the parent so other panels can react. */
     selectedColumn: string | null;
     onSelect: (name: string | null) => void;
 }
 
 /** Right-rail column inspector — list + click → instant detail card update. */
-export const ColumnInspector: FC<ColumnInspectorProps> = ({ jobId, selectedColumn, onSelect }) => {
-    const { columns, loading, error } = useColumnProfile(jobId);
+export const ColumnInspector: FC<ColumnInspectorProps> = ({ jobId, jobStatus, selectedColumn, onSelect }) => {
+    const { columns, loading, error } = useColumnProfile(jobId, jobStatus);
 
     const selected = useMemo<ColumnProfile | null>(() => {
         if (!columns || !selectedColumn) return null;

@@ -33,6 +33,7 @@ export const OverviewPanel: FC<OverviewPanelProps> = ({
                 <div className="flex-1 min-h-0 min-w-0">
                     <ColumnInspector
                         jobId={job.id}
+                        jobStatus={job.status}
                         selectedColumn={selectedColumn}
                         onSelect={onSelectColumn}
                     />
