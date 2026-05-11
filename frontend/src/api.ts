@@ -121,6 +121,7 @@ export interface JobSummary {
     status: string;
     mode: string;
     created_at: string;
+    title?: string | null;
     cost_estimate?: {
         total?: number;
         estimated_cost_usd?: number;

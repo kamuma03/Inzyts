@@ -31,6 +31,7 @@ def sample_job():
     job.status = JobStatus.COMPLETED
     job.mode = "exploratory"
     job.created_at = datetime.now(timezone.utc)
+    job.title = None
     job.cost_estimate = {}
     job.token_usage = {}
     job.result_path = "/results/job-123.ipynb"

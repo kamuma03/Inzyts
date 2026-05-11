@@ -146,6 +146,7 @@ class JobSummary(BaseModel):
     status: str
     mode: str
     created_at: datetime
+    title: str | None = None
     cost_estimate: dict | None = None
     token_usage: dict | None = None
     result_path: str | None = None

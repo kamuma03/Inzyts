@@ -72,9 +72,9 @@ export const JobHistory: React.FC<JobHistoryProps> = ({
                                 />
                                 <span
                                     className="text-[14px] font-medium text-[var(--text-primary)] truncate"
-                                    title={job.csv_path}
+                                    title={job.title || job.csv_path || job.id}
                                 >
-                                    {getFileName(job.csv_path)}
+                                    {job.title?.trim() || getFileName(job.csv_path) || `job ${job.id.slice(0, 8)}`}
                                 </span>
                             </div>
                             <div className="text-[12px] text-[var(--text-secondary)] flex items-center gap-2">

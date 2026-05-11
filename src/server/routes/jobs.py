@@ -70,6 +70,7 @@ async def list_jobs(
             status=_enum_value(job.status),  # type: ignore
             mode=_enum_value(job.mode),  # type: ignore
             created_at=job.created_at,  # type: ignore
+            title=job.title,  # type: ignore
             cost_estimate=job.cost_estimate,  # type: ignore
             token_usage=job.token_usage,  # type: ignore
             result_path=job.result_path,  # type: ignore
