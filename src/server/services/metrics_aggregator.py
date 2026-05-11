@@ -31,8 +31,8 @@ _FALLBACK_AGENTS_TOTAL = 22
 
 def _count_registered_agents() -> int:
     try:
-        from src.workflow.agent_factory import AgentFactory
-        registry = getattr(AgentFactory, "_AGENT_MAP", None) or getattr(AgentFactory, "_REGISTRY", None)
+        from src.workflow import agent_factory as _af
+        registry = getattr(_af, "_AGENT_REGISTRY", None)
         if isinstance(registry, dict) and registry:
             return len(registry)
     except Exception:
@@ -44,7 +44,7 @@ def _running_token_totals() -> Dict[str, int]:
     """Sum llm_agent.* counters across all instantiated agents in this worker."""
     try:
         from src.workflow.agent_factory import AgentFactory
-        cache = getattr(AgentFactory, "_INSTANCE_CACHE", None) or {}
+        cache = getattr(AgentFactory, "_instances", None) or {}
         total = prompt = completion = 0
         for agent in cache.values():
             llm = getattr(agent, "llm_agent", None)
@@ -110,8 +110,10 @@ class MetricsAggregator:
 
             model_name = settings.llm.resolve_model_name()
         except Exception as e:
-            logger.debug(f"MetricsAggregator: setup failed: {e}")
+            logger.warning(f"MetricsAggregator: setup failed for {self.job_id}: {e}")
             return
+
+        logger.info(f"MetricsAggregator: started for job {self.job_id}")
 
         while not self._stop.is_set():
             try:
@@ -135,7 +137,7 @@ class MetricsAggregator:
                 }
                 mgr.emit("metrics_snapshot", payload, room=self.job_id)
             except Exception as e:
-                logger.debug(f"MetricsAggregator tick failed for {self.job_id}: {e}")
+                logger.warning(f"MetricsAggregator tick failed for {self.job_id}: {e}")
 
             # Wait but be responsive to stop()
             self._stop.wait(self.INTERVAL_SECONDS)
