@@ -158,6 +158,44 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
         });
     }, [historicalLogs, logs]);
 
+    // Derive agent events from merged logs. The socket-only `events` array
+    // doesn't replay on page reload, but the log file does — so we extract
+    // the structured `[EVENT_NAME] …` markers from the log stream as the
+    // source of truth and union with any live socket events that happen
+    // to arrive before the corresponding log line lands.
+    const mergedEvents = React.useMemo(() => {
+        const EVENT_RE = /^\[([A-Z_][A-Z0-9_]*)\]\s+(.+?)(?:\s+\|\s+Context:\s*(\{.*\}))?$/;
+        const derived: AgentEvent[] = [];
+        for (const log of mergedLogs) {
+            const m = log.message.match(EVENT_RE);
+            if (!m) continue;
+            const [, eventName, msg, ctx] = m;
+            let agent: string | undefined;
+            if (ctx) {
+                const am = ctx.match(/['"]agent['"]:\s*['"]([^'"]+)['"]/);
+                if (am) agent = am[1];
+            }
+            derived.push({
+                type: 'agent_event',
+                event: eventName,
+                agent,
+                data: { timestamp: log.timestamp, level: log.level, message: msg },
+            });
+        }
+
+        // Union with live socket events, deduped by (event, agent, timestamp).
+        const seen = new Set<string>();
+        const out: AgentEvent[] = [];
+        for (const e of [...derived, ...events]) {
+            const ts = (e.data as { timestamp?: string } | undefined)?.timestamp ?? '';
+            const key = `${e.event}:${e.agent ?? ''}:${ts}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push(e);
+        }
+        return out;
+    }, [mergedLogs, events]);
+
 
     // -- Actions --
     const handleJobCreated = (jobId: string) => {
@@ -201,7 +239,7 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
         activeJobId,
         isConnected,
         logs: mergedLogs, // Expose the merged logs instead of just socket logs
-        events,
+        events: mergedEvents,
         progress,
         metrics,
         phases,

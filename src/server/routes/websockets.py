@@ -134,6 +134,30 @@ async def join_job(sid, data):
     await sio.enter_room(sid, job_id)
     await sio.emit("log", f"Connected to log stream for {job_id}", room=job_id)
 
+    # Replay any persisted run state to the joining client only, so a page
+    # reload mid-run doesn't blank the PipelineRail / progress bar until
+    # the next agent transition fires. Mirrors the historical log replay
+    # already handled by GET /jobs/{id}.
+    try:
+        from src.server.services.phase_state import PhaseStateTracker
+        phases_snapshot = PhaseStateTracker().snapshot(job_id)
+        if phases_snapshot:
+            await sio.emit(
+                "phase_update",
+                {"job_id": job_id, "phases": phases_snapshot},
+                to=sid,
+            )
+    except Exception as e:
+        logger.warning(f"phase_update replay failed for {job_id}: {e}")
+
+    try:
+        from src.server.services.progress_tracker import ProgressTracker
+        progress = ProgressTracker().get_progress_with_timing(job_id)
+        if progress and progress.get("progress"):
+            await sio.emit("progress", progress, to=sid)
+    except Exception as e:
+        logger.warning(f"progress replay failed for {job_id}: {e}")
+
 
 async def notify_job_update(job_id: str, data: dict):
     """Utility to emit updates to a job room."""
