@@ -420,6 +420,8 @@ export interface RunMetrics {
     quality_score: number | null;
     agents_active: number;
     agents_total: number;
+    current_phase?: string | null;
+    current_message?: string | null;
     previous_job_id: string | null;
     previous: PreviousMetrics | null;
 }

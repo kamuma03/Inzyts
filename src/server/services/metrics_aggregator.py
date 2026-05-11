@@ -132,6 +132,13 @@ class MetricsAggregator:
                     "quality_score": None,
                     "agents_active": 1 if progress.get("phase") in ("phase1", "phase2", "extensions") else 0,
                     "agents_total": self._agents_total,
+                    # Human-readable current phase + step for the KPI strip.
+                    # progress.phase is the raw id ("phase1"); progress.message
+                    # is the human label set by the progress tracker (e.g.
+                    # "Profiling data..."). Together they replace the
+                    # always-null quality + misleading agents binary in the UI.
+                    "current_phase": progress.get("phase") or None,
+                    "current_message": progress.get("message") or None,
                     "previous_job_id": self._previous_job_id,
                     "previous": self._previous_metrics,
                 }

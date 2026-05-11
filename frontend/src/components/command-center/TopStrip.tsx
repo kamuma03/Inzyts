@@ -46,7 +46,12 @@ const KpiCell: FC<KpiCellProps> = memo(({ label, value, delta }) => (
 KpiCell.displayName = 'KpiCell';
 
 export const TopStrip: FC<TopStripProps> = ({ job, metrics, onCancel, onExport }) => {
-    const filename = (job.csv_path?.split('/').pop()) || 'untitled';
+    // csv_path is intentionally not returned by the API for security; prefer
+    // the user's title, fall back to the file basename if a legacy job has
+    // one, otherwise show the truncated job id rather than a bare "untitled".
+    const filename = job.title?.trim()
+        || (job.csv_path?.split('/').pop())
+        || `job ${job.id.slice(0, 8)}`;
     const isRunning = job.status === 'running' || job.status === 'pending';
 
     const previous = metrics?.previous ?? null;
@@ -54,8 +59,6 @@ export const TopStrip: FC<TopStripProps> = ({ job, metrics, onCancel, onExport }
     const eta = metrics?.eta_seconds ?? null;
     const tokens = metrics?.tokens_used ?? job.token_usage?.total ?? null;
     const cost = metrics?.cost_usd ?? job.cost_estimate?.total ?? job.cost_estimate?.estimated_cost_usd ?? null;
-    const agentsActive = metrics?.agents_active ?? null;
-    const agentsTotal = metrics?.agents_total ?? null;
 
     // Memoise deltas so KpiCell.memo can skip re-renders when only the parent
     // re-renders without the underlying numbers changing (every 500ms metric tick).
@@ -157,24 +160,28 @@ export const TopStrip: FC<TopStripProps> = ({ job, metrics, onCancel, onExport }
                 </div>
             </div>
 
-            {/* KPI row */}
-            <div className="grid grid-cols-6 gap-4 px-4 py-3">
+            {/* KPI row — five cells with the rightmost one swapping between
+                "current phase" while running and the final "quality score"
+                once complete. The old "agents X/Y" cell was always 0/22 or
+                1/22 (the workflow only runs one agent at a time) and
+                quality_score is null for the entire duration of a run, so
+                both wasted real estate without informing the user. */}
+            <div className="grid grid-cols-5 gap-4 px-4 py-3">
                 <KpiCell label="elapsed" value={elapsed != null ? formatDuration(elapsed) : '—'} delta={elapsedDelta} />
                 <KpiCell label="eta" value={eta != null ? formatDuration(eta) : '—'} />
                 <KpiCell label="tokens" value={formatTokens(tokens)} delta={tokensDelta} />
                 <KpiCell label="cost" value={formatCost(cost)} delta={costDelta} />
-                <KpiCell
-                    label="quality"
-                    value={metrics?.quality_score != null ? metrics.quality_score.toFixed(2) : '—'}
-                />
-                <KpiCell
-                    label="agents"
-                    value={
-                        agentsActive != null && agentsTotal != null
-                            ? `${agentsActive}/${agentsTotal}`
-                            : '—'
-                    }
-                />
+                {isRunning ? (
+                    <KpiCell
+                        label="phase"
+                        value={metrics?.current_message || metrics?.current_phase || '—'}
+                    />
+                ) : (
+                    <KpiCell
+                        label="quality"
+                        value={metrics?.quality_score != null ? metrics.quality_score.toFixed(2) : '—'}
+                    />
+                )}
             </div>
         </div>
     );
