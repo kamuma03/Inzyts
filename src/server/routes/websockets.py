@@ -141,7 +141,15 @@ async def join_job(sid, data):
     try:
         from src.server.services.phase_state import PhaseStateTracker
         phases_snapshot = PhaseStateTracker().snapshot(job_id)
-        if phases_snapshot:
+        # snapshot() always returns the default skeleton (all phases queued)
+        # even for fresh jobs — only replay when something has actually
+        # progressed, otherwise the frontend already shows the same default.
+        has_progress = any(
+            (p.get("status") not in (None, "queued"))
+            or any(s.get("status") not in (None, "queued") for s in p.get("steps", []))
+            for p in phases_snapshot
+        )
+        if has_progress:
             await sio.emit(
                 "phase_update",
                 {"job_id": job_id, "phases": phases_snapshot},

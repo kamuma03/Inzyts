@@ -10,6 +10,25 @@ from src.server.routes.websockets import (
     sio,
 )
 
+@pytest.fixture(autouse=True)
+def mock_join_replay_trackers():
+    """Stub out the phase-state + progress trackers that join_job replays.
+
+    Without this, the trackers connect to the live Redis instance and may
+    pick up state left over from other tests, causing intermittent extra
+    emits like ``sio.emit('progress', ...)`` which break the
+    ``assert_called_once_with`` checks below.
+    """
+    with patch(
+        "src.server.services.phase_state.PhaseStateTracker.snapshot",
+        return_value=[],
+    ), patch(
+        "src.server.services.progress_tracker.ProgressTracker.get_progress_with_timing",
+        return_value={"progress": 0},
+    ):
+        yield
+
+
 @pytest.fixture
 def mock_sio_emit():
     with patch("src.server.routes.websockets.sio.emit", new_callable=AsyncMock) as mock_emit:
