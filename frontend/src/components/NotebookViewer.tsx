@@ -268,17 +268,35 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                 <h3 className="m-0 font-semibold text-[var(--text-primary)] flex items-center gap-2">
                     Results Notebook
                     {status === 'completed' && (
+                        // The three modes are genuinely different surfaces;
+                        // rename the buttons + add tooltips so the
+                        // distinction is obvious without reading the docs.
+                        //   Static      = polished read-only HTML report
+                        //   Interactive = editable cells + follow-up chat
+                        //   Live        = blank kernel sandbox for ad-hoc code
                         <span className="flex gap-1 ml-2">
-                            <button onClick={() => setViewMode('static')} className={modeButtonClass('static')}>
-                                Static
+                            <button
+                                onClick={() => setViewMode('static')}
+                                className={modeButtonClass('static')}
+                                title="Rendered report — read-only, exports the polished notebook HTML."
+                            >
+                                Report
                             </button>
-                            <button onClick={() => setViewMode('interactive')} className={modeButtonClass('interactive')}>
+                            <button
+                                onClick={() => setViewMode('interactive')}
+                                className={modeButtonClass('interactive')}
+                                title="Editable cells with outputs — tweak the code and re-run, or ask a follow-up."
+                            >
                                 <Sparkles size={14} />
-                                Interactive
+                                Editor
                             </button>
-                            <button onClick={() => setViewMode('live')} className={modeButtonClass('live')}>
+                            <button
+                                onClick={() => setViewMode('live')}
+                                className={modeButtonClass('live')}
+                                title="Blank kernel — write fresh Python against the loaded dataset."
+                            >
                                 <Terminal size={14} />
-                                Live
+                                Sandbox
                             </button>
                         </span>
                     )}
@@ -367,7 +385,13 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                     </button>
 
                     {summaryExpanded && (
-                        <div className="px-4 pb-4 text-[0.88rem] text-[var(--text-secondary)]">
+                        // Cap the expanded body height so a long key-findings
+                        // list doesn't push the notebook iframe down out of
+                        // view — the surrounding flex container is the only
+                        // scroll surface for the whole tab, and the iframe
+                        // (h-full of the remaining flex-1) needs a usable
+                        // chunk of vertical real estate to be navigable.
+                        <div className="px-4 pb-4 text-[0.88rem] text-[var(--text-secondary)] max-h-[40vh] overflow-y-auto">
                             {executiveSummary.summary_text && (
                                 <p className="mb-3 leading-normal [text-wrap:pretty]">
                                     {executiveSummary.summary_text.length > 500
