@@ -109,6 +109,9 @@ jobs:
           sudo apt-get install -y libmagic1 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libcairo2
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          # schemathesis is a CI-only test dep — kept out of requirements.txt
+          # so the prod image doesn't ship hypothesis et al.
+          pip install 'schemathesis==4.16.1'
       - name: Run schemathesis fuzz on documented GET endpoints
         run: pytest tests/contracts -x --tb=short
 
