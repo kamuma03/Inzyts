@@ -1,4 +1,4 @@
-import { type FC, type ReactNode } from 'react';
+import { useEffect, useState, type FC, type ReactNode } from 'react';
 
 export type PreviewTabId = 'overview' | 'data' | 'report' | 'notebook' | 'logs' | 'events';
 
@@ -114,16 +114,29 @@ interface PreviewPanelProps {
     children: ReactNode;
 }
 
-/** One panel — kept mounted and toggled with `hidden` so the browser preserves
- *  its native scroll position automatically when the user returns. */
-const PreviewPanel: FC<PreviewPanelProps> = ({ id, active, children }) => (
-    <div
-        role="tabpanel"
-        id={`tabpanel-${id}`}
-        aria-labelledby={`tab-${id}`}
-        hidden={!active}
-        className="absolute inset-0 overflow-auto"
-    >
-        {children}
-    </div>
-);
+/** One panel — kept mounted and toggled with `hidden` once activated so the
+ *  browser preserves its native scroll position. Mount is lazy: a panel
+ *  only renders its children the first time it becomes active.
+ *
+ *  Lazy mount matters for tabs that host components needing DOM measurement
+ *  at first paint (e.g. CodeMirror inside the Notebook tab) — initialising
+ *  while `display: none` leaves them with a zero-sized layout box and they
+ *  often fail to recover when the tab is revealed. */
+const PreviewPanel: FC<PreviewPanelProps> = ({ id, active, children }) => {
+    const [hasActivated, setHasActivated] = useState(active);
+    useEffect(() => {
+        if (active) setHasActivated(true);
+    }, [active]);
+
+    return (
+        <div
+            role="tabpanel"
+            id={`tabpanel-${id}`}
+            aria-labelledby={`tab-${id}`}
+            hidden={!active}
+            className="absolute inset-0 overflow-auto"
+        >
+            {hasActivated ? children : null}
+        </div>
+    );
+};
