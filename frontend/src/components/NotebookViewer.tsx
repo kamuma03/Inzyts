@@ -31,7 +31,6 @@ type ExportFormat = 'pdf' | 'html' | 'pptx' | 'markdown' | 'ipynb';
 export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPath, status = 'completed', embedded = false }) => {
     const [cells, setCells] = useState<NotebookCellData[]>([]);
     const [cellsLoading, setCellsLoading] = useState(true);
-    const cellsFetchedRef = useRef(false);
 
     const [exportLoading, setExportLoading] = useState<ExportFormat | null>(null);
     const [exportMenuOpen, setExportMenuOpen] = useState(false);
@@ -40,22 +39,30 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
     const [piiResult, setPiiResult] = useState<PIIScanResult | null>(null);
 
     // Fetch cells + PII scan once the job is completed.
+    //
+    // No ref-based dedup here — under React 18 StrictMode, the effect runs
+    // twice in dev (mount → cleanup → mount). A `cellsFetchedRef` would
+    // record "fetched" on the first run, then short-circuit the second
+    // run; the first run's request resolves after cleanup, so its setState
+    // calls are guarded out, and cellsLoading would stay true forever. The
+    // GET is idempotent, so we just let the second run fire its own
+    // request; only the latest response wins via the `cancelled` flag.
     useEffect(() => {
         if (!jobId || status !== 'completed') return;
-        let mounted = true;
-        if (!cellsFetchedRef.current) {
-            cellsFetchedRef.current = true;
-            setCellsLoading(true);
-            AnalysisAPI.getNotebookCells(jobId).then((response) => {
-                if (mounted && response?.cells) setCells(response.cells);
-            }).catch(() => {
-                // Non-fatal — surface falls back to a single empty cell.
-            }).finally(() => { if (mounted) setCellsLoading(false); });
-        }
+        let cancelled = false;
+        setCellsLoading(true);
+        AnalysisAPI.getNotebookCells(jobId).then((response) => {
+            if (cancelled) return;
+            if (response?.cells) setCells(response.cells);
+        }).catch(() => {
+            // Non-fatal — surface falls back to a single empty cell.
+        }).finally(() => {
+            if (!cancelled) setCellsLoading(false);
+        });
         AnalysisAPI.getPIIScan(jobId).then((r) => {
-            if (mounted) setPiiResult(r);
+            if (!cancelled) setPiiResult(r);
         }).catch(() => { /* silent */ });
-        return () => { mounted = false; };
+        return () => { cancelled = true; };
     }, [jobId, status]);
 
     // Close export menu on outside click.

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { StrictMode } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { NotebookViewer } from './NotebookViewer';
 
@@ -98,5 +99,24 @@ describe('NotebookViewer', () => {
         render(<NotebookViewer jobId="job-1" resultPath={null} status="running" />);
         expect(screen.getByText(/Analysis in progress/)).toBeInTheDocument();
         expect(AnalysisAPI.getNotebookCells).not.toHaveBeenCalled();
+    });
+
+    // Regression: under React 18 StrictMode the effect runs twice. A ref-based
+    // "already fetched" guard combined with a `mounted` cancellation flag used
+    // to deadlock — the first run started the fetch, the cleanup invalidated
+    // its setState callbacks, and the second run short-circuited because the
+    // ref said "fetched." cellsLoading stayed true forever.
+    it('loads cells correctly under React.StrictMode (double-effect dev mode)', async () => {
+        render(
+            <StrictMode>
+                <NotebookViewer jobId="job-1" resultPath="output/foo.ipynb" status="completed" />
+            </StrictMode>,
+        );
+        await waitFor(() => {
+            const sourceFields = screen.getAllByLabelText(/Cell \d+ source|Markdown cell \d+ source/);
+            expect(sourceFields.length).toBeGreaterThan(0);
+        });
+        // The spinner is gone — cellsLoading flipped to false.
+        expect(screen.queryByText(/Loading cells/)).not.toBeInTheDocument();
     });
 });
