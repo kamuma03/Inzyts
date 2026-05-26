@@ -17,6 +17,8 @@ from src.server.models.schemas import (
     FollowUpCell,
     ConversationHistoryResponse,
     ConversationMessageSchema,
+    NotebookSaveRequest,
+    NotebookSaveResponse,
 )
 from src.utils.logger import get_logger
 from src.utils.path_validator import validate_path_within
@@ -265,6 +267,73 @@ async def get_notebook_cells(
     except Exception as e:
         logger.error(f"Failed to parse notebook for job {job_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to parse notebook")
+
+
+@router.put("/{job_id}/cells", response_model=NotebookSaveResponse)
+async def save_notebook_cells(
+    job_id: str,
+    request: NotebookSaveRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(verify_token),
+):
+    """Persist the edited cell list back to the on-disk .ipynb file.
+
+    Replaces the notebook's cells with the supplied ordered list, preserving
+    the existing nbformat metadata. Outputs are reset on every save — the
+    expectation is that the user re-runs cells in the live kernel after a
+    save if they want fresh outputs in subsequent exports.
+
+    Body: ``{"cells": [{"cell_type": "code"|"markdown", "source": "..."}, ...]}``
+    """
+    job = await resolve_owned_job(job_id, db, current_user)
+
+    if not job.result_path:
+        raise HTTPException(
+            status_code=404, detail="No notebook generated for this job yet"
+        )
+
+    notebook_path = Path(job.result_path)
+    _validate_notebook_path(notebook_path)
+    if not notebook_path.exists():
+        raise HTTPException(status_code=404, detail="Notebook file not found")
+
+    allowed_types = {"code", "markdown"}
+    for idx, c in enumerate(request.cells):
+        if c.cell_type not in allowed_types:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Cell {idx} has invalid cell_type '{c.cell_type}' "
+                "(must be 'code' or 'markdown')",
+            )
+
+    try:
+        # Read existing notebook so we can preserve its top-level metadata
+        # (kernel spec, language info, nbformat version) — the cell list is
+        # the only thing the user is allowed to replace.
+        with open(notebook_path, "r", encoding="utf-8") as f:
+            nb = nbformat.read(f, as_version=4)
+
+        new_cells = []
+        for c in request.cells:
+            if c.cell_type == "code":
+                new_cells.append(nbformat.v4.new_code_cell(source=c.source))
+            else:
+                new_cells.append(nbformat.v4.new_markdown_cell(source=c.source))
+        nb.cells = new_cells
+
+        with open(notebook_path, "w", encoding="utf-8") as f:
+            nbformat.write(nb, f)
+
+        return NotebookSaveResponse(
+            job_id=job_id,
+            cell_count=len(new_cells),
+            path=str(notebook_path),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to save notebook for job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save notebook")
 
 
 @router.post("/{job_id}/cells/edit")

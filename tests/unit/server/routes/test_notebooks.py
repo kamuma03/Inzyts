@@ -99,6 +99,109 @@ def test_get_notebook_html_file_missing(sample_job, tmp_path):
 
 
 # ════════════════════════════════════════════════════════
+# Save Notebook Cells (PUT) — FR-NB-005
+# ════════════════════════════════════════════════════════
+
+
+def test_save_notebook_cells_success(sample_job, tmp_path):
+    """Successful save rewrites the .ipynb with the supplied cells."""
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = sample_job
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    payload = {
+        "cells": [
+            {"cell_type": "markdown", "source": "# New title"},
+            {"cell_type": "code", "source": "x = 42\nprint(x)"},
+        ]
+    }
+
+    with patch("src.server.routes.notebooks._OUTPUT_DIR", tmp_path):
+        response = client.put("/api/v2/notebooks/job-nb/cells", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["job_id"] == "job-nb"
+    assert data["cell_count"] == 2
+    assert data["path"] == sample_job.result_path
+
+    # Round-trip: file on disk now matches the payload.
+    nb = nbformat.read(sample_job.result_path, as_version=4)
+    assert len(nb.cells) == 2
+    assert nb.cells[0].cell_type == "markdown"
+    assert nb.cells[0].source == "# New title"
+    assert nb.cells[1].cell_type == "code"
+    assert nb.cells[1].source == "x = 42\nprint(x)"
+
+
+def test_save_notebook_cells_rejects_invalid_cell_type(sample_job, tmp_path):
+    """Cells with cell_type other than code/markdown are rejected with 422."""
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = sample_job
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    payload = {"cells": [{"cell_type": "raw", "source": "weird"}]}
+
+    with patch("src.server.routes.notebooks._OUTPUT_DIR", tmp_path):
+        response = client.put("/api/v2/notebooks/job-nb/cells", json=payload)
+
+    assert response.status_code == 422
+    assert "invalid cell_type" in response.json()["detail"].lower()
+
+
+def test_save_notebook_cells_job_not_found():
+    """Save returns 404 when the job doesn't exist (or isn't owned)."""
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    response = client.put(
+        "/api/v2/notebooks/missing-job/cells",
+        json={"cells": [{"cell_type": "code", "source": "1"}]},
+    )
+    assert response.status_code == 404
+
+
+def test_save_notebook_cells_no_result_path(sample_job):
+    """Save returns 404 when the job has no generated notebook yet."""
+    sample_job.result_path = None
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = sample_job
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    response = client.put(
+        "/api/v2/notebooks/job-nb/cells",
+        json={"cells": [{"cell_type": "code", "source": "1"}]},
+    )
+    assert response.status_code == 404
+    assert "No notebook generated" in response.json()["detail"]
+
+
+def test_save_notebook_cells_rejects_path_outside_output_dir(sample_job, tmp_path):
+    """The path validator must reject result_paths outside _OUTPUT_DIR."""
+    # Point the job's notebook outside the configured output root.
+    outside_path = tmp_path / "outside.ipynb"
+    nb = nbformat.v4.new_notebook()
+    nbformat.write(nb, str(outside_path))
+    sample_job.result_path = str(outside_path)
+
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = sample_job
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    # Confine _OUTPUT_DIR to a sibling directory so `outside.ipynb` is
+    # outside the allowed root.
+    allowed_root = tmp_path / "allowed"
+    allowed_root.mkdir()
+    with patch("src.server.routes.notebooks._OUTPUT_DIR", allowed_root):
+        response = client.put(
+            "/api/v2/notebooks/job-nb/cells",
+            json={"cells": [{"cell_type": "code", "source": "1"}]},
+        )
+    assert response.status_code in (400, 403, 404)
+
+
+# ════════════════════════════════════════════════════════
 # Follow-Up Analysis Tests
 # ════════════════════════════════════════════════════════
 

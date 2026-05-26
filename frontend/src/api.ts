@@ -305,6 +305,14 @@ export const AnalysisAPI = {
         return response.data; // { new_code, output, images, success, error }
     },
 
+    saveNotebookCells: async (
+        jobId: string,
+        cells: Array<{ cell_type: 'code' | 'markdown'; source: string }>,
+    ) => {
+        const response = await api.put(notebookUrl(jobId, 'cells'), { cells });
+        return response.data as { job_id: string; cell_count: number; path: string };
+    },
+
     // --- Live cell execution (PR1 sandbox API) ----------------------------
 
     executeLiveCell: async (jobId: string, code: string, executionId: string) => {

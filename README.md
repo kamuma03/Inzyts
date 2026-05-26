@@ -82,10 +82,12 @@
 - **Exclude Columns**: Filter out PII or irrelevant columns from analysis.
 
 ### ⚡ Interactive
-- **Interactive Notebooks**: Edit individual code cells with natural language ("Make this a pie chart") — powered by a lightweight CellEditAgent and persistent kernel sessions.
-- **Conversational Follow-Up Analysis**: Ask follow-up questions ("Why is Cluster 2 the largest?") and get new analysis cells generated, executed, and rendered inline. Conversations persist across server restarts.
-- **Inline Chart Rendering**: Base64-encoded matplotlib/seaborn charts displayed directly in the interactive cell viewer.
-- **Live Notebook Panel**: Native Inzyts cell-execution UI — kernels run under a hardened ``KernelSandbox`` (resource limits, process-group SIGKILL on timeout, network egress block, secret stripping). Output streams cell-by-cell via WebSocket; same look-and-feel as the rest of the Command Center.
+- **Two-Surface Results View**: Each completed job exposes a **Report** tab (executive summary only — key findings, recommendations, data quality) and a **Notebook** tab (full Jupyter-style cell stack — see below).
+- **Jupyter-Style Notebook Editor**: Code + markdown cells, syntax-highlighted via **CodeMirror 6**, with per-cell **Run** (Shift+Enter / Ctrl+Enter), **Tweak with AI** (natural-language cell rewrite via CellEditAgent), **Run All / Above / Below**, **insert above/below**, **move up/down**, **delete**, and **code ↔ markdown toggle**. Markdown cells render inline; double-click to edit.
+- **Save Back to `.ipynb`**: Edited cells persist to the on-disk notebook via `PUT /api/v2/notebooks/{id}/cells` — Save button surfaces an "Unsaved" indicator and confirms with a transient "Saved" flash. Subsequent exports (PDF/HTML/PPTX) reflect saved edits.
+- **Conversational Follow-Up Analysis**: Ask follow-up questions ("Why is Cluster 2 the largest?") and get new analysis cells generated, executed, and rendered inline beneath the cell stack. Conversations persist across server restarts.
+- **Inline Chart Rendering**: Base64-encoded matplotlib/seaborn charts displayed directly in the cell output stream.
+- **Live Kernel**: Cells execute against a hardened ``KernelSandbox`` (resource limits, process-group SIGKILL on timeout, network egress block, secret stripping). Output streams cell-by-cell via WebSocket.
 - **Modern UI**: "Ink Black" theme with real-time agent traces, job monitoring, and token tracking.
 - **Production Architecture**: Docker-based deployment with FastAPI, PostgreSQL, Redis, and Celery.
 - **Comprehensive API**: RESTful v2 API with WebSocket support for real-time updates.
@@ -456,7 +458,7 @@ npm run dev
 - **🎯 Smart Mode Selection**: AI-powered mode suggestion with confidence scoring, detailed descriptions, and one-click apply
 - **📊 Phase-Aware Progress**: Real-time progress with ETA, elapsed time per phase, and structured agent event streaming
 - **🔄 Job Management**: Cancel running jobs, view execution logs, download results
-- **📓 Live Notebook Panel**: Run cells against a hardened in-process kernel sandbox; output streams via WebSocket; Inzyts dark-theme rendering (no Jupyter Lab iframe).
+- **📓 Notebook Editor**: Jupyter-style cell stack (CodeMirror 6, syntax highlighting, Shift+Enter to run, insert/delete/reorder, code↔markdown toggle, AI-powered "Tweak" per cell). Cells execute against a hardened in-process kernel sandbox; output streams via WebSocket. Save persists back to the .ipynb so subsequent exports reflect your edits.
 - **🚀 One-Click Upgrade**: Convert exploratory to predictive with cached profile
 
 ### API Endpoints
@@ -484,6 +486,7 @@ All endpoints require a `Authorization: Bearer <token>` header. Rate limits are 
 | `/api/v2/notebooks/{job_id}/download` | GET | Download completed notebook (.ipynb) | Owner |
 | `/api/v2/notebooks/{job_id}/html` | GET | Get rendered HTML notebook | Owner |
 | `/api/v2/notebooks/{job_id}/cells` | GET | Get notebook as structured JSON cells | Owner |
+| `/api/v2/notebooks/{job_id}/cells` | PUT | Save edited cells back to the .ipynb on disk | Owner |
 | `/api/v2/notebooks/{job_id}/cells/edit` | POST | Edit cell with natural language instruction | Owner |
 | `/api/v2/notebooks/{job_id}/cells/execute` | POST | Execute cell in live kernel session | Owner |
 | `/api/v2/notebooks/{job_id}/cells/restart` | POST | Restart kernel session for the job | Owner |

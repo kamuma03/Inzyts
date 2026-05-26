@@ -1,30 +1,10 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { AnalysisAPI } from '../api';
-import { Loader, Terminal, Sparkles, Download, FileText, Shield, AlertTriangle, ChevronDown, ChevronUp, Presentation, Clock, FileCode, Sun, Moon } from 'lucide-react';
+import { Loader, Download, FileText, Shield, AlertTriangle, ChevronDown, ChevronUp, Presentation, Clock, FileCode, BookOpen } from 'lucide-react';
 import { LivePanel } from './command-center/panels/live/LivePanel';
-import { InteractiveCell } from './InteractiveCell';
 import { FollowUpChat } from './FollowUpChat';
-import { DARK_NOTEBOOK_OVERRIDES } from './notebookDarkOverrides';
-import { SkeletonCard, Spinner, ErrorState, ProgressPill } from './state';
-import { CellOutput, NotebookCellData } from '../types/notebook';
-
-type NotebookTheme = 'light' | 'dark';
-
-const NOTEBOOK_THEME_STORAGE_KEY = 'inzyts_notebook_theme';
-
-const readStoredTheme = (): NotebookTheme => {
-    if (typeof localStorage === 'undefined') return 'dark';
-    const stored = localStorage.getItem(NOTEBOOK_THEME_STORAGE_KEY);
-    return stored === 'light' ? 'light' : 'dark';
-};
-
-const applyNotebookTheme = (html: string, theme: NotebookTheme): string => {
-    if (theme === 'light') return html;
-    if (html.includes('</head>')) {
-        return html.replace('</head>', `${DARK_NOTEBOOK_OVERRIDES}</head>`);
-    }
-    return `${DARK_NOTEBOOK_OVERRIDES}${html}`;
-};
+import { SkeletonCard, Spinner } from './state';
+import { NotebookCellData } from '../types/notebook';
 
 interface NotebookViewerProps {
     jobId: string;
@@ -51,18 +31,17 @@ interface PIIScanResult {
     scanned_cells: number;
 }
 
-type ViewMode = 'static' | 'live' | 'interactive';
+type ViewMode = 'report' | 'notebook';
 type ExportFormat = 'pdf' | 'html' | 'pptx' | 'markdown' | 'ipynb';
 
 export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPath, status = 'completed', embedded = false }) => {
-    const [htmlContent, setHtmlContent] = useState<string | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [viewMode, setViewMode] = useState<ViewMode>('static');
+    const [viewMode, setViewMode] = useState<ViewMode>('report');
 
-    // Interactive mode state
+    // Notebook tab cells (code + markdown) — fetched on first switch into the
+    // Notebook tab and reused thereafter.
     const [cells, setCells] = useState<NotebookCellData[]>([]);
     const [cellsLoading, setCellsLoading] = useState(false);
+    const cellsFetchedRef = useRef(false);
 
     // Report export state
     const [exportLoading, setExportLoading] = useState<ExportFormat | null>(null);
@@ -75,48 +54,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
     const [summaryExpanded, setSummaryExpanded] = useState(true);
     const [piiResult, setPiiResult] = useState<PIIScanResult | null>(null);
 
-    // Notebook theme — persisted across reloads. Default is dark to match the
-    // surrounding shell.
-    const [notebookTheme, setNotebookTheme] = useState<NotebookTheme>(() => readStoredTheme());
-    useEffect(() => {
-        if (typeof localStorage !== 'undefined') {
-            localStorage.setItem(NOTEBOOK_THEME_STORAGE_KEY, notebookTheme);
-        }
-    }, [notebookTheme]);
-
-    const themedHtmlContent = useMemo(
-        () => (htmlContent ? applyNotebookTheme(htmlContent, notebookTheme) : null),
-        [htmlContent, notebookTheme],
-    );
-
-    // Bumped by the ErrorState retry button to re-fire the static-HTML
-    // effect without unmounting the component.
-    const [retryToken, setRetryToken] = useState(0);
-    const retryNotebook = useCallback(() => setRetryToken((t) => t + 1), []);
-
-    // Load static HTML — re-runs when retryToken bumps.
-    useEffect(() => {
-        if (!jobId || !resultPath || status !== 'completed') return;
-        let mounted = true;
-        setLoading(true);
-        setError(null);
-        AnalysisAPI.getNotebookHtml(jobId).then((response) => {
-            if (!mounted) return;
-            if (typeof response === 'string') setHtmlContent(response);
-            else if (response?.html) setHtmlContent(response.html);
-            else {
-                if (import.meta.env.DEV) console.warn("Unexpected notebook response format", response);
-                setError("Failed to load notebook content.");
-            }
-        }).catch((err) => {
-            if (!mounted) return;
-            if (import.meta.env.DEV) console.error("Failed to load notebook", err);
-            setError(err?.message ?? "Could not load notebook preview.");
-        }).finally(() => { if (mounted) setLoading(false); });
-        return () => { mounted = false; };
-    }, [jobId, resultPath, status, retryToken]);
-
-    // Fetch executive summary & PII scan on mount when completed
+    // Fetch executive summary & PII scan on mount when completed.
     useEffect(() => {
         if (!jobId || status !== 'completed') return;
         let mounted = true;
@@ -132,15 +70,16 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
         return () => { mounted = false; };
     }, [jobId, status]);
 
-    // Load cells when switching to interactive mode
+    // Fetch cells the first time the user opens the Notebook tab.
     useEffect(() => {
-        if (viewMode !== 'interactive' || !jobId) return;
+        if (viewMode !== 'notebook' || !jobId || cellsFetchedRef.current) return;
         let mounted = true;
+        cellsFetchedRef.current = true;
         setCellsLoading(true);
         AnalysisAPI.getNotebookCells(jobId).then((response) => {
             if (mounted && response?.cells) setCells(response.cells);
         }).catch(() => {
-            if (mounted) setError("Failed to load notebook cells.");
+            // Non-fatal — the surface will fall back to a single empty cell.
         }).finally(() => { if (mounted) setCellsLoading(false); });
         return () => { mounted = false; };
     }, [viewMode, jobId]);
@@ -154,14 +93,6 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
         };
         document.addEventListener('mousedown', handleClick);
         return () => document.removeEventListener('mousedown', handleClick);
-    }, []);
-
-    const handleCellUpdate = useCallback((index: number, newCode: string, outputs: CellOutput[]) => {
-        setCells(prev => {
-            const updated = [...prev];
-            updated[index] = { ...updated[index], source: newCode, outputs };
-            return updated;
-        });
     }, []);
 
     const handleExport = useCallback(async (format: ExportFormat) => {
@@ -201,9 +132,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
         }
     }, [jobId, resultPath]);
 
-    // View-mode toggle: neutral border when inactive, accent fill when
-    // active. Matches the Tweak/Cancel pattern — accent only fires once
-    // the control is the chosen mode, so it carries meaning when seen.
+    // View-mode toggle: neutral border when inactive, accent fill when active.
     const modeButtonClass = (mode: ViewMode) =>
         `text-[0.8rem] px-2 py-1 rounded border cursor-pointer flex items-center gap-1 transition-colors ${
             viewMode === mode
@@ -211,19 +140,19 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                 : 'text-[var(--text-secondary)] bg-transparent border-[var(--rule)] hover:text-[var(--text-primary)] hover:border-[var(--rule-strong)]'
         }`;
 
-    const exportFormats: { key: ExportFormat; label: string; icon: React.ReactNode }[] = [
-        { key: 'pdf', label: 'PDF', icon: <FileText size={14} /> },
-        { key: 'html', label: 'HTML', icon: <Download size={14} /> },
-        { key: 'pptx', label: 'PowerPoint', icon: <Presentation size={14} /> },
-        { key: 'markdown', label: 'Markdown', icon: <FileText size={14} /> },
+    const exportFormats: { key: ExportFormat; label: string; icon: React.ReactNode }[] = useMemo(() => [
+        { key: 'pdf' as const, label: 'PDF', icon: <FileText size={14} /> },
+        { key: 'html' as const, label: 'HTML', icon: <Download size={14} /> },
+        { key: 'pptx' as const, label: 'PowerPoint', icon: <Presentation size={14} /> },
+        { key: 'markdown' as const, label: 'Markdown', icon: <FileText size={14} /> },
         ...(resultPath ? [{ key: 'ipynb' as const, label: 'Jupyter (.ipynb)', icon: <FileCode size={14} /> }] : []),
-    ];
+    ], [resultPath]);
 
     // Show waiting state if job is not completed
     if (status !== 'completed') {
         const isRunning = status === 'running';
         return (
-            <div className={`mt-0 flex-1 flex flex-col items-center justify-center gap-4 bg-[var(--surface-1)] min-h-[300px] ${embedded ? '' : 'border border-[var(--rule)] rounded-lg'}`}>
+            <div className={`mt-0 h-full flex flex-col items-center justify-center gap-4 bg-[var(--surface-1)] min-h-[300px] ${embedded ? '' : 'border border-[var(--rule)] rounded-lg'}`}>
                 {isRunning ? (
                     <>
                         <Clock size={40} color="var(--text-secondary)" className="animate-spin opacity-50" />
@@ -262,44 +191,32 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
     }
 
     return (
-        <div className={`mt-0 overflow-hidden flex-1 flex flex-col min-h-0 ${embedded ? '' : 'border border-[var(--rule)] rounded-lg'}`}>
+        <div className={`mt-0 overflow-hidden h-full flex flex-col min-h-0 ${embedded ? '' : 'border border-[var(--rule)] rounded-lg'}`}>
             {/* Header */}
             <div className="p-4 border-b border-[var(--rule)] bg-[var(--surface-1)] flex justify-between items-center shrink-0">
                 <h3 className="m-0 font-semibold text-[var(--text-primary)] flex items-center gap-2">
                     Results Notebook
-                    {status === 'completed' && (
-                        // The three modes are genuinely different surfaces;
-                        // rename the buttons + add tooltips so the
-                        // distinction is obvious without reading the docs.
-                        //   Static      = polished read-only HTML report
-                        //   Interactive = editable cells + follow-up chat
-                        //   Live        = blank kernel sandbox for ad-hoc code
-                        <span className="flex gap-1 ml-2">
-                            <button
-                                onClick={() => setViewMode('static')}
-                                className={modeButtonClass('static')}
-                                title="Rendered report — read-only, exports the polished notebook HTML."
-                            >
-                                Report
-                            </button>
-                            <button
-                                onClick={() => setViewMode('interactive')}
-                                className={modeButtonClass('interactive')}
-                                title="Editable cells with outputs — tweak the code and re-run, or ask a follow-up."
-                            >
-                                <Sparkles size={14} />
-                                Editor
-                            </button>
-                            <button
-                                onClick={() => setViewMode('live')}
-                                className={modeButtonClass('live')}
-                                title="Blank kernel — write fresh Python against the loaded dataset."
-                            >
-                                <Terminal size={14} />
-                                Sandbox
-                            </button>
-                        </span>
-                    )}
+                    {/* Two surfaces:
+                          Report   = executive summary card only
+                          Notebook = merged editor + sandbox (Jupyter-style) */}
+                    <span className="flex gap-1 ml-2">
+                        <button
+                            onClick={() => setViewMode('report')}
+                            className={modeButtonClass('report')}
+                            title="Executive summary of the analysis — quick scan of findings, recommendations, and data quality."
+                        >
+                            <Shield size={14} />
+                            Report
+                        </button>
+                        <button
+                            onClick={() => setViewMode('notebook')}
+                            className={modeButtonClass('notebook')}
+                            title="Editable notebook — tweak cells with AI, type your own code, and run against the live kernel."
+                        >
+                            <BookOpen size={14} />
+                            Notebook
+                        </button>
+                    </span>
 
                     {/* PII Warning Badge */}
                     {piiResult?.has_pii && (
@@ -314,207 +231,194 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                 </h3>
 
                 {/* Export Controls */}
-                {status === 'completed' && (
-                    <div className="flex items-center gap-2">
-                        {viewMode === 'static' && (
-                            <button
-                                onClick={() => setNotebookTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-                                aria-label={notebookTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-                                title={notebookTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-                                className="flex items-center justify-center p-1.5 rounded-md border border-[var(--rule)] text-[var(--text-secondary)] bg-transparent cursor-pointer hover:text-[var(--text-primary)] hover:border-[var(--rule-strong)] transition-colors"
-                            >
-                                {notebookTheme === 'dark' ? <Moon size={14} /> : <Sun size={14} />}
-                            </button>
+                <div className="flex items-center gap-2">
+                    {/* Export dropdown — also hosts the .ipynb download
+                        so download formats sit in one menu. */}
+                    <div ref={exportMenuRef} className="relative">
+                        <button
+                            onClick={() => setExportMenuOpen(prev => !prev)}
+                            disabled={!!exportLoading}
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-[0.8rem] font-semibold hover:brightness-110 transition ${
+                                exportLoading ? 'cursor-wait' : 'cursor-pointer'
+                            }`}
+                        >
+                            {exportLoading ? (
+                                <Loader className="animate-spin" size={14} />
+                            ) : (
+                                <Download size={14} />
+                            )}
+                            {exportLoading ? `Exporting ${exportLoading.toUpperCase()}...` : 'Export'}
+                            <ChevronDown size={12} />
+                        </button>
+
+                        {exportMenuOpen && (
+                            <div className="absolute right-0 top-full mt-1 bg-[var(--surface-1)] border border-[var(--rule)] rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.3)] min-w-[160px] z-[100] overflow-hidden">
+                                {exportFormats.map((fmt) => (
+                                    <button
+                                        key={fmt.key}
+                                        onClick={() => handleExport(fmt.key)}
+                                        className="flex items-center gap-2 w-full px-3 py-2 border-none bg-transparent text-[var(--text-primary)] text-[0.85rem] cursor-pointer text-left hover:bg-[var(--accent-soft)]"
+                                    >
+                                        {fmt.icon}
+                                        {fmt.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Tab body */}
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col bg-[var(--surface-0)]">
+                {viewMode === 'report' ? (
+                    <ReportTab
+                        summary={executiveSummary}
+                        loading={summaryLoading}
+                        expanded={summaryExpanded}
+                        onToggle={() => setSummaryExpanded((p) => !p)}
+                    />
+                ) : (
+                    <NotebookTab
+                        jobId={jobId}
+                        cells={cells}
+                        cellsLoading={cellsLoading}
+                    />
+                )}
+            </div>
+        </div>
+    );
+};
+
+// ---------------------------------------------------------------------------
+// Report tab — executive summary card only.
+// ---------------------------------------------------------------------------
+
+interface ReportTabProps {
+    summary: ExecutiveSummary | null;
+    loading: boolean;
+    expanded: boolean;
+    onToggle: () => void;
+}
+
+const ReportTab: React.FC<ReportTabProps> = ({ summary, loading, expanded, onToggle }) => {
+    if (loading && !summary) {
+        return (
+            <div className="flex-1 flex items-center justify-center p-6">
+                <Spinner size="md" caption="Generating summary" />
+            </div>
+        );
+    }
+    if (!summary) {
+        return (
+            <div className="flex-1 flex flex-col items-center justify-center gap-2 p-6 text-center text-[var(--text-secondary)]">
+                <Shield size={32} className="opacity-40" />
+                <div className="text-[0.9rem]">No executive summary available for this job.</div>
+            </div>
+        );
+    }
+    return (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="border-b border-[var(--rule)]">
+                <button
+                    onClick={onToggle}
+                    className="flex items-center justify-between w-full px-4 py-3 border-none bg-transparent text-[var(--text-primary)] cursor-pointer text-[0.95rem] font-semibold"
+                >
+                    <span className="flex items-center gap-2">
+                        <Shield size={16} className="text-[var(--accent)]" />
+                        Executive Summary
+                        {summary.generated_by === 'fallback' && (
+                            <span className="text-[0.7rem] text-[var(--text-secondary)] font-normal">
+                                (extracted)
+                            </span>
+                        )}
+                    </span>
+                    {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+
+                {expanded && (
+                    <div className="px-4 pb-6 text-[0.9rem] text-[var(--text-secondary)]">
+                        {summary.summary_text && (
+                            <p className="mb-4 leading-normal [text-wrap:pretty]">
+                                {summary.summary_text}
+                            </p>
                         )}
 
-                        {/* Export dropdown — also hosts the .ipynb download
-                            so download formats sit in one menu. */}
-                        <div ref={exportMenuRef} className="relative">
-                            <button
-                                onClick={() => setExportMenuOpen(prev => !prev)}
-                                disabled={!!exportLoading}
-                                className={`flex items-center gap-1 px-2.5 py-1 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-[0.8rem] font-semibold hover:brightness-110 transition ${
-                                    exportLoading ? 'cursor-wait' : 'cursor-pointer'
-                                }`}
-                            >
-                                {exportLoading ? (
-                                    <Loader className="animate-spin" size={14} />
-                                ) : (
-                                    <Download size={14} />
-                                )}
-                                {exportLoading ? `Exporting ${exportLoading.toUpperCase()}...` : 'Export'}
-                                <ChevronDown size={12} />
-                            </button>
-
-                            {exportMenuOpen && (
-                                <div className="absolute right-0 top-full mt-1 bg-[var(--surface-1)] border border-[var(--rule)] rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.3)] min-w-[160px] z-[100] overflow-hidden">
-                                    {exportFormats.map((fmt) => (
-                                        <button
-                                            key={fmt.key}
-                                            onClick={() => handleExport(fmt.key)}
-                                            className="flex items-center gap-2 w-full px-3 py-2 border-none bg-transparent text-[var(--text-primary)] text-[0.85rem] cursor-pointer text-left hover:bg-[var(--accent-soft)]"
-                                        >
-                                            {fmt.icon}
-                                            {fmt.label}
-                                        </button>
+                        <div className="grid grid-cols-2 gap-6">
+                            <div>
+                                <h4 className="text-[11px] text-[var(--text-dim)] mb-1.5 uppercase tracking-[0.04em] font-semibold">
+                                    Key Findings
+                                </h4>
+                                <ul className="m-0 pl-4">
+                                    {summary.key_findings.map((f, i) => (
+                                        <li key={i} className="mb-1 text-[0.85rem]">{f}</li>
                                     ))}
-                                </div>
-                            )}
+                                </ul>
+                            </div>
+                            <div>
+                                <h4 className="text-[11px] text-[var(--text-dim)] mb-1.5 uppercase tracking-[0.04em] font-semibold">
+                                    Recommendations
+                                </h4>
+                                <ul className="m-0 pl-4">
+                                    {summary.recommendations.map((r, i) => (
+                                        <li key={i} className="mb-1 text-[0.85rem]">{r}</li>
+                                    ))}
+                                </ul>
+                            </div>
                         </div>
+
+                        {summary.data_quality_highlights.length > 0 && (
+                            <div className="mt-5">
+                                <h4 className="text-[11px] text-[var(--text-dim)] mb-1.5 uppercase tracking-[0.04em] font-semibold">
+                                    Data Quality
+                                </h4>
+                                <ul className="m-0 pl-4">
+                                    {summary.data_quality_highlights.map((h, i) => (
+                                        <li key={i} className="mb-1 text-[0.85rem]">{h}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
+        </div>
+    );
+};
 
-            {/* Executive Summary Card */}
-            {executiveSummary && status === 'completed' && (
-                <div className="border-b border-[var(--rule)] bg-[var(--surface-0)] shrink-0">
-                    <button
-                        onClick={() => setSummaryExpanded(prev => !prev)}
-                        className="flex items-center justify-between w-full px-4 py-3 border-none bg-transparent text-[var(--text-primary)] cursor-pointer text-[0.9rem] font-semibold"
-                    >
-                        <span className="flex items-center gap-2">
-                            <Shield size={16} className="text-[var(--accent)]" />
-                            Executive Summary
-                            {executiveSummary.generated_by === 'fallback' && (
-                                <span className="text-[0.7rem] text-[var(--text-secondary)] font-normal">
-                                    (extracted)
-                                </span>
-                            )}
-                        </span>
-                        {summaryExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    </button>
+// ---------------------------------------------------------------------------
+// Notebook tab — merged editor + sandbox + follow-up chat dock.
+// ---------------------------------------------------------------------------
 
-                    {summaryExpanded && (
-                        // Cap the expanded body height so a long key-findings
-                        // list doesn't push the notebook iframe down out of
-                        // view — the surrounding flex container is the only
-                        // scroll surface for the whole tab, and the iframe
-                        // (h-full of the remaining flex-1) needs a usable
-                        // chunk of vertical real estate to be navigable.
-                        <div className="px-4 pb-4 text-[0.88rem] text-[var(--text-secondary)] max-h-[40vh] overflow-y-auto">
-                            {executiveSummary.summary_text && (
-                                <p className="mb-3 leading-normal [text-wrap:pretty]">
-                                    {executiveSummary.summary_text.length > 500
-                                        ? executiveSummary.summary_text.slice(0, 497) + '...'
-                                        : executiveSummary.summary_text}
-                                </p>
-                            )}
+interface NotebookTabProps {
+    jobId: string;
+    cells: NotebookCellData[];
+    cellsLoading: boolean;
+}
 
-                            <div className="grid grid-cols-2 gap-4">
-                                {/* Key Findings */}
-                                <div>
-                                    <h4 className="text-[11px] text-[var(--text-dim)] mb-1.5 uppercase tracking-[0.04em] font-semibold">
-                                        Key Findings
-                                    </h4>
-                                    <ul className="m-0 pl-4">
-                                        {executiveSummary.key_findings.map((f, i) => (
-                                            <li key={i} className="mb-0.5 text-[0.82rem]">{f}</li>
-                                        ))}
-                                    </ul>
-                                </div>
+const NotebookTab: React.FC<NotebookTabProps> = ({ jobId, cells, cellsLoading }) => {
+    const seed = useMemo(
+        () => cells.map((c) => ({ cell_type: c.cell_type, source: c.source })),
+        [cells],
+    );
 
-                                {/* Recommendations */}
-                                <div>
-                                    <h4 className="text-[11px] text-[var(--text-dim)] mb-1.5 uppercase tracking-[0.04em] font-semibold">
-                                        Recommendations
-                                    </h4>
-                                    <ul className="m-0 pl-4">
-                                        {executiveSummary.recommendations.map((r, i) => (
-                                            <li key={i} className="mb-0.5 text-[0.82rem]">{r}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            </div>
+    if (cellsLoading && cells.length === 0) {
+        return (
+            <div className="flex-1 flex items-center justify-center p-6">
+                <Spinner size="md" caption="Loading cells" />
+            </div>
+        );
+    }
 
-                            {/* Data Quality */}
-                            {executiveSummary.data_quality_highlights.length > 0 && (
-                                <div className="mt-3">
-                                    <h4 className="text-[11px] text-[var(--text-dim)] mb-1.5 uppercase tracking-[0.04em] font-semibold">
-                                        Data Quality
-                                    </h4>
-                                    <ul className="m-0 pl-4">
-                                        {executiveSummary.data_quality_highlights.map((h, i) => (
-                                            <li key={i} className="mb-0.5 text-[0.82rem]">{h}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* Summary loading indicator — ambient background op while the
-                executive summary streams in. */}
-            {summaryLoading && status === 'completed' && (
-                <div className="px-4 py-2 border-b border-[var(--rule)] bg-[var(--surface-0)] shrink-0">
-                    <ProgressPill intent="accent" caption="Generating summary" />
-                </div>
-            )}
-
-            {/* Notebook Content */}
-            <div className={`relative flex-1 min-h-0 overflow-y-auto ${
-                viewMode === 'interactive' || (viewMode === 'static' && notebookTheme === 'dark')
-                    ? 'bg-[var(--surface-0)]'
-                    : 'bg-white'
-            }`}>
-                {loading && viewMode === 'static' && (
-                    <div className={`absolute inset-0 flex items-center justify-center ${
-                        notebookTheme === 'dark' ? 'bg-[var(--surface-0)]/80' : 'bg-white/80'
-                    }`}>
-                        <Loader className="animate-spin" size={32} color="var(--accent)" />
-                    </div>
-                )}
-
-                {viewMode === 'interactive' ? (
-                    cellsLoading ? (
-                        <div className="h-[200px] flex items-center justify-center">
-                            <Spinner size="md" caption="Loading cells" />
-                        </div>
-                    ) : (
-                        <div className="p-4 flex flex-col gap-1">
-                            {cells.map((cell, i) => (
-                                <InteractiveCell
-                                    key={i}
-                                    cell={cell}
-                                    index={i}
-                                    jobId={jobId}
-                                    onCellUpdate={handleCellUpdate}
-                                />
-                            ))}
-                            <FollowUpChat jobId={jobId} />
-                        </div>
-                    )
-                ) : viewMode === 'live' ? (
-                    <LivePanel
-                        jobId={jobId}
-                        initialCells={cells
-                            .filter((c) => c.cell_type === 'code')
-                            .map((c) => c.source)}
-                    />
-                ) : (
-                    error ? (
-                        <ErrorState
-                            title="Couldn't load notebook"
-                            body="Your job results are still safe — try again or check the status tab."
-                            onRetry={retryNotebook}
-                            retrying={loading}
-                            details={error}
-                        />
-                    ) : themedHtmlContent ? (
-                        <iframe
-                            key={notebookTheme}
-                            srcDoc={themedHtmlContent}
-                            className="w-full h-full border-none block"
-                            title="Notebook Results"
-                            sandbox="allow-same-origin"
-                        />
-                    ) : (
-                        <div className="p-8 text-center text-[var(--text-secondary)] bg-[var(--surface-0)] h-full flex items-center justify-center">
-                            Loading notebook preview...
-                        </div>
-                    )
-                )}
+    return (
+        <div className="flex-1 min-h-0 flex flex-col">
+            {/* Cell stack (kernel-backed editing + AI tweak) */}
+            <div className="flex-1 min-h-0">
+                <LivePanel jobId={jobId} initialNotebookCells={seed} />
+            </div>
+            {/* Follow-up chat dock at the bottom */}
+            <div className="shrink-0 border-t border-[var(--rule)] px-4 py-3">
+                <FollowUpChat jobId={jobId} />
             </div>
         </div>
     );

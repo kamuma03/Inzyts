@@ -528,6 +528,12 @@ Three RBAC tiers, hierarchical: **Admin** > **Analyst** > **Viewer**. Defined in
 - **Now:** Parses `.ipynb` into JSON list `[{cell_type, source, outputs, ...}]`.
 - **Acceptance:** Returns same cell count as `nbformat.read`.
 
+#### FR-NB-003b · `PUT /notebooks/{id}/cells` — persist edited cells back to disk — *Implemented · P1*
+- **Now:** Accepts `{cells: [{cell_type, source}, ...]}`; rewrites the on-disk `.ipynb` via `nbformat.v4.new_code_cell` / `new_markdown_cell`; preserves nbformat metadata (kernelspec, language info). Rejects cell types other than `code`/`markdown` with 422. Path validation via `_validate_notebook_path` blocks writes outside `_OUTPUT_DIR`.
+- **Target:** Per-cell version history; conflict detection if the file changed since the user loaded it.
+- **Gap:** Last-write-wins; no version history. P3.
+- **Acceptance:** (i) round-trip — cells written via PUT match those read via GET; (ii) save-then-export reflects edits in PDF/HTML/PPTX; (iii) path-traversal payloads rejected.
+
 #### FR-NB-004 · `POST /notebooks/{id}/cells/execute` — live cell execution — *Implemented · P0*
 - **Now:** Runs code in persistent kernel session; streams output via Socket.IO `cell_status`/`cell_output`/`cell_complete`; returns `{execution_id, success, error_name, error_value, duration_ms, execution_count}`. Sandbox enforced.
 - **Target:** Add SSE alternative for cells without WebSocket support.
@@ -556,9 +562,9 @@ Three RBAC tiers, hierarchical: **Admin** > **Analyst** > **Viewer**. Defined in
 - **Acceptance:** Order matches `created_at`.
 
 #### FR-CONV-003 · `POST /notebooks/{id}/cells/edit` — natural-language cell edit — *Implemented · P1*
-- **Now:** `CellEditAgent` modifies cell code from instruction; re-executes in kernel; returns `{new_code, output, images, success, error}`. Edits ephemeral (not persisted to notebook).
-- **Target:** Persistence + version history per cell (P3).
-- **Gap:** Ephemeral only. P3.
+- **Now:** `CellEditAgent` modifies cell code from instruction; re-executes in kernel; returns `{new_code, output, images, success, error}`. The Notebook tab persists tweaked cells when the user clicks **Save** (FR-NB-003b).
+- **Target:** Per-cell version history (P3).
+- **Gap:** No history. P3.
 - **Acceptance:** "Make this a pie chart" mutates a bar chart and re-renders.
 
 ### 4.11 Reporting & Export (FR-REPORT-*)

@@ -36,6 +36,8 @@ export type CellExecState = 'idle' | 'busy' | 'queued' | 'error';
 /** A single Live-panel cell row. */
 export interface LiveCell {
     id: string;
+    /** Code cells run in the kernel; markdown cells just render their source. */
+    cell_type: 'code' | 'markdown';
     code: string;
     /** Outputs accumulated from this cell's most recent execution. */
     outputs: CellOutput[];
@@ -45,6 +47,19 @@ export interface LiveCell {
     error_value: string | null;
     duration_ms: number | null;
     killed_reason: string | null;
+    /** Markdown cells toggle between rendered preview and source editor. */
+    md_editing?: boolean;
+    /** Tweak (AI-edit) UI state for code cells. */
+    tweak_open?: boolean;
+    tweak_instruction?: string;
+    tweak_status?: 'idle' | 'loading' | 'success' | 'error';
+    tweak_error?: string | null;
+}
+
+/** Seed shape used when populating the panel from a saved notebook. */
+export interface NotebookCellSeed {
+    cell_type: 'code' | 'markdown';
+    source: string;
 }
 
 /** WS payloads emitted by `src/server/services/cell_stream.py`. */

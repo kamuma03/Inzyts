@@ -1246,10 +1246,14 @@ Live cell execution runs entirely **in-process** inside the worker container —
 │                                                                      │
 │  Browser (React Frontend)                                            │
 │  ┌──────────────────────────────────────────────────────────────┐   │
-│  │ LivePanel Component                                           │   │
-│  │  ├── Cell Renderer (Markdown + Code)                          │   │
-│  │  ├── Execution Controls (Run Cell, Run All, Restart, Stop)    │   │
-│  │  └── Streaming Output Display (stdout, plots, errors)         │   │
+│  │ NotebookViewer (Report | Notebook tabs)                       │   │
+│  │  ├── Report tab: Executive Summary card only                  │   │
+│  │  └── Notebook tab: LivePanel cell stack + FollowUpChat dock   │   │
+│  │      ├── CodeMirror 6 source editor (per cell, syntax-hl)     │   │
+│  │      ├── Cell ops: insert/delete/move/type-toggle             │   │
+│  │      ├── Run / Run All / Run Above / Run Below                │   │
+│  │      ├── Tweak with AI (CellEditAgent)                        │   │
+│  │      └── Save → PUT /cells (nbformat round-trip)              │   │
 │  └──────────────────────┬───────────────────────────────────────┘   │
 │                         │ HTTP (control) + Socket.IO (output)        │
 │                         ↓                                            │
@@ -1322,6 +1326,7 @@ Each `(user, job_id)` pair gets one `KernelSession` containing the working direc
 | `/api/v2/notebooks/{job_id}/html` | GET | Render the static notebook to HTML |
 | `/api/v2/notebooks/{job_id}/download` | GET | Download the notebook (`.ipynb`) |
 | `/api/v2/notebooks/{job_id}/cells` | GET | List the cells in the live session |
+| `/api/v2/notebooks/{job_id}/cells` | PUT | Persist edited cells back to the on-disk `.ipynb` (nbformat round-trip) |
 | `/api/v2/notebooks/{job_id}/cells/execute` | POST | Run a cell, stream output via Socket.IO |
 | `/api/v2/notebooks/{job_id}/cells/restart` | POST | Restart the kernel session |
 | `/api/v2/notebooks/{job_id}/cells/interrupt` | POST | Interrupt the running cell |

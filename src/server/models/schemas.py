@@ -183,6 +183,29 @@ class CellEditResponse(BaseModel):
     error: str | None = Field(default=None, description="Error message if failed")
 
 
+class NotebookCellSaveItem(BaseModel):
+    """A single cell in a save-notebook payload — code or markdown."""
+
+    cell_type: str = Field(description="'code' or 'markdown'")
+    source: str = Field(description="Cell source content (Python or markdown)")
+
+
+class NotebookSaveRequest(BaseModel):
+    """Request schema for persisting an edited notebook back to disk."""
+
+    cells: list[NotebookCellSaveItem] = Field(
+        description="Full ordered list of cells that should replace the current notebook contents",
+    )
+
+
+class NotebookSaveResponse(BaseModel):
+    """Response schema confirming a successful save."""
+
+    job_id: str = Field(description="Job whose notebook was rewritten")
+    cell_count: int = Field(description="Number of cells written to disk")
+    path: str = Field(description="Filesystem path of the rewritten notebook")
+
+
 class FollowUpRequest(BaseModel):
     """Request schema for asking a follow-up question about an analysis."""
 
