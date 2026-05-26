@@ -85,14 +85,53 @@ class TestKernelSessionManager:
 
     def setup_method(self):
         """Reset the singleton for each test."""
-        # Reset the singleton state
+        # Reset the singleton state. Production code now constructs the
+        # singleton with an RLock (see KernelSessionManager.__new__), so we
+        # no longer need to monkey-patch it here — but we still want to stop
+        # the background cleanup daemon from racing the test body.
         KernelSessionManager._instance = None
-        # Create a fresh manager and use an RLock so that get_or_create_session
-        # (which calls cleanup_expired while already holding the lock) doesn't deadlock.
         mgr = KernelSessionManager()
-        mgr._session_lock = threading.RLock()
-        # Prevent the cleanup daemon thread from starting during tests.
         mgr._running = True
+
+    def test_session_lock_is_reentrant(self):
+        """Regression: ``get_or_create_session`` holds ``_session_lock`` and
+        then calls ``cleanup_expired`` (which also tries to acquire the same
+        lock). With a non-reentrant ``threading.Lock`` this self-deadlocks
+        and freezes the uvicorn event loop. The singleton must use RLock."""
+        manager = KernelSessionManager()
+        # Plain threading.Lock has no `_count` attribute; RLock does. Use the
+        # functional check: a reentrant lock can be acquired twice from the
+        # same thread without blocking.
+        acquired_twice = manager._session_lock.acquire(blocking=False)
+        assert acquired_twice, "_session_lock must be reentrant (RLock)"
+        manager._session_lock.acquire(blocking=False)
+        manager._session_lock.release()
+        manager._session_lock.release()
+
+    @patch('src.services.kernel_session_manager.SandboxExecutor')
+    def test_get_or_create_session_does_not_deadlock(self, mock_executor_class):
+        """Regression: a fresh manager must complete get_or_create_session
+        without blocking on cleanup_expired's re-entry into the lock.
+        Bounded by a thread + timeout so a regression fails loudly instead
+        of hanging the suite."""
+        mock_executor = MagicMock()
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.output = "Loaded"
+        mock_executor.execute_cell.return_value = mock_result
+        mock_executor_class.return_value = mock_executor
+
+        manager = KernelSessionManager()
+        result: list = []
+
+        def call() -> None:
+            result.append(manager.get_or_create_session("job-deadlock", "/data/x.csv"))
+
+        t = threading.Thread(target=call, daemon=True)
+        t.start()
+        t.join(timeout=5)
+        assert not t.is_alive(), "get_or_create_session deadlocked"
+        assert len(result) == 1 and result[0].job_id == "job-deadlock"
 
     @patch('src.services.kernel_session_manager.SandboxExecutor')
     def test_get_or_create_session(self, mock_executor_class):

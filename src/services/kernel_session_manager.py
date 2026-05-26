@@ -223,7 +223,13 @@ class KernelSessionManager:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
                     cls._instance._sessions: Dict[str, KernelSession] = {}
-                    cls._instance._session_lock = threading.Lock()
+                    # Reentrant lock — get_or_create_session legitimately
+                    # calls cleanup_expired (and other helpers) from inside
+                    # its own ``with self._session_lock`` block. A plain
+                    # ``threading.Lock`` would self-deadlock on the second
+                    # acquire and freeze the request handler indefinitely,
+                    # taking the entire uvicorn event loop with it.
+                    cls._instance._session_lock = threading.RLock()
                     cls._instance._cleanup_thread: Optional[threading.Thread] = None
                     cls._instance._running = False
         return cls._instance
