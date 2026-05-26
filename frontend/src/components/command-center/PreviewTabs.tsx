@@ -1,6 +1,6 @@
 import { type FC, type ReactNode } from 'react';
 
-export type PreviewTabId = 'overview' | 'visual' | 'code' | 'data' | 'logs' | 'events';
+export type PreviewTabId = 'overview' | 'data' | 'report' | 'notebook' | 'logs' | 'events';
 
 export interface PreviewTabDef<T extends PreviewTabId = PreviewTabId> {
     id: T;

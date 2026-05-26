@@ -82,7 +82,7 @@
 - **Exclude Columns**: Filter out PII or irrelevant columns from analysis.
 
 ### ⚡ Interactive
-- **Two-Surface Results View**: Each completed job exposes a **Report** tab (executive summary only — key findings, recommendations, data quality) and a **Notebook** tab (full Jupyter-style cell stack — see below).
+- **Four-Tab Command Center**: Each job exposes **Overview**, **Data**, **Report**, and **Notebook** as top-level Results sub-tabs (keyboard shortcuts `1`–`4`). The Report tab is the executive summary (key findings, recommendations, data quality); the Notebook tab is the full Jupyter-style cell stack (see below). While the job is still running, the Notebook tab shows a live stream of the source the codegen agents are producing.
 - **Jupyter-Style Notebook Editor**: Code + markdown cells, syntax-highlighted via **CodeMirror 6**, with per-cell **Run** (Shift+Enter / Ctrl+Enter), **Tweak with AI** (natural-language cell rewrite via CellEditAgent), **Run All / Above / Below**, **insert above/below**, **move up/down**, **delete**, and **code ↔ markdown toggle**. Markdown cells render inline; double-click to edit.
 - **Save Back to `.ipynb`**: Edited cells persist to the on-disk notebook via `PUT /api/v2/notebooks/{id}/cells` — Save button surfaces an "Unsaved" indicator and confirms with a transient "Saved" flash. Subsequent exports (PDF/HTML/PPTX) reflect saved edits.
 - **Conversational Follow-Up Analysis**: Ask follow-up questions ("Why is Cluster 2 the largest?") and get new analysis cells generated, executed, and rendered inline beneath the cell stack. Conversations persist across server restarts.

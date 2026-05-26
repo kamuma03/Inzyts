@@ -12,8 +12,8 @@ import {
     type PreviewTabDef,
 } from './PreviewTabs';
 import { OverviewPanel } from './panels/OverviewPanel';
-import { VisualPanel } from './panels/VisualPanel';
-import { CodePanel } from './panels/CodePanel';
+import { NotebookPanel } from './panels/NotebookPanel';
+import { ReportPanel } from './panels/ReportPanel';
 import { DataPanel } from './panels/DataPanel';
 import { LogsPanel } from './panels/LogsPanel';
 import { TrafficRow } from './TrafficRow';
@@ -25,14 +25,14 @@ interface CommandCenterViewProps {
 }
 
 type TopTab = 'results' | 'run';
-type ResultsSubTab = Extract<PreviewTabId, 'overview' | 'visual' | 'code' | 'data'>;
+type ResultsSubTab = Extract<PreviewTabId, 'overview' | 'data' | 'report' | 'notebook'>;
 type RunSubTab = Extract<PreviewTabId, 'logs' | 'events'>;
 
 const RESULTS_TABS: { id: ResultsSubTab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
-    { id: 'visual', label: 'Visual' },
-    { id: 'code', label: 'Code' },
     { id: 'data', label: 'Data' },
+    { id: 'report', label: 'Report' },
+    { id: 'notebook', label: 'Notebook' },
 ];
 
 const RUN_TABS: { id: RunSubTab; label: string }[] = [
@@ -41,7 +41,7 @@ const RUN_TABS: { id: RunSubTab; label: string }[] = [
 ];
 
 const DEFAULT_RESULTS_TAB_FOR_STATUS = (status: string): ResultsSubTab =>
-    status === 'completed' ? 'visual' : 'overview';
+    status === 'completed' ? 'report' : 'overview';
 
 /** Top-level analyst surface. Two top-level groups ("Results" and "Run")
  *  split the original six tabs into "what came out" vs "how it ran".
@@ -88,9 +88,9 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
         {
             escape: () => setSelectedColumn(null),
             '1': () => goResults('overview'),
-            '2': () => goResults('visual'),
-            '3': () => goResults('code'),
-            '4': () => goResults('data'),
+            '2': () => goResults('data'),
+            '3': () => goResults('report'),
+            '4': () => goResults('notebook'),
             '5': () => goRun('logs'),
             '6': () => goRun('events'),
             'cmd+enter': handleRerun,
@@ -99,28 +99,18 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
         { enabled: true },
     );
 
-    const codeStreaming = !isCompleted;
+    const notebookStreaming = !isCompleted;
     const resultsTabsWithBadges: PreviewTabDef<ResultsSubTab>[] = RESULTS_TABS.map((t) => {
-        if (t.id === 'code') {
+        if (t.id === 'notebook' && notebookStreaming) {
             return {
                 ...t,
                 badge: (
-                    <span
-                        className={`inline-flex items-center gap-1 px-1 py-px text-[11px] uppercase tracking-[0.04em] rounded ${
-                            codeStreaming
-                                ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
-                                : 'bg-[rgba(52,211,153,0.12)] text-[var(--ok)]'
-                        }`}
-                    >
+                    <span className="inline-flex items-center gap-1 px-1 py-px text-[11px] uppercase tracking-[0.04em] rounded bg-[var(--accent-soft)] text-[var(--accent)]">
                         <span
-                            className={`inline-block w-1.5 h-1.5 rounded-full ${codeStreaming ? 'animate-pulse' : ''}`}
-                            style={{
-                                backgroundColor: codeStreaming
-                                    ? 'var(--accent)'
-                                    : 'var(--ok)',
-                            }}
+                            className="inline-block w-1.5 h-1.5 rounded-full animate-pulse"
+                            style={{ backgroundColor: 'var(--accent)' }}
                         />
-                        {codeStreaming ? 'streaming' : 'ready'}
+                        streaming
                     </span>
                 ),
             };
@@ -199,9 +189,9 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
                                         onSelectColumn={setSelectedColumn}
                                     />
                                 ),
-                                visual: <VisualPanel job={job} />,
-                                code: <CodePanel job={job} events={events} />,
                                 data: <DataPanel jobId={job.id} />,
+                                report: <ReportPanel job={job} />,
+                                notebook: <NotebookPanel job={job} events={events} />,
                             }}
                         </PreviewTabPanels>
                     </div>

@@ -1246,9 +1246,10 @@ Live cell execution runs entirely **in-process** inside the worker container —
 │                                                                      │
 │  Browser (React Frontend)                                            │
 │  ┌──────────────────────────────────────────────────────────────┐   │
-│  │ NotebookViewer (Report | Notebook tabs)                       │   │
-│  │  ├── Report tab: Executive Summary card only                  │   │
-│  │  └── Notebook tab: LivePanel cell stack + FollowUpChat dock   │   │
+│  │ Command Center Results tabs: Overview | Data | Report | Notebook │
+│  │  ├── ReportPanel: Executive Summary card                      │   │
+│  │  └── NotebookPanel: streaming source while running;           │   │
+│  │       NotebookViewer + LivePanel + FollowUpChat when complete │   │
 │  │      ├── CodeMirror 6 source editor (per cell, syntax-hl)     │   │
 │  │      ├── Cell ops: insert/delete/move/type-toggle             │   │
 │  │      ├── Run / Run All / Run Above / Run Below                │   │
