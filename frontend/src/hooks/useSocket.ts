@@ -69,10 +69,19 @@ export const useSocket = (jobId: string | null, handlers?: UseSocketHandlers) =>
         // Use sessionStorage consistently with api.ts — cleared on tab/browser close.
         const token = sessionStorage.getItem('inzyts_jwt_token');
 
+        // Auth: prefer the Socket.IO `auth` payload over `extraHeaders`.
+        // Browsers cannot set custom headers on the WebSocket handshake, so
+        // `extraHeaders` is silently dropped when `transports: ['websocket']`
+        // is used — auth then fails server-side and no events ever reach the
+        // client. The `auth` option travels in the engine.io connect payload
+        // instead, so it works regardless of transport (and the server reads
+        // it from the third arg of its `connect` event handler). We keep
+        // extraHeaders too so Node-based test clients can still authenticate.
         const socket = io(getSocketUrl(), {
             transports: ['websocket'],
             timeout: 10000,
-            extraHeaders: token?.trim() ? { Authorization: `Bearer ${token}` } : undefined
+            auth: token?.trim() ? { token } : undefined,
+            extraHeaders: token?.trim() ? { Authorization: `Bearer ${token}` } : undefined,
         });
 
         socketRef.current = socket;

@@ -19,35 +19,39 @@ socket_app = socketio.ASGIApp(sio, socketio_path="")
 
 
 @sio.event
-async def connect(sid, environ):
-    """Authenticate the WebSocket connection and store user identity on the session."""
+async def connect(sid, environ, auth=None):
+    """Authenticate the WebSocket connection and store user identity on the session.
+
+    Reads the bearer token from any of:
+      1. The Socket.IO ``auth`` payload (preferred — works for both polling and
+         WebSocket transports, including from browsers where custom headers
+         on the WS handshake are blocked by the User-Agent).
+      2. The ``Authorization: Bearer …`` header in the WSGI-style environ
+         (works for polling, and for Node/test clients that bypass the
+         browser's WS header restriction).
+      3. The raw ASGI scope headers (defensive fallback for future
+         python-socketio / engineio changes).
+    """
     token = None
 
-    # Extract the Authorization header from the environ dict.
-    #
-    # python-socketio 5.x + python-engineio's ASGI translate_request() converts
-    # the raw ASGI scope into a WSGI-style environ dict where HTTP headers
-    # become "HTTP_<UPPER_NAME>" keys (e.g. HTTP_AUTHORIZATION).  The original
-    # ASGI scope is also available at environ["asgi.scope"]["headers"] as a
-    # list of (bytes, bytes) tuples.
-    #
-    # We check all three locations for robustness:
-    #   1. WSGI-style key (primary — always present via translate_request)
-    #   2. ASGI scope headers (fallback)
-    #   3. Direct "headers" key (in case of future socketio changes)
-    auth_header = environ.get("HTTP_AUTHORIZATION", "")
+    # 1. Socket.IO auth payload — the recommended path for browser clients.
+    if isinstance(auth, dict):
+        candidate = auth.get("token")
+        if isinstance(candidate, str) and candidate.strip():
+            token = candidate.strip()
 
-    if not auth_header:
-        # Fallback: read from raw ASGI scope headers
-        raw_headers = environ.get("asgi.scope", {}).get("headers", [])
-        for k, v in raw_headers:
-            key = k.decode("latin-1").lower() if isinstance(k, bytes) else k.lower()
-            if key == "authorization":
-                auth_header = v.decode("latin-1") if isinstance(v, bytes) else v
-                break
-
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header.split(" ")[1]
+    # 2 + 3. Authorization header fallbacks.
+    if not token:
+        auth_header = environ.get("HTTP_AUTHORIZATION", "")
+        if not auth_header:
+            raw_headers = environ.get("asgi.scope", {}).get("headers", [])
+            for k, v in raw_headers:
+                key = k.decode("latin-1").lower() if isinstance(k, bytes) else k.lower()
+                if key == "authorization":
+                    auth_header = v.decode("latin-1") if isinstance(v, bytes) else v
+                    break
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ", 1)[1]
 
     if not token:
         logger.warning(f"Unauthorized WebSocket connection attempt: {sid} (No token)")

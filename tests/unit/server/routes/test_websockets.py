@@ -142,6 +142,85 @@ async def test_connect_non_bearer_token(mock_verify_token_async, mock_async_sess
     }
     assert await connect("sid-123", environ) is False
 
+
+# -- auth-payload paths (browser clients use Socket.IO's `auth` option
+#    because browsers can't set custom headers on WS handshakes) ----------
+
+@pytest.mark.asyncio
+async def test_connect_with_auth_payload_valid(mock_verify_token_async, mock_async_session_maker, mock_sio_save_session):
+    """Browser path: token arrives via Socket.IO's auth payload (the
+    third arg of the connect event), not via HTTP headers."""
+    environ = {"QUERY_STRING": "", "asgi.scope": {"headers": []}}
+    auth = {"token": "auth_payload_token"}
+    mock_user = MagicMock()
+    mock_user.username = "testuser"
+    mock_verify_token_async.return_value = mock_user
+
+    result = await connect("sid-123", environ, auth)
+    assert result is None
+    mock_verify_token_async.assert_called_once()
+    assert mock_verify_token_async.call_args[0][0] == "auth_payload_token"
+
+
+@pytest.mark.asyncio
+async def test_connect_with_auth_payload_invalid(mock_verify_token_async, mock_async_session_maker):
+    """An auth payload with a bad token is rejected the same way as a bad
+    header."""
+    environ = {"QUERY_STRING": "", "asgi.scope": {"headers": []}}
+    auth = {"token": "bad_token"}
+    mock_verify_token_async.return_value = None
+    assert await connect("sid-123", environ, auth) is False
+
+
+@pytest.mark.asyncio
+async def test_connect_auth_payload_takes_precedence_over_header(mock_verify_token_async, mock_async_session_maker, mock_sio_save_session):
+    """If both auth payload and header are present, the auth payload wins
+    — it's the path the browser uses, so it should be the source of truth
+    when available."""
+    environ = {
+        "QUERY_STRING": "",
+        "HTTP_AUTHORIZATION": "Bearer header_token",
+    }
+    auth = {"token": "auth_payload_token"}
+    mock_user = MagicMock()
+    mock_user.username = "testuser"
+    mock_verify_token_async.return_value = mock_user
+
+    await connect("sid-123", environ, auth)
+    assert mock_verify_token_async.call_args[0][0] == "auth_payload_token"
+
+
+@pytest.mark.asyncio
+async def test_connect_no_auth_payload_falls_back_to_header(mock_verify_token_async, mock_async_session_maker, mock_sio_save_session):
+    """If no auth payload is passed (None or empty), the header path still
+    works — preserves backward compat with Node clients and tests."""
+    environ = {
+        "QUERY_STRING": "",
+        "HTTP_AUTHORIZATION": "Bearer header_only_token",
+    }
+    mock_user = MagicMock()
+    mock_user.username = "testuser"
+    mock_verify_token_async.return_value = mock_user
+
+    await connect("sid-123", environ, None)
+    assert mock_verify_token_async.call_args[0][0] == "header_only_token"
+
+
+@pytest.mark.asyncio
+async def test_connect_empty_auth_payload_token_falls_back_to_header(mock_verify_token_async, mock_async_session_maker, mock_sio_save_session):
+    """An auth payload with a blank token shouldn't shadow a valid header."""
+    environ = {
+        "QUERY_STRING": "",
+        "HTTP_AUTHORIZATION": "Bearer header_token",
+    }
+    auth = {"token": "   "}  # whitespace only
+    mock_user = MagicMock()
+    mock_user.username = "testuser"
+    mock_verify_token_async.return_value = mock_user
+
+    await connect("sid-123", environ, auth)
+    assert mock_verify_token_async.call_args[0][0] == "header_token"
+
 @pytest.mark.asyncio
 async def test_disconnect():
     await disconnect("sid-123")
