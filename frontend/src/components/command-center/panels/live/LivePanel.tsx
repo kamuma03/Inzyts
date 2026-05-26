@@ -172,13 +172,56 @@ export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells, initialNote
             killed_reason: null,
         });
         try {
-            await AnalysisAPI.executeLiveCell(jobId, cell.code, execId);
+            // The /cells/execute response carries the aggregate outcome
+            // (success, error_name/value, execution_count, duration_ms). We
+            // use it as a fallback to finalize the cell when the Socket.IO
+            // stream is unreachable (e.g. Redis pubsub down, dev proxy not
+            // forwarding WS) — otherwise the cell would hang in `queued`
+            // even after the kernel finished.
+            const res = await AnalysisAPI.executeLiveCell(jobId, cell.code, execId);
+            // Don't delete the execution mapping here — WS cell_complete may
+            // still arrive after the HTTP response (and is the canonical
+            // cleanup point). The mapping naturally evaporates when
+            // cell_complete fires.
+            setCells((prev) => prev.map((c) => {
+                if (c.id !== cellId) return c;
+                // If a WS cell_complete already finalized the cell, leave
+                // it alone — the live stream is authoritative when present.
+                if (c.state !== 'queued' && c.state !== 'busy') return c;
+                const finalized: Partial<LiveCell> = {
+                    state: res.success ? 'idle' : 'error',
+                    execution_count: res.execution_count,
+                    error_name: res.error_name,
+                    error_value: res.error_value,
+                    duration_ms: res.duration_ms,
+                    killed_reason: res.killed_reason,
+                };
+                // If we never received any cell_output events but the run
+                // produced an error, synthesise an error output so the user
+                // sees what went wrong instead of an empty cell.
+                if (!res.success && c.outputs.length === 0 && (res.error_name || res.error_value)) {
+                    finalized.outputs = [{
+                        output_type: 'error',
+                        ename: res.error_name ?? 'Error',
+                        evalue: res.error_value ?? '',
+                        traceback: [],
+                    }];
+                }
+                return { ...c, ...finalized };
+            }));
         } catch (e) {
             executionToCellRef.current.delete(execId);
+            const msg = e instanceof Error ? e.message : String(e);
             updateCell(cellId, {
                 state: 'error',
                 error_name: 'RequestFailed',
-                error_value: e instanceof Error ? e.message : String(e),
+                error_value: msg,
+                outputs: [{
+                    output_type: 'error',
+                    ename: 'RequestFailed',
+                    evalue: msg,
+                    traceback: [],
+                }],
             });
         }
     }, [cells, jobId, updateCell]);
@@ -312,13 +355,43 @@ export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells, initialNote
                 killed_reason: null,
             });
             try {
-                await AnalysisAPI.executeLiveCell(jobId, c.code, execId);
+                const res = await AnalysisAPI.executeLiveCell(jobId, c.code, execId);
+                // Same HTTP fallback as runCell — see comment there. Mapping
+                // is kept so late WS events still resolve.
+                setCells((prev) => prev.map((cell) => {
+                    if (cell.id !== c.id) return cell;
+                    if (cell.state !== 'queued' && cell.state !== 'busy') return cell;
+                    const finalized: Partial<LiveCell> = {
+                        state: res.success ? 'idle' : 'error',
+                        execution_count: res.execution_count,
+                        error_name: res.error_name,
+                        error_value: res.error_value,
+                        duration_ms: res.duration_ms,
+                        killed_reason: res.killed_reason,
+                    };
+                    if (!res.success && cell.outputs.length === 0 && (res.error_name || res.error_value)) {
+                        finalized.outputs = [{
+                            output_type: 'error',
+                            ename: res.error_name ?? 'Error',
+                            evalue: res.error_value ?? '',
+                            traceback: [],
+                        }];
+                    }
+                    return { ...cell, ...finalized };
+                }));
             } catch (e) {
                 executionToCellRef.current.delete(execId);
+                const msg = e instanceof Error ? e.message : String(e);
                 updateCell(c.id, {
                     state: 'error',
                     error_name: 'RequestFailed',
-                    error_value: e instanceof Error ? e.message : String(e),
+                    error_value: msg,
+                    outputs: [{
+                        output_type: 'error',
+                        ename: 'RequestFailed',
+                        evalue: msg,
+                        traceback: [],
+                    }],
                 });
             }
         }
@@ -424,16 +497,31 @@ export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells, initialNote
         }
     }, [cells, jobId, updateCell]);
 
-    // Re-sync cells when the parent supplies a different initial set
-    // (e.g., user navigates between jobs).
+    // Re-sync cells when the parent supplies a different initial set.
+    //  - jobId change                                → always reset
+    //  - seed arrives async (was empty, now populated) → seed once
+    //  - subsequent prop changes                     → preserve user edits
+    const seededRef = useRef(false);
     useEffect(() => {
-        if ((initialNotebookCells?.length ?? 0) === 0 && (initialCells?.length ?? 0) === 0) return;
+        // jobId switch resets the seeded marker so the next non-empty seed
+        // re-applies cleanly.
+        seededRef.current = false;
+        setDirty(false);
+        setSaveStatus('idle');
+        setSaveError(null);
+    }, [jobId]);
+    useEffect(() => {
+        const haveSeed =
+            (initialNotebookCells?.length ?? 0) > 0 ||
+            (initialCells?.length ?? 0) > 0;
+        if (!haveSeed || seededRef.current) return;
         setCells(seedToCells(initialCells, initialNotebookCells));
         executionToCellRef.current.clear();
         setDirty(false);
         setSaveStatus('idle');
         setSaveError(null);
-    }, [jobId]);  // eslint-disable-line react-hooks/exhaustive-deps
+        seededRef.current = true;
+    }, [initialNotebookCells, initialCells]);
 
     // -- Save back to .ipynb -----------------------------------------------
 

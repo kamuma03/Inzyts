@@ -471,6 +471,44 @@ describe('LivePanel', () => {
         });
     });
 
+    it('finalizes the cell from the HTTP response when no WS cell_complete arrives', async () => {
+        // Simulates the WS pubsub being unreachable: /cells/execute resolves
+        // with a success aggregate, but no cell_status/output/complete events
+        // ever fire. The cell must not hang in queued.
+        render(<LivePanel jobId="job-1" initialCells={['1 + 1']} />);
+        await act(async () => {
+            fireEvent.click(screen.getByLabelText('Run cell'));
+        });
+
+        await waitFor(() => {
+            // [1] = the execution_count from the mocked HTTP response.
+            expect(screen.getByText(/^\[1\]$/)).toBeInTheDocument();
+        });
+        // The Stop button is gone — cell is back to idle even without WS.
+        expect(screen.queryByLabelText('Stop cell')).not.toBeInTheDocument();
+        expect(screen.getByLabelText('Run cell')).toBeInTheDocument();
+    });
+
+    it('surfaces an error output when HTTP says the cell failed and WS delivered nothing', async () => {
+        const mock = AnalysisAPI.executeLiveCell as ReturnType<typeof vi.fn>;
+        mock.mockResolvedValueOnce({
+            execution_id: 'exec-x',
+            success: false,
+            error_name: 'NameError',
+            error_value: "name 'foo' is not defined",
+            duration_ms: 7,
+            killed_reason: null,
+            execution_count: null,
+        });
+        render(<LivePanel jobId="job-1" initialCells={['foo']} />);
+        await act(async () => {
+            fireEvent.click(screen.getByLabelText('Run cell'));
+        });
+        await waitFor(() => {
+            expect(screen.getByText(/NameError: name 'foo' is not defined/)).toBeInTheDocument();
+        });
+    });
+
     it('Run all button fires executeLiveCell once per code cell, skipping markdown', async () => {
         render(
             <LivePanel
