@@ -52,6 +52,9 @@ def make_state(**overrides):
     # Orchestrator→profiler handoff field (read by data_profiler_node); default
     # to None so tests that don't exercise it don't need to set it explicitly.
     state.profiler_handoff = None
+    # Phase-2 rollback snapshot baseline (read by analysis_validator_node's
+    # best-score check); mirrors the real AnalysisState default of 0.0.
+    state.phase2_best_score = 0.0
     for k, v in overrides.items():
         setattr(state, k, v)
     return state

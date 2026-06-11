@@ -15,7 +15,7 @@ The workflow supports:
 
 import time
 from contextlib import contextmanager
-from functools import lru_cache
+from functools import lru_cache, wraps
 from typing import Any, Dict, Iterator, Literal
 
 from langgraph.graph import END, StateGraph
@@ -96,141 +96,133 @@ def _track(
 # ============================================================================
 # Node Functions
 # ============================================================================
+#
+# Most nodes share one scaffold: resolve an agent, run it under ``_track`` (so
+# its token cost is attributed even on failure), convert an uncaught exception
+# into a ``"<Label> Crash: …"`` entry on ``errors``, and log execution time.
+# ``@_node`` factors that out; a decorated body receives ``(state, agent)`` and
+# returns the dict of state updates to merge (token totals are added by _track).
 
 
-def initialize_node(state: AnalysisState) -> Dict[str, Any]:
+def _node(agent, phase: Phase, label: str):
+    """Wrap a node body with the shared agent/track/error/timing scaffold.
+
+    ``agent`` is the agent name, or a callable ``(state) -> name`` for nodes that
+    pick an agent by pipeline mode. ``label`` produces the ``"<label> Crash"``
+    error text on an uncaught exception (kept identical to the pre-refactor
+    messages that routing and tests rely on).
+    """
+
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(state: AnalysisState) -> Dict[str, Any]:
+            start_time = time.time()
+            agent_name = agent(state) if callable(agent) else agent
+            agent_instance = AgentFactory.get_agent(agent_name)
+            with _track(agent_instance, state, phase) as updates:
+                try:
+                    body_updates = fn(state, agent_instance)
+                    if isinstance(body_updates, dict):
+                        updates.update(body_updates)
+                except Exception as e:
+                    logger.critical(f"{label} Node crashed: {e}", exc_info=True)
+                    updates["errors"] = state.errors + [f"{label} Crash: {str(e)}"]
+            logger.log_execution_time(fn.__name__, time.time() - start_time)
+            return updates
+
+        return wrapper
+
+    return decorator
+
+
+@_node("orchestrator", "phase1", "Initialize")
+def initialize_node(state: AnalysisState, agent: Any) -> Dict[str, Any]:
     """Initialize the workflow execution (Orchestrator setup → Phase 1)."""
-    start_time = time.time()
-    orchestrator = AgentFactory.get_agent("orchestrator")
-    with _track(orchestrator, state, "phase1") as updates:
-        try:
-            result = orchestrator.process(
-                state,
-                action="initialize",
-                csv_path=state.csv_path,
-                user_intent=state.user_intent.model_dump() if state.user_intent else None,
-                mode=state.pipeline_mode,
-                use_cache=state.using_cached_profile,
-            )
-            if isinstance(result, dict):
-                updates.update(result)
-        except Exception as e:
-            logger.critical(f"Initialize Node crashed: {e}", exc_info=True)
-            updates["errors"] = state.errors + [f"Initialize Crash: {str(e)}"]
-    logger.log_execution_time("initialize_node", time.time() - start_time)
-    return updates
+    result = agent.process(
+        state,
+        action="initialize",
+        csv_path=state.csv_path,
+        user_intent=state.user_intent.model_dump() if state.user_intent else None,
+        mode=state.pipeline_mode,
+        use_cache=state.using_cached_profile,
+    )
+    return result if isinstance(result, dict) else {}
 
 
-def restore_cache_node(state: AnalysisState) -> Dict[str, Any]:
+@_node("orchestrator", "phase1", "RestoreCache")
+def restore_cache_node(state: AnalysisState, agent: Any) -> Dict[str, Any]:
     """Unlock the workflow using a cached profile."""
-    start_time = time.time()
-    orchestrator = AgentFactory.get_agent("orchestrator")
-    with _track(orchestrator, state, "phase1") as updates:
-        try:
-            result = orchestrator.process(state, action="restore_cache")
-            if isinstance(result, dict):
-                updates.update(result)
-        except Exception as e:
-            logger.critical(f"RestoreCache Node crashed: {e}", exc_info=True)
-            updates["errors"] = state.errors + [f"RestoreCache Crash: {str(e)}"]
-    logger.log_execution_time("restore_cache_node", time.time() - start_time)
-    return updates
+    result = agent.process(state, action="restore_cache")
+    return result if isinstance(result, dict) else {}
 
 
-def create_phase1_handoff_node(state: AnalysisState) -> Dict[str, Any]:
+@_node("orchestrator", "phase1", "Phase1Handoff")
+def create_phase1_handoff_node(state: AnalysisState, agent: Any) -> Dict[str, Any]:
     """Orchestrator packages CSV preview + intent for the Data Profiler."""
-    start_time = time.time()
-    orchestrator = AgentFactory.get_agent("orchestrator")
-    with _track(orchestrator, state, "phase1") as updates:
-        try:
-            result = orchestrator.process(state, action="phase1_handoff")
-            if isinstance(result, dict):
-                updates.update(result)
-        except Exception as e:
-            logger.critical(f"Phase1Handoff Node crashed: {e}", exc_info=True)
-            updates["errors"] = state.errors + [f"Phase1Handoff Crash: {str(e)}"]
-    logger.log_execution_time("create_phase1_handoff_node", time.time() - start_time)
-    return updates
+    result = agent.process(state, action="phase1_handoff")
+    return result if isinstance(result, dict) else {}
 
 
-def data_profiler_node(state: AnalysisState) -> Dict[str, Any]:
+@_node("data_profiler", "phase1", "DataProfiler")
+def data_profiler_node(state: AnalysisState, agent: Any) -> Dict[str, Any]:
     """Run the Data Profiler — type/quality EDA → ProfilerToCodeGenHandoff."""
-    start_time = time.time()
-    data_profiler = AgentFactory.get_agent("data_profiler")
     # Use the orchestrator's handoff (CSV preview + extended metadata), not the
     # profiler's own previous output — they are different handoff types. Reading
     # profiler_outputs[-1] here fed the profiler a ProfilerToCodeGenHandoff on
     # retries and crashed on its missing is_multi_file attribute.
-    in_handoff = state.profiler_handoff
-    with _track(data_profiler, state, "phase1") as updates:
-        try:
-            result = data_profiler.process(state, handoff=in_handoff)
-            outputs = list(state.profiler_outputs)
-            if result.get("handoff"):
-                outputs.append(result["handoff"])
-            updates["profiler_outputs"] = outputs
-            if result.get("updated_csv_path"):
-                updates["csv_path"] = result["updated_csv_path"]
-            logger.log_execution_time("data_profiler_node", time.time() - start_time)
-        except Exception as e:
-            logger.log_execution_time("data_profiler_node (FAILED)", time.time() - start_time)
-            logger.critical(f"DataProfiler Node crashed: {e}", exc_info=True)
-            updates["errors"] = state.errors + [f"DataProfiler Crash: {str(e)}"]
+    result = agent.process(state, handoff=state.profiler_handoff)
+    outputs = list(state.profiler_outputs)
+    if result.get("handoff"):
+        outputs.append(result["handoff"])
+    updates: Dict[str, Any] = {"profiler_outputs": outputs}
+    if result.get("updated_csv_path"):
+        updates["csv_path"] = result["updated_csv_path"]
     return updates
 
 
-def profile_codegen_node(state: AnalysisState) -> Dict[str, Any]:
+@_node("profile_codegen", "phase1", "ProfileCodeGen")
+def profile_codegen_node(state: AnalysisState, agent: Any) -> Dict[str, Any]:
     """Run the Profile Code Generator — spec → notebook cells."""
-    start_time = time.time()
     spec = state.profiler_outputs[-1] if state.profiler_outputs else None
-    profile_codegen = AgentFactory.get_agent("profile_codegen")
-    with _track(profile_codegen, state, "phase1") as updates:
-        try:
-            result = profile_codegen.process(state, specification=spec)
-            code_outputs = list(state.profile_code_outputs)
-            if result.get("handoff"):
-                code_outputs.append(result["handoff"])
-            updates["profile_code_outputs"] = code_outputs
-            updates["phase1_iteration"] = state.phase1_iteration + 1
-            logger.log_execution_time("profile_codegen_node", time.time() - start_time)
-        except Exception as e:
-            logger.log_execution_time("profile_codegen_node (FAILED)", time.time() - start_time)
-            updates["errors"] = state.errors + [f"ProfileCodeGen Crash: {str(e)}"]
-    return updates
+    result = agent.process(state, specification=spec)
+    code_outputs = list(state.profile_code_outputs)
+    if result.get("handoff"):
+        code_outputs.append(result["handoff"])
+    return {
+        "profile_code_outputs": code_outputs,
+        "phase1_iteration": state.phase1_iteration + 1,
+    }
 
 
-def profile_validator_node(state: AnalysisState) -> Dict[str, Any]:
+@_node("profile_validator", "phase1", "ProfileValidator")
+def profile_validator_node(state: AnalysisState, agent: Any) -> Dict[str, Any]:
     """Run the Profile Validator — sandbox-execute, score, possibly lock."""
-    profile_validator = AgentFactory.get_agent("profile_validator")
     code_handoff = state.profile_code_outputs[-1] if state.profile_code_outputs else None
-    with _track(profile_validator, state, "phase1") as updates:
-        try:
-            result = profile_validator.process(state, code_handoff=code_handoff)
+    result = agent.process(state, code_handoff=code_handoff)
 
-            reports = list(state.profile_validation_reports)
-            if result.get("report"):
-                reports.append(result["report"])
+    reports = list(state.profile_validation_reports)
+    if result.get("report"):
+        reports.append(result["report"])
 
-            trajectory = list(state.phase1_quality_trajectory)
-            trajectory.append(result.get("quality_score", 0.0))
+    trajectory = list(state.phase1_quality_trajectory)
+    trajectory.append(result.get("quality_score", 0.0))
 
-            profile_lock = state.profile_lock
-            if result.get("should_lock"):
-                profile_lock.grant_lock(
-                    cells=code_handoff.cells if code_handoff else [],
-                    handoff=result.get("strategy_handoff"),
-                    quality_score=result.get("quality_score", 0.0),
-                    report=result.get("report"),
-                    iteration=state.phase1_iteration,
-                )
+    profile_lock = state.profile_lock
+    if result.get("should_lock"):
+        profile_lock.grant_lock(
+            cells=code_handoff.cells if code_handoff else [],
+            handoff=result.get("strategy_handoff"),
+            quality_score=result.get("quality_score", 0.0),
+            report=result.get("report"),
+            iteration=state.phase1_iteration,
+        )
 
-            updates["profile_validation_reports"] = reports
-            updates["phase1_quality_trajectory"] = trajectory
-            updates["issue_frequency"] = update_issue_frequency(state, result.get("issues", []))
-            updates["profile_lock"] = profile_lock
-        except Exception as e:
-            updates["errors"] = state.errors + [f"ProfileValidator Crash: {str(e)}"]
-    return updates
+    return {
+        "profile_validation_reports": reports,
+        "phase1_quality_trajectory": trajectory,
+        "issue_frequency": update_issue_frequency(state, result.get("issues", [])),
+        "profile_lock": profile_lock,
+    }
 
 
 _EXTENSION_AGENTS = {
@@ -350,95 +342,75 @@ _STRATEGY_AGENTS = {
 }
 
 
-def strategy_node(state: AnalysisState) -> Dict[str, Any]:
+@_node(lambda state: _STRATEGY_AGENTS.get(state.pipeline_mode, "strategy"), "phase2", "Strategy")
+def strategy_node(state: AnalysisState, agent: Any) -> Dict[str, Any]:
     """Run the Strategy Agent (mode-specific) over the locked profile."""
-    start_time = time.time()
-    agent_name = _STRATEGY_AGENTS.get(state.pipeline_mode, "strategy")
-    agent = AgentFactory.get_agent(agent_name)
     profile_handoff = state.profile_lock.get_locked_handoff()
-    with _track(agent, state, "phase2") as updates:
-        try:
-            result = agent.process(state, profile_handoff=profile_handoff)
-            outputs = list(state.strategy_outputs)
-            if result.get("handoff"):
-                outputs.append(result["handoff"])
-            updates["strategy_outputs"] = outputs
-            updates["phase2_iteration"] = state.phase2_iteration + 1
-            logger.log_execution_time("strategy_node", time.time() - start_time)
-        except Exception as e:
-            logger.log_execution_time("strategy_node (FAILED)", time.time() - start_time)
-            updates["errors"] = state.errors + [f"Strategy Crash: {str(e)}"]
-    return updates
+    result = agent.process(state, profile_handoff=profile_handoff)
+    outputs = list(state.strategy_outputs)
+    if result.get("handoff"):
+        outputs.append(result["handoff"])
+    return {
+        "strategy_outputs": outputs,
+        "phase2_iteration": state.phase2_iteration + 1,
+    }
 
 
-def analysis_codegen_node(state: AnalysisState) -> Dict[str, Any]:
+@_node("analysis_codegen", "phase2", "AnalysisCodeGen")
+def analysis_codegen_node(state: AnalysisState, agent: Any) -> Dict[str, Any]:
     """Run the Analysis Code Generator — strategy → executable code cells."""
-    start_time = time.time()
     strategy = state.strategy_outputs[-1] if state.strategy_outputs else None
-    agent = AgentFactory.get_agent("analysis_codegen")
-    with _track(agent, state, "phase2") as updates:
-        try:
-            result = agent.process(state, strategy=strategy)
-            outputs = list(state.analysis_code_outputs)
-            if result.get("handoff"):
-                outputs.append(result["handoff"])
-            updates["analysis_code_outputs"] = outputs
-            logger.log_execution_time("analysis_codegen_node", time.time() - start_time)
-        except Exception as e:
-            logger.log_execution_time("analysis_codegen_node (FAILED)", time.time() - start_time)
-            updates["errors"] = state.errors + [f"AnalysisCodeGen Crash: {str(e)}"]
-    return updates
+    result = agent.process(state, strategy=strategy)
+    outputs = list(state.analysis_code_outputs)
+    if result.get("handoff"):
+        outputs.append(result["handoff"])
+    return {"analysis_code_outputs": outputs}
 
 
-def analysis_validator_node(state: AnalysisState) -> Dict[str, Any]:
+@_node("analysis_validator", "phase2", "AnalysisValidator")
+def analysis_validator_node(state: AnalysisState, agent: Any) -> Dict[str, Any]:
     """Run the Analysis Validator — sandbox-execute, score, route."""
-    start_time = time.time()
     code_handoff = state.analysis_code_outputs[-1] if state.analysis_code_outputs else None
-    agent = AgentFactory.get_agent("analysis_validator")
-    with _track(agent, state, "phase2") as updates:
-        try:
-            result = agent.process(state, code_handoff=code_handoff)
+    result = agent.process(state, code_handoff=code_handoff)
 
-            reports = list(state.analysis_validation_reports)
-            if result.get("report"):
-                reports.append(result["report"])
-            # Keep only the last two so retry prompts can reference the most
-            # recent failure; older reports are already consumed.
-            if len(reports) > 2:
-                reports = reports[-2:]
+    reports = list(state.analysis_validation_reports)
+    if result.get("report"):
+        reports.append(result["report"])
+    # Keep only the last two so retry prompts can reference the most
+    # recent failure; older reports are already consumed.
+    if len(reports) > 2:
+        reports = reports[-2:]
 
-            trajectory = list(state.phase2_quality_trajectory)
-            trajectory.append(result.get("quality_score", 0.0))
+    trajectory = list(state.phase2_quality_trajectory)
+    trajectory.append(result.get("quality_score", 0.0))
 
-            updates["analysis_validation_reports"] = reports
-            updates["phase2_quality_trajectory"] = trajectory
-            updates["issue_frequency"] = update_issue_frequency(state, result.get("issues", []))
+    updates: Dict[str, Any] = {
+        "analysis_validation_reports": reports,
+        "phase2_quality_trajectory": trajectory,
+        "issue_frequency": update_issue_frequency(state, result.get("issues", [])),
+    }
 
-            # Snapshot the best-so-far strategy/code whenever quality improves, so
-            # route_phase2_recursion's rollback path has something real to restore.
-            # Without this the phase2_best_* fields stay at their defaults and a
-            # rollback silently reverts to nothing.
-            current_score = result.get("quality_score", 0.0)
-            current_strategy = state.strategy_outputs[-1] if state.strategy_outputs else None
-            if current_score > state.phase2_best_score and code_handoff is not None:
-                updates["phase2_best_score"] = current_score
-                updates["phase2_best_code"] = code_handoff
-                if current_strategy is not None:
-                    updates["phase2_best_strategy"] = current_strategy
+    # Snapshot the best-so-far strategy/code whenever quality improves, so
+    # route_phase2_recursion's rollback path has something real to restore.
+    # Without this the phase2_best_* fields stay at their defaults and a
+    # rollback silently reverts to nothing.
+    current_score = result.get("quality_score", 0.0)
+    current_strategy = state.strategy_outputs[-1] if state.strategy_outputs else None
+    if current_score > state.phase2_best_score and code_handoff is not None:
+        updates["phase2_best_score"] = current_score
+        updates["phase2_best_code"] = code_handoff
+        if current_strategy is not None:
+            updates["phase2_best_strategy"] = current_strategy
 
-            # Prune old phase-2 outputs — best state lives in phase2_best_*.
-            try:
-                if isinstance(state.strategy_outputs, list) and len(state.strategy_outputs) > 2:
-                    updates["strategy_outputs"] = state.strategy_outputs[-1:]
-                if isinstance(state.analysis_code_outputs, list) and len(state.analysis_code_outputs) > 2:
-                    updates["analysis_code_outputs"] = state.analysis_code_outputs[-1:]
-            except (TypeError, AttributeError):
-                pass
+    # Prune old phase-2 outputs — best state lives in phase2_best_*.
+    try:
+        if isinstance(state.strategy_outputs, list) and len(state.strategy_outputs) > 2:
+            updates["strategy_outputs"] = state.strategy_outputs[-1:]
+        if isinstance(state.analysis_code_outputs, list) and len(state.analysis_code_outputs) > 2:
+            updates["analysis_code_outputs"] = state.analysis_code_outputs[-1:]
+    except (TypeError, AttributeError):
+        pass
 
-            logger.log_execution_time("analysis_validator_node", time.time() - start_time)
-        except Exception as e:
-            logger.log_execution_time("analysis_validator_node (FAILED)", time.time() - start_time)
-            updates["errors"] = state.errors + [f"AnalysisValidator Crash: {str(e)}"]
     return updates
 
 
@@ -505,36 +477,18 @@ def assemble_notebook_node(state: AnalysisState) -> Dict[str, Any]:
     return updates
 
 
-def exploratory_conclusions_node(state: AnalysisState) -> Dict[str, Any]:
+@_node("exploratory_conclusions", "phase2", "ExploratoryConclusions")
+def exploratory_conclusions_node(state: AnalysisState, agent: Any) -> Dict[str, Any]:
     """Execute Exploratory Conclusions Agent."""
-    start_time = time.time()
-    agent = AgentFactory.get_agent("exploratory_conclusions")
-    with _track(agent, state, "phase2") as updates:
-        try:
-            res = agent.process(state)
-            if isinstance(res, dict):
-                updates.update(res)
-            logger.log_execution_time("exploratory_conclusions_node", time.time() - start_time)
-        except Exception as e:
-            logger.log_execution_time("exploratory_conclusions_node (FAILED)", time.time() - start_time)
-            updates["errors"] = state.errors + [f"ExploratoryConclusions Crash: {str(e)}"]
-    return updates
+    res = agent.process(state)
+    return res if isinstance(res, dict) else {}
 
 
-def rollback_recovery_node(state: AnalysisState) -> Dict[str, Any]:
+@_node("orchestrator", "phase2", "Rollback")
+def rollback_recovery_node(state: AnalysisState, agent: Any) -> Dict[str, Any]:
     """Revert phase-2 state to a known-good point on quality degradation."""
-    start_time = time.time()
-    orchestrator = AgentFactory.get_agent("orchestrator")
-    with _track(orchestrator, state, "phase2") as updates:
-        try:
-            result = orchestrator.process(state, action="rollback_phase2")
-            if isinstance(result, dict):
-                updates.update(result)
-        except Exception as e:
-            logger.critical(f"Rollback Node crashed: {e}", exc_info=True)
-            updates["errors"] = state.errors + [f"Rollback Crash: {str(e)}"]
-    logger.log_execution_time("rollback_recovery_node", time.time() - start_time)
-    return updates
+    result = agent.process(state, action="rollback_phase2")
+    return result if isinstance(result, dict) else {}
 
 
 # ============================================================================
