@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type FC } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
 import { Play, RotateCcw, StopCircle, Plus, Loader2, Sparkles, Check, AlertTriangle, Pencil, ArrowUp, ArrowDown, Trash2, Code as CodeIcon, FileText, PlayCircle, Save } from 'lucide-react';
 import { AnalysisAPI } from '../../../../api';
 import { useSocket } from '../../../../hooks/useSocket';
 import { formatMarkdown } from '../../../../utils/formatMarkdown';
+import { getErrorMessage } from '../../../../utils/errorMessage';
+import { useJobContext } from '../../../../context/JobContext';
 import { CellOutputView } from './outputs/CellOutputView';
 import { CellSourceEditor } from './CellSourceEditor';
 import type {
@@ -68,9 +70,15 @@ const seedToCells = (
  *  code cell also exposes a "Tweak" affordance that rewrites the source via
  *  the natural-language `editCell` agent. */
 export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells, initialNotebookCells }) => {
+    const { addToast } = useJobContext();
     const [cells, setCells] = useState<LiveCell[]>(() =>
         seedToCells(initialCells, initialNotebookCells),
     );
+    // Mirror of `cells` so stable callbacks (run/tweak/save) can read the
+    // latest cells without listing `cells` in their deps — that keeps the
+    // per-row handlers referentially stable so React.memo on CellRow holds.
+    const cellsRef = useRef(cells);
+    cellsRef.current = cells;
     const [restartPending, setRestartPending] = useState(false);
     // Map execution_id → cell_id so streamed events route correctly.
     const executionToCellRef = useRef<Map<string, string>>(new Map());
@@ -78,6 +86,10 @@ export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells, initialNote
     // Save-back state: `dirty` flips on every cell mutation (code, type,
     // structure); `saveStatus` drives the Save button's affordance.
     const [dirty, setDirty] = useState(false);
+    // Ref mirror so stable callbacks can read the latest dirty flag without
+    // depending on it (keeps per-row handlers referentially stable).
+    const dirtyRef = useRef(dirty);
+    dirtyRef.current = dirty;
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
     const [saveError, setSaveError] = useState<string | null>(null);
     const markDirty = useCallback(() => {
@@ -151,7 +163,7 @@ export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells, initialNote
     // -- Cell controls ------------------------------------------------------
 
     const runCell = useCallback(async (cellId: string) => {
-        const cell = cells.find((c) => c.id === cellId);
+        const cell = cellsRef.current.find((c) => c.id === cellId);
         if (!cell || cell.state === 'busy') return;
 
         // Markdown cells just collapse the editor back to the preview.
@@ -224,7 +236,7 @@ export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells, initialNote
                 }],
             });
         }
-    }, [cells, jobId, updateCell]);
+    }, [jobId, updateCell]);
 
     const stopCell = useCallback(async () => {
         try {
@@ -397,25 +409,66 @@ export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells, initialNote
         }
     }, [jobId, updateCell]);
 
-    const runAll = useCallback(() => runMany(cells), [cells, runMany]);
+    const runAll = useCallback(() => runMany(cellsRef.current), [runMany]);
 
     const runAbove = useCallback((cellId: string) => {
-        const idx = cells.findIndex((c) => c.id === cellId);
+        const current = cellsRef.current;
+        const idx = current.findIndex((c) => c.id === cellId);
         if (idx <= 0) return;
-        return runMany(cells.slice(0, idx));
-    }, [cells, runMany]);
+        return runMany(current.slice(0, idx));
+    }, [runMany]);
 
     const runBelow = useCallback((cellId: string) => {
-        const idx = cells.findIndex((c) => c.id === cellId);
+        const current = cellsRef.current;
+        const idx = current.findIndex((c) => c.id === cellId);
         if (idx === -1) return;
-        return runMany(cells.slice(idx));
-    }, [cells, runMany]);
+        return runMany(current.slice(idx));
+    }, [runMany]);
 
     // -- Markdown edit / preview toggle -------------------------------------
 
     const setMdEditing = useCallback((cellId: string, editing: boolean) => {
         updateCell(cellId, { md_editing: editing });
     }, [updateCell]);
+
+    // -- Save back to .ipynb ------------------------------------------------
+    // Defined ahead of the Tweak handlers so an AI edit can persist the
+    // current (possibly structurally-edited) notebook BEFORE the server-side
+    // editCell runs against a cell index. Returns true on success.
+
+    const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const saveNotebook = useCallback(async (): Promise<boolean> => {
+        setSaveStatus('saving');
+        setSaveError(null);
+        try {
+            const payload = cellsRef.current.map((c) => ({
+                cell_type: c.cell_type,
+                source: c.code,
+            }));
+            await AnalysisAPI.saveNotebookCells(jobId, payload);
+            setDirty(false);
+            setSaveStatus('saved');
+            if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+            saveTimerRef.current = setTimeout(() => setSaveStatus('idle'), 1500);
+            return true;
+        } catch (e) {
+            setSaveStatus('error');
+            setSaveError(getErrorMessage(e, 'Save failed'));
+            return false;
+        }
+    }, [jobId]);
+
+    const handleSave = useCallback(async () => {
+        if (saveStatus === 'saving') return;
+        await saveNotebook();
+    }, [saveStatus, saveNotebook]);
+
+    useEffect(() => {
+        return () => {
+            if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        };
+    }, []);
 
     // -- Tweak (AI edit) ----------------------------------------------------
 
@@ -442,13 +495,29 @@ export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells, initialNote
     }, [updateCell]);
 
     const submitTweak = useCallback(async (cellId: string) => {
-        const cell = cells.find((c) => c.id === cellId);
+        const current = cellsRef.current;
+        const cell = current.find((c) => c.id === cellId);
         if (!cell || cell.cell_type !== 'code') return;
         const instruction = (cell.tweak_instruction ?? '').trim();
         if (!instruction || cell.tweak_status === 'loading') return;
 
-        const cellIndex = cells.findIndex((c) => c.id === cellId);
+        const cellIndex = current.findIndex((c) => c.id === cellId);
         updateCell(cellId, { tweak_status: 'loading', tweak_error: null });
+        // editCell targets a server-side cell INDEX. Unsaved structural edits
+        // (insert/move/delete) make the local index diverge from the on-disk
+        // notebook, so persist the current cells first; abort + surface an
+        // error if the save fails rather than editing the wrong cell.
+        if (dirtyRef.current) {
+            const saved = await saveNotebook();
+            if (!saved) {
+                updateCell(cellId, {
+                    tweak_status: 'error',
+                    tweak_error: 'Could not save the notebook before editing. Try again.',
+                });
+                addToast('Save failed — cell edit aborted to avoid targeting the wrong cell', 'error');
+                return;
+            }
+        }
         try {
             const result = await AnalysisAPI.editCell(jobId, cellIndex, cell.code, instruction);
             if (result.success) {
@@ -492,10 +561,10 @@ export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells, initialNote
         } catch (e) {
             updateCell(cellId, {
                 tweak_status: 'error',
-                tweak_error: e instanceof Error ? e.message : 'Network error',
+                tweak_error: getErrorMessage(e, 'Network error'),
             });
         }
-    }, [cells, jobId, updateCell]);
+    }, [jobId, updateCell, markDirty, saveNotebook, addToast]);
 
     // Re-sync cells when the parent supplies a different initial set.
     //  - jobId change                                → always reset
@@ -506,9 +575,18 @@ export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells, initialNote
         // jobId switch resets the seeded marker so the next non-empty seed
         // re-applies cleanly.
         seededRef.current = false;
+        // Reset cell + execution state immediately on job change. Previously
+        // cells weren't cleared until a non-empty seed arrived, so a failed or
+        // empty fetch left the prior job's cells runnable against the NEW
+        // job's kernel. Drop back to a single empty cell and clear the
+        // execution map until the new job's seed lands.
+        setCells([makeCell('# Enter code here\n', 'code')]);
+        executionToCellRef.current.clear();
+        setRestartPending(false);
         setDirty(false);
         setSaveStatus('idle');
         setSaveError(null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [jobId]);
     useEffect(() => {
         const haveSeed =
@@ -523,34 +601,33 @@ export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells, initialNote
         seededRef.current = true;
     }, [initialNotebookCells, initialCells]);
 
-    // -- Save back to .ipynb -----------------------------------------------
-
-    const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    useEffect(() => {
-        return () => {
-            if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-        };
-    }, []);
-
-    const handleSave = useCallback(async () => {
-        if (saveStatus === 'saving') return;
-        setSaveStatus('saving');
-        setSaveError(null);
-        try {
-            const payload = cells.map((c) => ({
-                cell_type: c.cell_type,
-                source: c.code,
-            }));
-            await AnalysisAPI.saveNotebookCells(jobId, payload);
-            setDirty(false);
-            setSaveStatus('saved');
-            if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-            saveTimerRef.current = setTimeout(() => setSaveStatus('idle'), 1500);
-        } catch (e) {
-            setSaveStatus('error');
-            setSaveError(e instanceof Error ? e.message : 'Save failed');
-        }
-    }, [cells, jobId, saveStatus]);
+    // Bundle the (now stable) per-cell handlers into one memoised object.
+    // CellRow binds these to its own cell.id, so this object is referentially
+    // stable across renders and React.memo on CellRow holds — typing in one
+    // cell no longer re-renders every other cell's CodeMirror editor.
+    const cellHandlers = useMemo<CellHandlers>(() => ({
+        onCodeChange: updateCode,
+        onRun: runCell,
+        onStop: stopCell,
+        onMdEdit: (id) => setMdEditing(id, true),
+        onMdPreview: (id) => setMdEditing(id, false),
+        onTweakOpen: openTweak,
+        onTweakClose: closeTweak,
+        onTweakChange: setTweakInstruction,
+        onTweakSubmit: submitTweak,
+        onInsertBefore: insertCellBefore,
+        onInsertAfter: insertCellAfter,
+        onDelete: deleteCell,
+        onMoveUp: moveCellUp,
+        onMoveDown: moveCellDown,
+        onToggleType: toggleCellType,
+        onRunAbove: runAbove,
+        onRunBelow: runBelow,
+    }), [
+        updateCode, runCell, stopCell, setMdEditing, openTweak, closeTweak,
+        setTweakInstruction, submitTweak, insertCellBefore, insertCellAfter,
+        deleteCell, moveCellUp, moveCellDown, toggleCellType, runAbove, runBelow,
+    ]);
 
     return (
         <div className="flex flex-col h-full min-h-0 bg-[var(--surface-0)]">
@@ -629,23 +706,7 @@ export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells, initialNote
                         isFirst={idx === 0}
                         isLast={idx === cells.length - 1}
                         canDelete={cells.length > 1}
-                        onCodeChange={(c) => updateCode(cell.id, c)}
-                        onRun={() => runCell(cell.id)}
-                        onStop={stopCell}
-                        onMdEdit={() => setMdEditing(cell.id, true)}
-                        onMdPreview={() => setMdEditing(cell.id, false)}
-                        onTweakOpen={() => openTweak(cell.id)}
-                        onTweakClose={() => closeTweak(cell.id)}
-                        onTweakChange={(v) => setTweakInstruction(cell.id, v)}
-                        onTweakSubmit={() => submitTweak(cell.id)}
-                        onInsertBefore={() => insertCellBefore(cell.id, cell.cell_type)}
-                        onInsertAfter={() => insertCellAfter(cell.id, cell.cell_type)}
-                        onDelete={() => deleteCell(cell.id)}
-                        onMoveUp={() => moveCellUp(cell.id)}
-                        onMoveDown={() => moveCellDown(cell.id)}
-                        onToggleType={() => toggleCellType(cell.id)}
-                        onRunAbove={() => runAbove(cell.id)}
-                        onRunBelow={() => runBelow(cell.id)}
+                        handlers={cellHandlers}
                     />
                 ))}
             </div>
@@ -653,55 +714,68 @@ export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells, initialNote
     );
 };
 
+/** Stable, cellId-keyed handlers shared by every CellRow. Because the object
+ *  and every function on it are referentially stable, CellRow can be wrapped
+ *  in React.memo and only re-renders when its own `cell` reference changes. */
+interface CellHandlers {
+    onCodeChange: (cellId: string, code: string) => void;
+    onRun: (cellId: string) => void;
+    onStop: () => void;
+    onMdEdit: (cellId: string) => void;
+    onMdPreview: (cellId: string) => void;
+    onTweakOpen: (cellId: string) => void;
+    onTweakClose: (cellId: string) => void;
+    onTweakChange: (cellId: string, value: string) => void;
+    onTweakSubmit: (cellId: string) => void;
+    onInsertBefore: (cellId: string, cellType: 'code' | 'markdown') => void;
+    onInsertAfter: (cellId: string, cellType: 'code' | 'markdown') => void;
+    onDelete: (cellId: string) => void;
+    onMoveUp: (cellId: string) => void;
+    onMoveDown: (cellId: string) => void;
+    onToggleType: (cellId: string) => void;
+    onRunAbove: (cellId: string) => void;
+    onRunBelow: (cellId: string) => void;
+}
+
 interface CellRowProps {
     index: number;
     cell: LiveCell;
     isFirst: boolean;
     isLast: boolean;
     canDelete: boolean;
-    onCodeChange: (code: string) => void;
-    onRun: () => void;
-    onStop: () => void;
-    onMdEdit: () => void;
-    onMdPreview: () => void;
-    onTweakOpen: () => void;
-    onTweakClose: () => void;
-    onTweakChange: (value: string) => void;
-    onTweakSubmit: () => void;
-    onInsertBefore: () => void;
-    onInsertAfter: () => void;
-    onDelete: () => void;
-    onMoveUp: () => void;
-    onMoveDown: () => void;
-    onToggleType: () => void;
-    onRunAbove: () => void;
-    onRunBelow: () => void;
+    handlers: CellHandlers;
 }
 
-const CellRow: FC<CellRowProps> = ({
+const CellRow: FC<CellRowProps> = memo(({
     index,
     cell,
     isFirst,
     isLast,
     canDelete,
-    onCodeChange,
-    onRun,
-    onStop,
-    onMdEdit,
-    onMdPreview,
-    onTweakOpen,
-    onTweakClose,
-    onTweakChange,
-    onTweakSubmit,
-    onInsertBefore,
-    onInsertAfter,
-    onDelete,
-    onMoveUp,
-    onMoveDown,
-    onToggleType,
-    onRunAbove,
-    onRunBelow,
+    handlers,
 }) => {
+    const id = cell.id;
+    const cellType = cell.cell_type;
+    // Bind the shared handlers to this row's id. These closures are recreated
+    // each render but never leave CellRow, so they don't defeat the memo.
+    const onCodeChange = (code: string) => handlers.onCodeChange(id, code);
+    const onRun = () => handlers.onRun(id);
+    const onStop = handlers.onStop;
+    const onMdEdit = () => handlers.onMdEdit(id);
+    const onMdPreview = () => handlers.onMdPreview(id);
+    const onTweakOpen = () => handlers.onTweakOpen(id);
+    const onTweakClose = () => handlers.onTweakClose(id);
+    const onTweakChange = (value: string) => handlers.onTweakChange(id, value);
+    const onTweakSubmit = () => handlers.onTweakSubmit(id);
+    const onInsertBefore = () => handlers.onInsertBefore(id, cellType);
+    const onInsertAfter = () => handlers.onInsertAfter(id, cellType);
+    const onDelete = () => handlers.onDelete(id);
+    const onMoveUp = () => handlers.onMoveUp(id);
+    const onMoveDown = () => handlers.onMoveDown(id);
+    const onToggleType = () => handlers.onToggleType(id);
+    const onRunAbove = () => handlers.onRunAbove(id);
+    const onRunBelow = () => handlers.onRunBelow(id);
+
     const isCode = cell.cell_type === 'code';
     const isBusy = cell.state === 'busy' || cell.state === 'queued';
     const isError = cell.state === 'error';
@@ -1007,4 +1081,5 @@ const CellRow: FC<CellRowProps> = ({
             )}
         </article>
     );
-};
+});
+CellRow.displayName = 'CellRow';

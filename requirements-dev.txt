@@ -1,0 +1,24 @@
+# Development & test dependencies — NOT installed in the production image.
+# Install locally with:  pip install -r requirements-dev.txt
+# (this pulls in the production deps via the -r include below).
+-r requirements.txt
+
+# Test framework
+pytest==9.0.2
+pytest-asyncio==1.3.0
+testcontainers[postgres]==4.10.0
+
+# Tooling
+build==1.3.0
+debugpy==1.8.19
+pre_commit==4.5.1
+uv==0.9.18
+virtualenv==20.35.4
+
+# pre-commit / virtualenv / pytest transitives (dev-only)
+cfgv==3.5.0
+distlib==0.4.0
+identify==2.6.15
+iniconfig==2.3.0
+nodeenv==1.10.0
+pluggy==1.6.0

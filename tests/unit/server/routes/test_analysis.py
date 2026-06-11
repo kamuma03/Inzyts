@@ -163,9 +163,14 @@ def test_analyze_api_url(mock_cost_estimator, mock_execution_task):
     assert response.status_code == 200
     kwargs = mock_execution_task.apply_async.call_args[1]["kwargs"]
     assert kwargs["api_url"] == "https://api.example.com/data"
-    assert kwargs["api_headers"] == {"X-Custom": "value"}
-    assert kwargs["api_auth"] == {"type": "bearer", "token": "abc"}
     assert kwargs["json_path"] == "data.items"
+    # Secret-bearing fields cross the broker encrypted (not plaintext); the raw
+    # token must not be present, and they decrypt back to the original values.
+    from src.server.utils.secret_transport import decrypt_value
+    assert kwargs["api_headers"] != {"X-Custom": "value"}
+    assert "abc" not in str(kwargs["api_auth"])
+    assert decrypt_value(kwargs["api_headers"]) == {"X-Custom": "value"}
+    assert decrypt_value(kwargs["api_auth"]) == {"type": "bearer", "token": "abc"}
     # csv_path should be None since API extraction happens in workflow
     assert kwargs["csv_path"] is None
 

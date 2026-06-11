@@ -21,6 +21,7 @@ class TokenMetrics(BaseModel):
 
 from src.models.handoffs import (
     UserIntent,
+    OrchestratorToProfilerHandoff,
     ProfilerToCodeGenHandoff,
     ProfileCodeToValidatorHandoff,
     StrategyToCodeGenHandoff,
@@ -64,7 +65,7 @@ class ProfileLock(BaseModel):
     locked_by: str = "Profile Validator"
 
     # Locked artifacts (set on lock)
-    profile_cells: List[Any] = []  # List[NotebookCell]
+    profile_cells: List[Any] = Field(default_factory=list)  # List[NotebookCell]
     profile_handoff: Optional["ProfileToStrategyHandoff"] = (
         None  # ProfileToStrategyHandoff
     )
@@ -104,8 +105,12 @@ class ProfileLock(BaseModel):
         Grant profile lock if validation passes.
         Returns True if lock granted, False otherwise.
         """
-        from src.config import settings
-        if quality_score < settings.phase1.quality_threshold:
+        # Use the SAME threshold the validator used to compute should_lock —
+        # a single source of truth. Re-checking against a looser config value
+        # here previously let a 0.70–0.80 score lock even though the validator
+        # would not have approved it.
+        from src.models.validation import Phase1ValidationCriteria
+        if quality_score < Phase1ValidationCriteria.LOCK_THRESHOLD:
             self.status = LockStatus.PENDING
             return False
 
@@ -200,6 +205,11 @@ class AnalysisState(BaseModel):
     profile_lock: ProfileLock = Field(default_factory=ProfileLock)
 
     # Phase 1 Outputs
+    # The orchestrator packages a rich handoff (CSV preview, extended metadata,
+    # merge info) for the Data Profiler. It must live in its own field — it is a
+    # different type from ``profiler_outputs`` (which holds the profiler's *own*
+    # output) and would otherwise be silently dropped by LangGraph's state merge.
+    profiler_handoff: Optional["OrchestratorToProfilerHandoff"] = None
     profiler_outputs: List["ProfilerToCodeGenHandoff"] = []
     profile_code_outputs: List["ProfileCodeToValidatorHandoff"] = []
     profile_validation_reports: List["ValidationReport"] = []

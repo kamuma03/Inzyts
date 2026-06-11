@@ -35,9 +35,6 @@ class PromptBuilder:
         preprocessing_lines = []
         for step in strategy.preprocessing_steps:
             cols = str(step.target_columns)
-            # Force include Gender if Geography is present to handle common omission
-            if "Geography" in cols and "Gender" not in cols:
-                cols = cols.replace("]", ", 'Gender']")
             # Concise format: keep actionable info, drop verbose rationale
             # to reduce token usage without losing accuracy.
             params_str = f", params={step.parameters}" if step.parameters else ""
@@ -87,7 +84,7 @@ Do NOT rely on the list above alone. Check `X` dynamically:
         CRITICAL SAFETY STEP:
         After One-Hot Encoding and BEFORE splitting, you MUST execute this exact line:
         `X = X.select_dtypes(include=[np.number])`
-        This ensures any remaining high-cardinality string columns (like Surname) that were not encoded are dropped, preventing training errors.
+        This ensures any remaining high-cardinality string columns that were not encoded are dropped, preventing training errors.
         """
 
         # INCORPORATE FEEDBACK (Fix for infinite recursion)

@@ -1,5 +1,5 @@
 
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { JobProvider } from './context/JobContext';
 import { MainLayout } from './layouts/MainLayout';
 import { NewAnalysisPage } from './pages/NewAnalysisPage';
@@ -12,17 +12,20 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { isAdmin } from './api';
 
 const ProtectedRoute = () => {
+    const location = useLocation();
     const token = sessionStorage.getItem('inzyts_jwt_token');
     if (!token) {
-        return <Navigate to="/login" replace />;
+        // Pass the attempted location so LoginPage can redirect back here.
+        return <Navigate to="/login" replace state={{ from: location }} />;
     }
     return <Outlet />;
 };
 
 const AdminRoute = () => {
+    const location = useLocation();
     const token = sessionStorage.getItem('inzyts_jwt_token');
     if (!token) {
-        return <Navigate to="/login" replace />;
+        return <Navigate to="/login" replace state={{ from: location }} />;
     }
     if (!isAdmin()) {
         return <Navigate to="/" replace />;

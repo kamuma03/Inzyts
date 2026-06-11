@@ -384,6 +384,21 @@ def run_analysis(
                         console.print("[dim]Stopping graph execution...[/dim]")
                     return None
 
+                # Wall-clock kill-switch: enforce the configured per-run time
+                # budget. Token budget guards cost inside routing; this guards
+                # against a single node hanging or a slow provider stalling the
+                # whole run. We break (not return) so the partial state is still
+                # assembled/persisted below.
+                max_seconds = settings.recursion.max_execution_time_seconds
+                if max_seconds and (time.time() - start_time) > max_seconds:
+                    console.print(
+                        f"[bold yellow]Time budget exceeded "
+                        f"({max_seconds}s); finalizing with current output."
+                        f"[/bold yellow]"
+                    )
+                    graph_stream.close()
+                    break
+
                 # User logging: we can try to diff to see what changed, or just log the phase
                 if verbose:
                     # Heuristic to detect phase change or step completion

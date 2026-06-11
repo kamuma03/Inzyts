@@ -2,12 +2,15 @@
 Configuration settings for the Multi-Agent Data Analysis System.
 """
 
+import logging
 from typing import Optional, List, Dict
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import AliasChoices
 from src.models.handoffs import PipelineMode
+
+logger = logging.getLogger(__name__)
 
 
 class SingleModeSettings(BaseModel):
@@ -39,15 +42,6 @@ class DatabaseConfig(BaseModel):
     @property
     def sync_url(self) -> str:
         return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.db}"
-
-
-class JupyterConfig(BaseModel):
-    """Jupyter service configuration."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    base_url: str = Field("http://jupyter:8888", validation_alias=AliasChoices("base_url", "JUPYTER_BASE_URL"))
-    token: Optional[str] = Field(None, validation_alias=AliasChoices("token", "JUPYTER_TOKEN"))
 
 
 class ModeConfig(BaseModel):
@@ -321,22 +315,14 @@ class LLMConfig(BaseSettings):
     @classmethod
     def validate_openai_key(cls, v: Optional[str]) -> Optional[str]:
         if v and not v.startswith("sk-"):
-            import logging
-
-            logging.getLogger(__name__).warning(
-                "OpenAI API key does not start with 'sk-'."
-            )
+            logger.warning("OpenAI API key does not start with 'sk-'.")
         return v
 
     @field_validator("anthropic_api_key")
     @classmethod
     def validate_anthropic_key(cls, v: Optional[str]) -> Optional[str]:
         if v and not v.startswith("sk-ant-"):
-            import logging
-
-            logging.getLogger(__name__).warning(
-                "Anthropic API key does not start with 'sk-ant-'."
-            )
+            logger.warning("Anthropic API key does not start with 'sk-ant-'.")
         return v
 
     def resolve_model_name(self, provider: Optional[str] = None) -> str:
@@ -385,9 +371,6 @@ class Settings(BaseSettings):
 
     # Database Configuration
     db: DatabaseConfig = Field(default_factory=lambda: DatabaseConfig())  # type: ignore
-
-    # Jupyter Configuration
-    jupyter: JupyterConfig = Field(default_factory=lambda: JupyterConfig())  # type: ignore
 
     # Output settings
     output_dir: str = "output"
@@ -467,6 +450,18 @@ class Settings(BaseSettings):
         ],
         validation_alias="ALLOWED_ORIGINS",
     )
+
+    @field_validator("jwt_algorithm")
+    @classmethod
+    def validate_jwt_algorithm(cls, v: str) -> str:
+        # Restrict to a vetted allowlist so a misconfiguration can't select a
+        # weak/unexpected algorithm (e.g. "none") for token verification.
+        allowed = {"HS256", "HS384", "HS512", "RS256", "RS384", "RS512", "ES256", "ES384"}
+        if v not in allowed:
+            raise ValueError(
+                f"JWT_ALGORITHM '{v}' is not permitted. Choose one of: {sorted(allowed)}"
+            )
+        return v
 
     @field_validator("allowed_origins", mode="before")
     @classmethod

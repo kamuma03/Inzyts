@@ -10,6 +10,7 @@ finds a live Redis instance.
 import os
 import socket
 import subprocess
+import sys
 import time
 import atexit
 
@@ -35,17 +36,33 @@ def _ensure_redis() -> None:
         return
 
     subprocess.run(["docker", "rm", "-f", _CONTAINER_NAME], capture_output=True)
-    result = subprocess.run(
-        [
-            "docker", "run", "-d",
-            "--name", _CONTAINER_NAME,
-            "-p", f"{_REDIS_PORT}:6379",
-            "redis:7-alpine",
-        ],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "docker", "run", "-d",
+                "--name", _CONTAINER_NAME,
+                "-p", f"{_REDIS_PORT}:6379",
+                "redis:7-alpine",
+            ],
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        # Docker binary absent — be loud so the later Redis connection error
+        # isn't mistaken for a code bug. (REDIS_URL must be set before app
+        # modules import, so this can't move into a lazy session fixture.)
+        print(
+            "\n[conftest] WARNING: docker not found; Redis-backed tests will "
+            f"fail. Start Redis manually on port {_REDIS_PORT} to run them.",
+            file=sys.stderr,
+        )
+        return
     if result.returncode != 0:
+        print(
+            "\n[conftest] WARNING: failed to start Redis container "
+            f"({result.stderr.strip()}); Redis-backed tests will fail.",
+            file=sys.stderr,
+        )
         return  # Docker unavailable; tests will fail with a clear Redis error
 
     # Wait up to 10s for Redis to accept connections

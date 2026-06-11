@@ -1,10 +1,13 @@
-from fastapi import APIRouter, HTTPException, Depends
+import asyncio
+
+from fastapi import APIRouter, HTTPException, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pathlib import Path
 import nbformat
 from nbconvert import HTMLExporter
 from src.config import settings
+from src.server.rate_limiter import limiter
 from src.server.db.database import get_db
 from src.server.db.models import ConversationMessage, User
 from src.server.db.queries import resolve_owned_job
@@ -30,6 +33,15 @@ router = APIRouter(prefix="/notebooks", tags=["notebooks"])
 # Allowed base directory for notebook output files.
 _OUTPUT_DIR = settings.output_dir_resolved
 
+# Base directories a job's CSV is normally expected to live in. Used only for
+# an advisory log below — NOT a security boundary: the kernel runs arbitrary
+# user-owned code that can read any file the worker can, so blocking the
+# bootstrap loader's path would add no containment while breaking legitimate
+# jobs (datasets-mount paths, deferred-ingestion CSVs materialised elsewhere).
+_CSV_EXPECTED_DIRS = [settings.upload_dir_resolved]
+if settings.datasets_dir:
+    _CSV_EXPECTED_DIRS.append(Path(settings.datasets_dir).resolve())
+
 
 def _validate_notebook_path(notebook_path: Path) -> None:
     """Raise HTTPException if notebook_path is outside the allowed output directory."""
@@ -38,6 +50,26 @@ def _validate_notebook_path(notebook_path: Path) -> None:
         [_OUTPUT_DIR],
         error_label="notebook",
     )
+
+
+def _check_kernel_csv_path(csv_path: str) -> str:
+    """Log (don't block) when a job's CSV resolves outside the expected roots.
+
+    The job's path was already validated at creation time and the kernel can
+    read any file regardless, so this is a tamper-/drift-detection signal, not
+    an access control. Returns the path unchanged.
+    """
+    if not csv_path:
+        return csv_path
+    try:
+        resolved = Path(csv_path).resolve()
+        if not any(resolved.is_relative_to(d) for d in _CSV_EXPECTED_DIRS):
+            logger.warning(
+                f"Kernel CSV path outside expected data roots: {resolved}"
+            )
+    except (OSError, ValueError) as e:
+        logger.warning(f"Could not resolve kernel CSV path {csv_path!r}: {e}")
+    return csv_path
 
 
 @router.get("/{job_id}/html")
@@ -49,48 +81,34 @@ async def get_notebook_html(
     """
     Retrieve the generated Jupyter Notebook for a job and convert it to HTML.
     """
-    try:
-        # 1. Get Job (with ownership check)
-        job = await resolve_owned_job(job_id, db, current_user)
+    # 1. Get Job (with ownership check)
+    job = await resolve_owned_job(job_id, db, current_user)
 
-        if not job.result_path:
-            raise HTTPException(
-                status_code=404, detail="No notebook generated for this job yet"
-            )
-
-        notebook_path = Path(job.result_path)
-        _validate_notebook_path(notebook_path)
-        if not notebook_path.exists():
-            raise HTTPException(
-                status_code=404, detail="Notebook file not found"
-            )
-
-        # 2. Convert to HTML
-        try:
-            # Read notebook
-            with open(notebook_path, "r", encoding="utf-8") as f:
-                nb = nbformat.read(f, as_version=4)
-
-            # Configure exporter
-            html_exporter = HTMLExporter()
-            # html_exporter.template_name = 'classic' # or 'lab' for more modern look, checking availability
-
-            # Convert
-            (body, resources) = html_exporter.from_notebook_node(nb)
-
-            return {"html": body, "job_id": job_id}
-        except Exception as e:
-            logger.error(f"Notebook render error for job {job_id}: {e}")
-            raise HTTPException(
-                status_code=500, detail="Failed to render notebook"
-            )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Notebook fetch error for job {job_id}: {e}")
+    if not job.result_path:
         raise HTTPException(
-            status_code=500, detail="Failed to render notebook"
+            status_code=404, detail="No notebook generated for this job yet"
         )
+
+    notebook_path = Path(job.result_path)
+    _validate_notebook_path(notebook_path)
+    if not notebook_path.exists():
+        raise HTTPException(status_code=404, detail="Notebook file not found")
+
+    # 2. Read + convert to HTML off the event loop (nbformat/nbconvert are
+    # synchronous and can be slow on large notebooks).
+    def _render() -> str:
+        with open(notebook_path, "r", encoding="utf-8") as f:
+            nb = nbformat.read(f, as_version=4)
+        body, _resources = HTMLExporter().from_notebook_node(nb)
+        return body
+
+    try:
+        body = await asyncio.to_thread(_render)
+    except Exception as e:
+        logger.error(f"Notebook render error for job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to render notebook")
+
+    return {"html": body, "job_id": job_id}
 
 
 @router.get("/{job_id}/download")
@@ -125,7 +143,9 @@ async def download_notebook(
 
 
 @router.post("/{job_id}/cells/execute")
+@limiter.limit("60/minute")
 async def execute_cell_in_session(
+    request: Request,
     job_id: str,
     body: dict,
     db: AsyncSession = Depends(get_db),
@@ -154,15 +174,24 @@ async def execute_cell_in_session(
     from src.services.kernel_session_manager import kernel_session_manager
     from src.server.services.cell_stream import stream_execute
 
-    csv_path = job.csv_path or ""
+    csv_path = _check_kernel_csv_path(job.csv_path or "")
+    user_id = getattr(current_user, "id", None)
+    # Kernel bootstrap and the cell run are synchronous, CPU/IO-blocking work.
+    # Run them off the event loop so a long cell can't freeze every other
+    # request on this worker.
     try:
-        kernel_session_manager.get_or_create_session(job_id=job_id, csv_path=csv_path)
+        await asyncio.to_thread(
+            kernel_session_manager.get_or_create_session,
+            job_id=job_id,
+            csv_path=csv_path,
+            user_id=user_id,
+        )
     except Exception as e:
         logger.error(f"Failed to bootstrap kernel session for {job_id}: {e}")
         raise HTTPException(status_code=500, detail="Could not start kernel session")
 
-    user_id = getattr(current_user, "id", None)
-    res = stream_execute(
+    res = await asyncio.to_thread(
+        stream_execute,
         job_id=job_id, execution_id=execution_id, code=code, user_id=user_id,
     )
     return {
@@ -190,7 +219,8 @@ async def restart_cell_session(
     await resolve_owned_job(job_id, db, current_user)
 
     from src.services.kernel_session_manager import kernel_session_manager
-    session = kernel_session_manager.restart_session(job_id)
+    # Restart re-runs the dataset bootstrap synchronously — keep it off the loop.
+    session = await asyncio.to_thread(kernel_session_manager.restart_session, job_id)
     if session is None:
         raise HTTPException(status_code=404, detail="No active session for job")
     return {"job_id": job_id, "status": "restarted"}
@@ -337,9 +367,11 @@ async def save_notebook_cells(
 
 
 @router.post("/{job_id}/cells/edit")
+@limiter.limit("30/minute")
 async def edit_cell(
+    request: Request,
     job_id: str,
-    request: CellEditRequest,
+    body: CellEditRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(verify_token),
 ):
@@ -354,23 +386,27 @@ async def edit_cell(
     # 1. Verify job exists + ownership
     job = await resolve_owned_job(job_id, db, current_user)
 
-    csv_path = job.csv_path or ""
+    csv_path = _check_kernel_csv_path(job.csv_path or "")
+    user_id = getattr(current_user, "id", None)
 
     try:
-        # 2. Get or create kernel session
-        session = kernel_session_manager.get_or_create_session(job_id, csv_path)
+        # 2. Get or create kernel session (blocking bootstrap → off the loop)
+        session = await asyncio.to_thread(
+            kernel_session_manager.get_or_create_session, job_id, csv_path, user_id
+        )
 
-        # 3. Use CellEditAgent to generate modified code
+        # 3. Use CellEditAgent to generate modified code (blocking LLM call)
         agent = AgentFactory.get_agent("cell_edit")
-        edit_result = agent.edit_cell(
-            instruction=request.instruction,
-            current_code=request.current_code,
+        edit_result = await asyncio.to_thread(
+            agent.edit_cell,
+            instruction=body.instruction,
+            current_code=body.current_code,
             df_context=session.df_context,
         )
 
         if not edit_result["success"]:
             return CellEditResponse(
-                new_code=request.current_code,
+                new_code=body.current_code,
                 output="",
                 images=[],
                 success=False,
@@ -379,8 +415,8 @@ async def edit_cell(
 
         new_code = edit_result["new_code"]
 
-        # 4. Execute the new code in the kernel
-        exec_result = session.execute(new_code)
+        # 4. Execute the new code in the kernel (blocking → off the loop)
+        exec_result = await asyncio.to_thread(session.execute, new_code)
 
         return CellEditResponse(
             new_code=new_code,
@@ -390,10 +426,12 @@ async def edit_cell(
             error=exec_result.error_value if not exec_result.success else None,
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Cell edit failed for job {job_id}: {e}")
         return CellEditResponse(
-            new_code=request.current_code,
+            new_code=body.current_code,
             output="",
             images=[],
             success=False,
@@ -402,9 +440,11 @@ async def edit_cell(
 
 
 @router.post("/{job_id}/ask")
+@limiter.limit("20/minute")
 async def ask_followup(
+    request: Request,
     job_id: str,
-    request: FollowUpRequest,
+    body: FollowUpRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(verify_token),
 ):
@@ -420,7 +460,8 @@ async def ask_followup(
     # 1. Verify job exists + ownership
     job = await resolve_owned_job(job_id, db, current_user)
 
-    csv_path = job.csv_path or ""
+    csv_path = _check_kernel_csv_path(job.csv_path or "")
+    user_id = getattr(current_user, "id", None)
 
     try:
         # 2. Load conversation history from DB
@@ -435,11 +476,13 @@ async def ask_followup(
             for row in history_rows
         ]
 
-        # 3. Get or create kernel session
-        session = kernel_session_manager.get_or_create_session(job_id, csv_path)
+        # 3. Get or create kernel session (blocking bootstrap → off the loop)
+        session = await asyncio.to_thread(
+            kernel_session_manager.get_or_create_session, job_id, csv_path, user_id
+        )
 
-        # 4. Introspect kernel state
-        kernel_context = session.introspect()
+        # 4. Introspect kernel state (blocking kernel round-trip)
+        kernel_context = await asyncio.to_thread(session.introspect)
 
         # 5. Build notebook summary from existing cells
         notebook_summary = f"Analysis notebook for {csv_path}"
@@ -448,10 +491,11 @@ async def ask_followup(
         if job.question:
             notebook_summary += f" — Question: {job.question}"
 
-        # 6. Call FollowUpAgent
+        # 6. Call FollowUpAgent (blocking LLM call → off the loop)
         agent = AgentFactory.get_agent("follow_up")
-        agent_result = agent.ask(
-            question=request.question,
+        agent_result = await asyncio.to_thread(
+            agent.ask,
+            question=body.question,
             df_context=session.df_context,
             kernel_context=kernel_context,
             notebook_summary=notebook_summary,
@@ -467,32 +511,35 @@ async def ask_followup(
                 conversation_length=len(history_rows) // 2,
             )
 
-        # 7. Execute each code cell in the kernel
-        executed_cells = []
-        for cell in agent_result.get("cells", []):
-            cell_type = cell.get("cell_type", "markdown")
-            source = cell.get("source", "")
-
-            if cell_type == "code" and source.strip():
-                exec_result = session.execute(source)
-                executed_cells.append(
-                    FollowUpCell(
-                        cell_type="code",
-                        source=source,
-                        output=exec_result.output or "",
-                        images=exec_result.images if hasattr(exec_result, "images") else [],
+        # 7. Execute each code cell in the kernel. They share one kernel and
+        # must run in order, so run the whole sequence in a single worker
+        # thread rather than blocking the event loop per cell.
+        def _run_cells() -> list[FollowUpCell]:
+            out: list[FollowUpCell] = []
+            for cell in agent_result.get("cells", []):
+                cell_type = cell.get("cell_type", "markdown")
+                source = cell.get("source", "")
+                if cell_type == "code" and source.strip():
+                    exec_result = session.execute(source)
+                    out.append(
+                        FollowUpCell(
+                            cell_type="code",
+                            source=source,
+                            output=exec_result.output or "",
+                            images=getattr(exec_result, "images", []),
+                        )
                     )
-                )
-            else:
-                executed_cells.append(
-                    FollowUpCell(cell_type=cell_type, source=source)
-                )
+                else:
+                    out.append(FollowUpCell(cell_type=cell_type, source=source))
+            return out
+
+        executed_cells = await asyncio.to_thread(_run_cells)
 
         # 8. Persist to DB: user message
         user_msg = ConversationMessage(
             job_id=job_id,
             role="user",
-            content=request.question,
+            content=body.question,
         )
         db.add(user_msg)
 

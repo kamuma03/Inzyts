@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AnalysisAPI, AuditLogRecord } from '../api';
 import { ACTION_COLORS } from '../constants/adminColors';
 import { DataTableShell } from '../components/DataTableShell';
+import { getErrorMessage } from '../utils/errorMessage';
 
 export const AdminAuditPage: React.FC = () => {
     const [logs, setLogs] = useState<AuditLogRecord[]>([]);
@@ -12,23 +13,36 @@ export const AdminAuditPage: React.FC = () => {
     const [filterUsername, setFilterUsername] = useState('');
     const [filterAction, setFilterAction] = useState('');
 
+    // Monotonic request id — only the most recent fetch is allowed to write
+    // results, so a slow stale response can't clobber a newer one.
+    const requestSeqRef = useRef(0);
+
     const loadLogs = useCallback(async () => {
+        const seq = ++requestSeqRef.current;
         setLoading(true);
         try {
             const params: Record<string, string> = { limit: '100' };
             if (filterUsername) params.username = filterUsername;
             if (filterAction) params.action = filterAction;
             const data = await AnalysisAPI.getAuditLogs(params);
+            if (seq !== requestSeqRef.current) return; // a newer request superseded this one
             setLogs(data);
             setError('');
-        } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to load audit logs');
+        } catch (err) {
+            if (seq !== requestSeqRef.current) return;
+            setError(getErrorMessage(err, 'Failed to load audit logs'));
         } finally {
-            setLoading(false);
+            if (seq === requestSeqRef.current) setLoading(false);
         }
     }, [filterUsername, filterAction]);
 
-    useEffect(() => { loadLogs(); }, [loadLogs]);
+    // Debounce filter-driven refetches (~300ms) so typing in the username
+    // field doesn't fire a request per keystroke. The latest-wins guard above
+    // still protects against out-of-order responses.
+    useEffect(() => {
+        const t = setTimeout(() => { loadLogs(); }, 300);
+        return () => clearTimeout(t);
+    }, [loadLogs]);
 
     const formatTimestamp = (ts: string | null) => {
         if (!ts) return '—';

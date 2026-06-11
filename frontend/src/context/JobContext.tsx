@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { JobSummary, AnalysisAPI, type RunMetrics, type PhaseStatus } from '../api';
 import { useSocket, LogMessage, AgentEvent, ProgressUpdate } from '../hooks/useSocket';
 import { ToastType, ToastProps } from '../components/Toast';
@@ -32,6 +32,26 @@ interface JobContextType {
 
 const JobContext = createContext<JobContextType | undefined>(undefined);
 
+/** Shallow equality on the job fields the UI renders, so a poll that returns
+ *  identical data doesn't trigger a re-render of the whole provider tree. */
+function jobsEqual(a: JobSummary[], b: JobSummary[]): boolean {
+    if (a === b) return true;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        const x = a[i], y = b[i];
+        if (
+            x.id !== y.id ||
+            x.status !== y.status ||
+            x.result_path !== y.result_path ||
+            x.error_message !== y.error_message ||
+            x.title !== y.title
+        ) {
+            return false;
+        }
+    }
+    return true;
+}
+
 export const useJobContext = () => {
     const context = useContext(JobContext);
     if (!context) {
@@ -56,20 +76,19 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
     const { logs, events, progress, metrics, phases, isConnected } = useSocket(activeJobId);
 
     // -- Toast Logic --
-    const addToast = (message: string, type: ToastType = 'info') => {
-        // eslint-disable-next-line react-hooks/purity
-        const id = Math.random().toString(36).substr(2, 9);
-        setToasts(prev => [...prev, { id, message, type, onClose: removeToast }]);
-        // Auto remove after 5s? The original code didn't seem to have auto-remove timer in addToast but relies on Toast component?
-        // Let's keep it simple as per original
-    };
-
-    const removeToast = (id: string) => {
+    // removeToast is defined first so addToast can depend on a stable reference.
+    const removeToast = useCallback((id: string) => {
         setToasts(prev => prev.filter(t => t.id !== id));
-    };
+    }, []);
+
+    const addToast = useCallback((message: string, type: ToastType = 'info') => {
+        // eslint-disable-next-line react-hooks/purity
+        const id = Math.random().toString(36).slice(2, 11);
+        setToasts(prev => [...prev, { id, message, type, onClose: removeToast }]);
+    }, [removeToast]);
 
     // -- Job Logic --
-    const fetchJobs = async () => {
+    const fetchJobs = useCallback(async () => {
         // Skip the call entirely on the public/login surface — without a
         // token the backend returns 401, and the resulting console.error
         // trips the e2e "no console errors on login" assertion.
@@ -78,23 +97,35 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
         }
         try {
             const data = await AnalysisAPI.getJobs();
-            setJobs(data);
+            // Skip the state update when nothing meaningful changed, so the
+            // provider (and every consumer) doesn't re-render every poll cycle.
+            setJobs(prev => jobsEqual(prev, data) ? prev : data);
         } catch (error) {
             if (import.meta.env.DEV) console.error('Failed to fetch jobs', error);
             // Avoid spamming toasts on polling failure
         }
-    };
+    }, []);
 
     useEffect(() => {
         let timeoutId: NodeJS.Timeout;
+        // Guards against an in-flight request resolving after this effect is
+        // torn down (activeJobId changed / unmount): without it, a stale poll
+        // could write old data into state and spawn an orphan polling loop.
+        let cancelled = false;
+
+        // Clear the previous job's logs immediately on switch so the viewer
+        // doesn't briefly show the old job's history before the first poll.
+        setHistoricalLogs([]);
 
         const pool = async () => {
             await fetchJobs();
+            if (cancelled) return;
 
             // If we have an active job, poll it faster
             if (activeJobId) {
                 try {
                     const statusData = await AnalysisAPI.getJobStatus(activeJobId);
+                    if (cancelled) return;
 
                     // Update jobs list with latest status
                     setJobs(prevJobs => prevJobs.map(job =>
@@ -119,6 +150,7 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
                         timeoutId = setTimeout(pool, 2000);
                     }
                 } catch (e) {
+                    if (cancelled) return;
                     console.error("Fast poll failed", e);
                     timeoutId = setTimeout(pool, 5000);
                 }
@@ -128,7 +160,10 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
         };
 
         pool();
-        return () => clearTimeout(timeoutId);
+        return () => {
+            cancelled = true;
+            clearTimeout(timeoutId);
+        };
     }, [activeJobId]);
 
     // Computed merged logs
@@ -197,28 +232,28 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
     }, [mergedLogs, events]);
 
 
-    // -- Actions --
-    const handleJobCreated = (jobId: string) => {
+    // -- Actions (stable references so the memoized value doesn't churn) --
+    const handleJobCreated = useCallback((jobId: string) => {
         setActiveJobId(jobId);
         fetchJobs();
         addToast('Analysis job started', 'info');
-    };
+    }, [fetchJobs, addToast]);
 
-    const handlePlayJob = (jobId: string) => {
+    const handlePlayJob = useCallback((jobId: string) => {
         setActiveJobId(jobId);
         // Additional logic for "playing" if needed
-    };
+    }, []);
 
-    const handleUpgradeJob = (job: JobSummary) => {
+    const handleUpgradeJob = useCallback((job: JobSummary) => {
         setInitialFormState({
             manualPath: job.csv_path || '',
             mode: 'predictive',
             use_cache: true
         });
         addToast("Upgrade mode: Form pre-filled for Predictive Analysis", "info");
-    };
+    }, [addToast]);
 
-    const handleCancelJob = async () => {
+    const handleCancelJob = useCallback(async () => {
         if (activeJobId) {
             try {
                 await AnalysisAPI.cancelJob(activeJobId);
@@ -228,13 +263,13 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
                 addToast('Failed to cancel job', 'error');
             }
         }
-    };
+    }, [activeJobId, fetchJobs, addToast]);
 
-    const clearInitialFormState = () => {
+    const clearInitialFormState = useCallback(() => {
         setInitialFormState(null);
-    }
+    }, []);
 
-    const value: JobContextType = {
+    const value: JobContextType = useMemo(() => ({
         jobs,
         activeJobId,
         isConnected,
@@ -254,7 +289,12 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
         addToast,
         removeToast,
         clearInitialFormState
-    };
+    }), [
+        jobs, activeJobId, isConnected, mergedLogs, mergedEvents, progress,
+        metrics, phases, toasts, initialFormState, fetchJobs, handleJobCreated,
+        handlePlayJob, handleUpgradeJob, handleCancelJob, addToast, removeToast,
+        clearInitialFormState,
+    ]);
 
     return (
         <JobContext.Provider value={value}>

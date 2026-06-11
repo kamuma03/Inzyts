@@ -261,6 +261,13 @@ def execution_task(self, job_id: str, csv_path: Optional[str] = None, mode: str 
     from src.workflow.agent_factory import AgentFactory
     AgentFactory.reset()
 
+    # Decrypt secret-bearing fields encrypted by the API before they crossed the
+    # broker (tolerant of legacy plaintext — see secret_transport.decrypt_value).
+    from src.server.utils.secret_transport import decrypt_value
+    for _secret_field in ("db_uri", "api_headers", "api_auth"):
+        if _secret_field in kwargs:
+            kwargs[_secret_field] = decrypt_value(kwargs[_secret_field])
+
     with SessionLocal() as session:
         job = session.get(Job, job_id)
         if not job:
@@ -320,6 +327,14 @@ def execution_task(self, job_id: str, csv_path: Optional[str] = None, mode: str 
                 job.status = JobStatus.RUNNING  # type: ignore
                 job.logs_location = str(log_file.absolute())  # type: ignore
                 session.commit()
+
+                # Re-validate the DB URI at the task boundary. It was checked
+                # when the request was accepted, but the Celery queue is a
+                # trust boundary the request handler can't vouch for — never
+                # hand an unvalidated URI to the workflow's SQL extraction.
+                if params.db_uri:
+                    from src.utils.db_utils import validate_db_uri
+                    validate_db_uri(params.db_uri)
 
                 final_state = run_analysis(**params.to_run_analysis_kwargs())
 

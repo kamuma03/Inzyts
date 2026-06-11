@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Enum, DateTime, JSON, ForeignKey, Integer, Float, Boolean, Text
+from sqlalchemy import Column, String, Enum, DateTime, JSON, ForeignKey, Integer, Float, Boolean, Text, Index
 from sqlalchemy.sql import func
 import enum
 from .database import Base
@@ -46,7 +46,7 @@ class Job(Base):
 
     status: Column = Column(Enum(JobStatus), default=JobStatus.PENDING, index=True)
     mode = Column(
-        String
+        String, index=True
     )  # PipelineMode: exploratory, predictive, diagnostic, comparative, forecasting, segmentation
     title = Column(String, nullable=True)
 
@@ -77,6 +77,13 @@ class Job(Base):
     cost_breakdown = Column(
         JSON, nullable=True
     )  # [{"phase": "phase1", "cost_usd": 0.12, "is_estimate": false}, ...]
+
+    # Composite for the "previous comparable job" lookup in execution_task
+    # (filters user_id + csv_hash + mode + status). One index covers the whole
+    # predicate instead of intersecting four single-column indexes.
+    __table_args__ = (
+        Index("ix_jobs_prev_lookup", "user_id", "csv_hash", "mode", "status"),
+    )
 
 
 class Project(Base):
@@ -112,7 +119,13 @@ class ConversationMessage(Base):
     role = Column(String, nullable=False)  # "user" or "assistant"
     content = Column(String, nullable=False)  # question text or summary text
     cells = Column(JSON, nullable=True)  # [{cell_type, source, output, images}]
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # Indexed: history is loaded ``WHERE job_id = ? ORDER BY created_at``.
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    # Composite serves the exact ordered-history lookup above in one index.
+    __table_args__ = (
+        Index("ix_conversation_messages_job_created", "job_id", "created_at"),
+    )
 
 
 class AuditLog(Base):

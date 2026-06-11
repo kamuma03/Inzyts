@@ -1,7 +1,18 @@
 import axios from 'axios';
 
+// Base URL resolution:
+//  - VITE_API_URL set        → use it (any environment).
+//  - unset + dev             → localhost:8000 (the local backend).
+//  - unset + prod            → relative '/api/v2', so the app talks to whatever
+//    origin served it (Nginx/reverse proxy), never a hard-coded localhost.
+const apiBase = import.meta.env.VITE_API_URL
+    ? `${import.meta.env.VITE_API_URL}/api/v2`
+    : import.meta.env.DEV
+        ? 'http://localhost:8000/api/v2'
+        : '/api/v2';
+
 const api = axios.create({
-    baseURL: (import.meta.env.VITE_API_URL || 'http://localhost:8000') + '/api/v2',
+    baseURL: apiBase,
 });
 
 // Request interceptor to add auth token.

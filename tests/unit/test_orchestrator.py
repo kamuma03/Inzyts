@@ -406,9 +406,5 @@ class TestOrchestratorAgent:
         
         # Test restore cache failure
         state.cache = None
-        try:
-            res = orchestrator_agent._restore_cache(state)
-            assert False, "Should raise ValueError"
-        except ValueError:
-            assert True
-    pytest.main([__file__, '-v'])
+        with pytest.raises(ValueError):
+            orchestrator_agent._restore_cache(state)

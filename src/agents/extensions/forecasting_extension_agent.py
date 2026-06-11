@@ -3,9 +3,16 @@ from typing import Any, Dict
 import pandas as pd
 
 from src.agents.extensions.base_extension import BaseExtensionAgent, EarlyReturn
-from src.models.handoffs import ForecastingExtension, GapAnalysis, ProfileToStrategyHandoff
+from src.models.handoffs import (
+    DataType,
+    ForecastingExtension,
+    GapAnalysis,
+    ProfileToStrategyHandoff,
+)
 from src.models.state import AnalysisState
 from src.prompts import FORECASTING_EXTENSION_PROMPT
+
+_NUMERIC_TYPES = (DataType.NUMERIC_CONTINUOUS, DataType.NUMERIC_DISCRETE)
 
 
 class ForecastingExtensionAgent(BaseExtensionAgent):
@@ -24,7 +31,7 @@ class ForecastingExtensionAgent(BaseExtensionAgent):
     ) -> Dict[str, Any]:
         # 1. Identify date column (profile hint → name-heuristic fallback).
         date_col = next(
-            (c.name for c in profile.column_profiles if c.detected_type.lower() == "datetime"),
+            (c.name for c in profile.column_profiles if c.detected_type == DataType.DATETIME),
             None,
         )
         if not date_col:
@@ -41,6 +48,8 @@ class ForecastingExtensionAgent(BaseExtensionAgent):
 
         # 2. Frequency + gap analysis.
         try:
+            # Work on a copy — never mutate the caller's frame in place.
+            df = df.copy()
             df[date_col] = pd.to_datetime(df[date_col])
             df = df.sort_values(date_col)
             inferred_freq = pd.infer_freq(df[date_col])
@@ -77,7 +86,7 @@ class ForecastingExtensionAgent(BaseExtensionAgent):
             "target_candidates": [
                 c.name
                 for c in profile.column_profiles
-                if c.detected_type in ["numeric_continuous", "numeric_discrete"]
+                if c.detected_type in _NUMERIC_TYPES
                 and c.name != date_col
             ],
             # Fields below are stashed for hydrate() — not sent to the LLM as

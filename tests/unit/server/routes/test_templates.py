@@ -19,10 +19,13 @@ class TestTemplateRoutes(unittest.TestCase):
         # Use fastapi_app instead of the Socket.IO wrapper
         from src.server.main import fastapi_app
         from src.server.middleware.auth import verify_token
-        
-        # Override authentication
-        fastapi_app.dependency_overrides[verify_token] = lambda: "test-token"
-        
+        from src.server.db.models import User, UserRole
+
+        # Override authentication with an ANALYST user (upload/delete now require
+        # ANALYST+; require_role depends on verify_token and inspects .role).
+        analyst = User(id="t1", username="tester", role=UserRole.ANALYST, is_active=True)
+        fastapi_app.dependency_overrides[verify_token] = lambda: analyst
+
         self.client = TestClient(fastapi_app)
         
         # Patch TemplateManager used by the route dependency

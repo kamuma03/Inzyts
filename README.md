@@ -10,7 +10,7 @@
 [![License](https://img.shields.io/badge/license-Apache_2.0-orange.svg)](LICENSE)
 [![LangGraph](https://img.shields.io/badge/powered_by-LangGraph-purple.svg)](https://langchain-ai.github.io/langgraph/)
 [![Status](https://img.shields.io/badge/status-Beta-yellow.svg)](https://github.com/kamuma03/Inzyts)
-[![Tests](https://img.shields.io/badge/tests-108_files-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-116_files-brightgreen.svg)](tests/)
 [![CI](https://img.shields.io/github/actions/workflow/status/kamuma03/Inzyts/test.yml?branch=main&label=CI)](.github/workflows/test.yml)
 
 [Features](#-key-features) • [Installation](#-installation) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [Examples](#-examples)
@@ -1143,11 +1143,10 @@ JWT_SECRET_KEY=test-secret ADMIN_PASSWORD=test-admin pytest tests/integration
 
 ```bash
 tests/fixtures/
-├── iris.csv                    # Clean, small classification dataset
-├── Bank_Churn.csv              # Real-world churn with missing values
-├── synthetic_large.csv         # Performance testing (100K+ rows)
-├── titanic.csv                 # Binary classification benchmark
-└── housing.csv                 # Regression benchmark
+├── iris.csv                       # Clean, small classification dataset
+├── Bank_Churn.csv                 # Real-world churn with missing values
+├── Bank_Churn_Data_Dictionary.csv # Data dictionary for the churn dataset
+└── test_churn.csv                 # Small churn slice for fast tests
 ```
 
 ### Running Specific Test Suites
@@ -1157,15 +1156,15 @@ tests/fixtures/
 pytest tests/unit/ -v
 
 # Integration tests (requires database)
-docker-compose up -d postgres redis
+docker compose up -d db redis
 pytest tests/integration/ -v
 
 # Web API tests (requires full stack)
 ./start_app.sh &
-pytest tests/test_web_integration.py -v
+pytest tests/integration/test_web_integration.py -v
 
-# Performance tests (slow, benchmarking)
-pytest tests/test_performance.py -v --benchmark
+# Performance test (manual load script against a running stack)
+python tests/performance/test_perf_workload.py
 
 # Test with different LLM providers
 ANTHROPIC_API_KEY=xxx pytest tests/ -v

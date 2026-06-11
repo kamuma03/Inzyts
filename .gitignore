@@ -59,7 +59,6 @@ output/
 data/uploads/
 # Keep example data but ignore others
 data/*.csv
-!data/Bank_Churn.csv
 .DA_Agent_cache/
 .Inzyts_cache/
 ~/.Inzyts_cache/

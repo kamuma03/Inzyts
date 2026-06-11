@@ -108,7 +108,34 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore
 
-ALLOWED_ORIGINS = settings.allowed_origins
+def _validate_cors_origins(origins: list[str]) -> list[str]:
+    """Fail fast on a CORS config that would expose the credentialed API.
+
+    A wildcard ``*`` is rejected outright: combined with
+    ``allow_credentials=True`` it is both invalid per the CORS spec and a
+    cross-origin credential-theft risk. Plaintext-http origins beyond
+    localhost are downgraded to a warning (some internal deployments are
+    http-only) rather than a hard failure.
+    """
+    from urllib.parse import urlparse
+
+    if any(o.strip() == "*" for o in origins):
+        raise RuntimeError(
+            "ALLOWED_ORIGINS contains '*', which is invalid with "
+            "allow_credentials=True and unsafe. List explicit origins instead."
+        )
+    for origin in origins:
+        host = urlparse(origin).hostname or ""
+        is_local = host in ("localhost", "127.0.0.1", "::1")
+        if origin.startswith("http://") and not is_local:
+            logger.warning(
+                f"CORS origin {origin!r} uses plaintext http — prefer https "
+                "for non-localhost origins to protect credentialed requests."
+            )
+    return origins
+
+
+ALLOWED_ORIGINS = _validate_cors_origins(settings.allowed_origins)
 
 # Add CORS middleware to support frontend in Docker and local dev
 app.add_middleware(

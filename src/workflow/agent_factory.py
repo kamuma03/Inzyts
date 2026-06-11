@@ -67,6 +67,43 @@ class AgentFactory:
 
     @classmethod
     def reset(cls) -> None:
-        """Reset instances (called at the start of each Celery task and in tests)."""
+        """Reset instances (called at the start of each Celery task and in tests).
+
+        Agents may hold disposable resources (e.g. a pooled validation kernel);
+        give each a chance to release them via an optional ``close()`` hook so a
+        long-lived worker process doesn't leak kernel subprocesses between jobs.
+        """
         with cls._lock:
+            for agent in cls._instances.values():
+                close = getattr(agent, "close", None)
+                if callable(close):
+                    try:
+                        close()
+                    except Exception:
+                        pass
             cls._instances = {}
+
+    @classmethod
+    def registered_agents(cls) -> Tuple[str, ...]:
+        """Names of all registered agents (read-only view of the registry)."""
+        return tuple(_AGENT_REGISTRY)
+
+    @classmethod
+    def validate_registry(cls) -> None:
+        """Resolve every registry entry's ``(module, class)`` without
+        instantiating it.
+
+        Catches a typo or a moved/renamed agent class at import time (e.g. in a
+        startup smoke test or CI) instead of at the first job run that happens
+        to route to that agent. Raises ``RuntimeError`` listing every bad entry.
+        """
+        broken = []
+        for name, (module_path, class_name) in _AGENT_REGISTRY.items():
+            try:
+                getattr(import_module(module_path), class_name)
+            except (ImportError, AttributeError) as e:
+                broken.append(f"{name}: {module_path}.{class_name} → {e}")
+        if broken:
+            raise RuntimeError(
+                "Invalid agent registry entries:\n  " + "\n  ".join(broken)
+            )

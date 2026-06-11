@@ -4,10 +4,12 @@ from typing import Any, Dict
 import numpy as np
 import pandas as pd
 
-from src.agents.extensions.base_extension import BaseExtensionAgent
-from src.models.handoffs import DiagnosticExtension, ProfileToStrategyHandoff
+from src.agents.extensions.base_extension import BaseExtensionAgent, logger
+from src.models.handoffs import DataType, DiagnosticExtension, ProfileToStrategyHandoff
 from src.models.state import AnalysisState
 from src.prompts import DIAGNOSTIC_EXTENSION_PROMPT
+
+_NUMERIC_TYPES = (DataType.NUMERIC_CONTINUOUS, DataType.NUMERIC_DISCRETE)
 
 
 class DiagnosticExtensionAgent(BaseExtensionAgent):
@@ -24,12 +26,12 @@ class DiagnosticExtensionAgent(BaseExtensionAgent):
         self, df: pd.DataFrame, profile: ProfileToStrategyHandoff, state: AnalysisState
     ) -> Dict[str, Any]:
         date_col = next(
-            (c.name for c in profile.column_profiles if c.detected_type.lower() == "datetime"),
+            (c.name for c in profile.column_profiles if c.detected_type == DataType.DATETIME),
             None,
         )
         metric_cols = [
             c.name for c in profile.column_profiles
-            if c.detected_type in ("numeric_continuous", "numeric_discrete")
+            if c.detected_type in _NUMERIC_TYPES
         ]
 
         anomalies: list = []
@@ -37,11 +39,13 @@ class DiagnosticExtensionAgent(BaseExtensionAgent):
 
         if date_col:
             try:
+                # Work on a copy — never mutate the caller's frame in place.
+                df = df.copy()
                 df[date_col] = pd.to_datetime(df[date_col])
                 df = df.sort_values(date_col)
                 # Top-5 metrics only — keep prompt context tight.
                 for col in metric_cols[:5]:
-                    series = df[col].fillna(method="ffill")
+                    series = df[col].ffill()
                     rolling_mean = series.rolling(window=7, min_periods=1).mean()
                     pct_change = rolling_mean.pct_change()
                     for idx, val in pct_change[abs(pct_change) > 0.5].items():
@@ -60,7 +64,7 @@ class DiagnosticExtensionAgent(BaseExtensionAgent):
                             "description": f"Z-score {val:.2f}",
                         })
             except Exception as e:
-                print(f"Diagnostic date processing failed: {e}")
+                logger.error(f"Diagnostic date processing failed: {e}")
         else:
             # Distributional outliers for non-temporal data.
             for col in metric_cols[:5]:

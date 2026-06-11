@@ -2,6 +2,7 @@ import { useEffect, useState, type FC } from 'react';
 import { AnalysisAPI, type JobSummary } from '../../../api';
 import { Shield, AlertTriangle, Clock } from 'lucide-react';
 import { Spinner } from '../../state';
+import { getErrorMessage } from '../../../utils/errorMessage';
 
 interface ExecutiveSummary {
     key_findings: string[];
@@ -32,7 +33,7 @@ export const ReportPanel: FC<ReportPanelProps> = ({ job }) => {
         AnalysisAPI.getExecutiveSummary(job.id).then((res) => {
             if (mounted) setSummary(res);
         }).catch((e) => {
-            if (mounted) setError(e?.message ?? 'Failed to load executive summary');
+            if (mounted) setError(getErrorMessage(e, 'Failed to load executive summary'));
         }).finally(() => { if (mounted) setLoading(false); });
         return () => { mounted = false; };
     }, [job.id, job.status]);

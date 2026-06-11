@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Request
 import shutil
 import uuid
 from pathlib import Path
@@ -7,6 +7,7 @@ from werkzeug.utils import secure_filename as werkzeug_secure_filename
 from src.config import settings
 from src.server.db.models import User, UserRole
 from src.server.middleware.auth import require_role, verify_token
+from src.server.rate_limiter import limiter
 from src.utils.logger import get_logger
 from src.utils.path_validator import validate_path_within, ensure_dir
 from src.server.models.schemas import FilePreview, DBTestRequest, DBTestResponse, SQLPreviewRequest, APIPreviewRequest
@@ -242,8 +243,11 @@ async def preview_file(path: str, _user: User = Depends(verify_token)):
 
 
 @router.post("/db-test", response_model=DBTestResponse)
+@limiter.limit("20/minute")
 async def test_db_connection(
-    req: DBTestRequest, _user: User = Depends(verify_token)
+    request: Request,
+    req: DBTestRequest,
+    _user: User = Depends(require_role(UserRole.ANALYST)),
 ):
     """
     Test a database connection and return basic info (dialect, host, table list).
@@ -284,8 +288,11 @@ async def test_db_connection(
 
 
 @router.post("/sql-preview", response_model=FilePreview)
+@limiter.limit("20/minute")
 async def preview_sql_query(
-    req: SQLPreviewRequest, _user: User = Depends(verify_token)
+    request: Request,
+    req: SQLPreviewRequest,
+    _user: User = Depends(require_role(UserRole.ANALYST)),
 ):
     """
     Execute a SQL query and return the first 5 rows as a preview.
@@ -328,8 +335,11 @@ async def preview_sql_query(
 
 
 @router.post("/api-preview", response_model=FilePreview)
+@limiter.limit("20/minute")
 async def preview_api_endpoint(
-    req: APIPreviewRequest, _user: User = Depends(verify_token)
+    request: Request,
+    req: APIPreviewRequest,
+    _user: User = Depends(require_role(UserRole.ANALYST)),
 ):
     """
     Fetch a single page from a REST API and return the first 5 rows as a preview.

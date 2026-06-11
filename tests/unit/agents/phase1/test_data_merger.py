@@ -64,10 +64,11 @@ def test_process_success(mock_datetime, mock_path, merger_agent, base_state, tmp
     # Tests lines 95-143
     mock_datetime.now.return_value.strftime.return_value = "20230101_120000"
     
-    # Mocking Path to intercept output dir creation but still return a valid Path object
-    mock_output_dir = MagicMock()
-    mock_merged_path = tmp_path / "merged_20230101_120000.csv"
-    mock_output_dir.__truediv__.return_value = mock_merged_path
+    # Redirect the merged-output directory under tmp_path using REAL Path objects.
+    # (Previously mock_output_dir was a bare MagicMock; ensure_dir(output_dir)
+    # then did a real mkdir on os.fspath(MagicMock), creating a stray
+    # "MagicMock/Path().__truediv__()/..." tree at the repo root every run.)
+    mock_output_dir = tmp_path  # Path(settings.output_dir) / "merged"
     mock_path.return_value.__truediv__.return_value = mock_output_dir
     
     f1 = FileInput(file_path="f1.csv", file_hash="h1", alias="f1")
@@ -112,7 +113,7 @@ def test_process_success(mock_datetime, mock_path, merger_agent, base_state, tmp
     assert result["join_report"].files_analyzed == 2
     assert result["join_report"].candidate_joins_found == 1
     assert "csv_path" in result
-    assert result["csv_path"] == str(mock_merged_path)
+    assert result["csv_path"] == str(tmp_path / "merged_20230101_120000.csv")
     
     mock_join_detector.detect_join_candidates.assert_called_once()
     mock_join_detector.execute_joins.assert_called_once()

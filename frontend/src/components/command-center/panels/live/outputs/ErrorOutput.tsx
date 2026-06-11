@@ -7,7 +7,10 @@ interface ErrorOutputProps {
 }
 
 // ANSI escape code stripper — Jupyter tracebacks include color codes.
-const ansiRegex = /\[[0-9;]*m/g;
+// Match the full SGR sequence INCLUDING the leading ESC byte; otherwise a
+// literal "[0m" appearing in normal output would be stripped.
+// eslint-disable-next-line no-control-regex
+const ansiRegex = /\x1b\[[0-9;]*m/g;
 const stripAnsi = (s: string): string => s.replace(ansiRegex, '');
 
 /** Renders a Python traceback in red, with ANSI color codes stripped. */

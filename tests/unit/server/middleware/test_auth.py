@@ -6,7 +6,6 @@ from fastapi.security import HTTPAuthorizationCredentials
 
 from src.server.middleware.auth import (
     verify_token,
-    verify_token_sync,
     verify_token_async,
     verify_password,
     get_password_hash,
@@ -61,46 +60,6 @@ async def test_verify_token_valid_token(mock_verify_async):
     assert result.username == "alice"
     mock_verify_async.assert_awaited_once_with("good_token", mock_db)
 
-
-# ---------------------------------------------------------------------------
-# verify_token_sync
-# ---------------------------------------------------------------------------
-
-@patch("src.server.middleware.auth.settings")
-def test_verify_token_sync_system_token_valid(mock_settings):
-    """System API token matches → returns User-like object."""
-    mock_settings.api_token = "sys_secret"
-    result = verify_token_sync("sys_secret")
-    assert result is not None
-    assert result.username == "system"
-
-
-@patch("src.server.middleware.auth.settings")
-def test_verify_token_sync_no_match_no_db(mock_settings):
-    """Token doesn't match system token and no DB → None."""
-    mock_settings.api_token = "sys_secret"
-    mock_settings.jwt_secret_key = "test_key"
-    mock_settings.jwt_algorithm = "HS256"
-    result = verify_token_sync("random_garbage")
-    assert result is None
-
-
-@patch("src.server.middleware.auth.settings")
-def test_verify_token_sync_jwt_with_db(mock_settings):
-    """Valid JWT + DB session → returns user from DB."""
-    mock_settings.api_token = ""
-    mock_settings.jwt_secret_key = "test_key"
-    mock_settings.jwt_algorithm = "HS256"
-
-    token = create_access_token({"sub": "bob"})
-
-    fake_user = User(id=2, username="bob", is_active=True)
-    mock_db = MagicMock()
-    mock_db.query.return_value.filter.return_value.first.return_value = fake_user
-
-    result = verify_token_sync(token, db=mock_db)
-    assert result is not None
-    assert result.username == "bob"
 
 
 # ---------------------------------------------------------------------------

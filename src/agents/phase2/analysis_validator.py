@@ -26,14 +26,14 @@ from src.models.validation import (
     ValidationReport,
     calculate_phase2_quality,
 )
-from src.services.sandbox_executor import SandboxExecutor
+from src.services.sandbox_executor import PooledKernelMixin, SandboxExecutor
 from src.utils.logger import get_logger
 
 # Initialize logger
 logger = get_logger()
 
 
-class AnalysisValidatorAgent(BaseAgent):
+class AnalysisValidatorAgent(PooledKernelMixin, BaseAgent):
     """
     Analysis Validator Agent for Phase 2.
 
@@ -155,7 +155,7 @@ class AnalysisValidatorAgent(BaseAgent):
         viz_count = 0
         insights_count = 0
 
-        with SandboxExecutor(execution_timeout=120) as executor:
+        with self.pooled_sandbox(execution_timeout=120) as executor:
             for idx, cell in enumerate(cells):
                 try:
                     if cell.cell_type == "code":
@@ -231,8 +231,6 @@ class AnalysisValidatorAgent(BaseAgent):
 
         metric_values = self._validate_mode_specific_metrics(code_handoff, mode)
 
-        metric_values = self._validate_mode_specific_metrics(code_handoff, mode)
-
         return AnalysisValidationResult(
             cells_passed=cells_passed,
             total_cells=len(cells),
@@ -256,8 +254,28 @@ class AnalysisValidatorAgent(BaseAgent):
         """Validate Python syntax."""
         return validate_syntax(code)
 
+    @staticmethod
+    def _strip_code_noise(code: str) -> str:
+        """Blank out comments and string literals so keyword counting reflects
+        executable code, not prose, while preserving the surrounding code
+        verbatim (spacing intact, so patterns like ``.fit(`` still match).
+
+        Without this, a comment like ``# accuracy precision recall f1`` or a
+        ``print("Conclusions")`` string scores full marks for "metrics computed"
+        / "insights", letting a broken analysis pass the completion gate.
+        """
+        import re
+
+        # Order matters: triple-quoted blocks first, then single-line strings,
+        # then comments. Replace with a space (not "") to avoid fusing tokens.
+        no_block = re.sub(r"(?s)(\"\"\".*?\"\"\"|'''.*?''')", " ", code)
+        no_str = re.sub(r"(\"[^\"\n]*\"|'[^'\n]*')", " ", no_block)
+        no_comments = re.sub(r"#[^\n]*", "", no_str)
+        return no_comments
+
     def _count_model_training(self, code: str) -> int:
         """Count model training operations."""
+        code = self._strip_code_noise(code)
         count = 0
         training_patterns = [
             ".fit(",
@@ -272,15 +290,13 @@ class AnalysisValidatorAgent(BaseAgent):
     def _count_metrics(self, code: str, strategy) -> int:
         """Count metric computations."""
         count = 0
-        code_lower = code.lower()
-        debug_metrics_looked_for = []
+        # Count metric keywords in executable code only — not comments/strings.
+        code_lower = self._strip_code_noise(code).lower()
 
         has_class_report = "classification_report" in code_lower
 
         if strategy and strategy.evaluation_metrics:
             for metric in strategy.evaluation_metrics:
-                debug_metrics_looked_for.append(metric)
-
                 # Direct match (e.g. "accuracy_score" contains "accuracy")
                 if metric in code_lower or f"_{metric}" in code_lower:
                     count += max(
@@ -322,22 +338,8 @@ class AnalysisValidatorAgent(BaseAgent):
                 "r2",
             ]
 
-            debug_metrics_looked_for = metric_patterns
             for pattern in metric_patterns:
                 count += code_lower.count(pattern)
-                if has_class_report and pattern in [
-                    "accuracy",
-                    "precision",
-                    "recall",
-                    "f1",
-                ]:
-                    # Avoid double counting if already counted via pattern?
-                    # Actually simpler: just rely on regex counts or keep simple.
-                    # If generic pattern counting is used, simpler is better.
-                    pass
-
-        if count == 0 and not has_class_report:
-            pass
 
         return count
 
@@ -356,16 +358,23 @@ class AnalysisValidatorAgent(BaseAgent):
         return count_visualizations(code, self._ANALYSIS_VIZ_PATTERNS, cap=4)
 
     def _count_insights(self, code: str) -> int:
-        """Count insight-generating code."""
+        """Count insight-generating code.
+
+        ``print(`` is counted against executable code (a real print call), while
+        the narrative markers are matched against the original source since they
+        legitimately appear inside the printed strings.
+        """
         count = 0
-        insight_patterns = [
-            "print(",
+        executable = self._strip_code_noise(code)
+        if "print(" in executable:
+            count += 1
+        narrative_markers = [
             "Best Model",
             "Conclusions",
             "Key Insights",
             "Performance Summary",
         ]
-        for pattern in insight_patterns:
+        for pattern in narrative_markers:
             if pattern in code:
                 count += 1
         return min(count, 5)

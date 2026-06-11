@@ -2,8 +2,9 @@
 
 The Forecasting / Comparative / Diagnostic extensions all share the same
 outer shape: verify the profile lock, materialise a DataFrame from
-``state.csv_data``, run mode-specific statistical detection, build a
-context dict, ask the LLM to validate it as the matching extension model,
+``state.csv_path`` (the full frame is deliberately never serialised onto
+state — see ``orchestrator``), run mode-specific statistical detection,
+build a context dict, ask the LLM to validate it as the matching extension model,
 optionally hydrate the response with hard-computed values, and return
 ``{<output_key>: response, "confidence": 1.0}``.
 
@@ -24,6 +25,10 @@ from pydantic import BaseModel
 from src.agents.base import BaseAgent
 from src.models.handoffs import ProfileToStrategyHandoff
 from src.models.state import AnalysisState, Phase
+from src.utils.file_utils import load_csv_robust
+from src.utils.logger import get_logger
+
+logger = get_logger()
 
 
 class EarlyReturn(Exception):
@@ -49,6 +54,10 @@ class BaseExtensionAgent(BaseAgent):
     output_key: str             # e.g. "forecasting_extension"
     prompt_intro: str           # leading text the LLM sees before the context
     error_no_csv: str = "No CSV data available"
+
+    # Extensions profile a sample only; exact counts come from the locked
+    # profile, so a bounded read keeps large uploads off the worker's heap.
+    max_rows: int = 50000
 
     def __init__(self, name: str, system_prompt: str) -> None:
         super().__init__(name=name, phase=Phase.PHASE_1, system_prompt=system_prompt)
@@ -76,11 +85,15 @@ class BaseExtensionAgent(BaseAgent):
         if not profile:
             return {"error": "Profile not locked, cannot run extension"}
 
-        if not state.csv_data:
+        # The full DataFrame is intentionally not serialised onto state
+        # (orchestrator sets ``csv_data=None`` for performance); load from the
+        # path every other agent reads from instead.
+        if not state.csv_path:
             return {"error": self.error_no_csv}
         try:
-            df = pd.DataFrame(state.csv_data)
+            df = load_csv_robust(state.csv_path, nrows=self.max_rows)
         except Exception as e:
+            logger.error(f"{self.name}: failed to load CSV from {state.csv_path}: {e}")
             return {"error": f"Failed to load dataframe: {e}"}
 
         try:
@@ -99,9 +112,15 @@ class BaseExtensionAgent(BaseAgent):
         try:
             response = self.extension_model.model_validate_json(response_str)
         except Exception as e:
-            print(f"JSON Validation failed: {e}")
-            print(f"Response was: {response_str}")
-            raise
+            # A single malformed LLM reply must not kill the whole run; degrade
+            # gracefully like every Phase-1/Phase-2 agent does. The extension
+            # output is advisory pre-strategy context, so a low-confidence error
+            # return lets the graph continue to the strategy node.
+            logger.error(
+                f"{self.name}: extension JSON validation failed: {e}; "
+                f"response was: {response_str[:500]}"
+            )
+            return {"error": f"Extension output invalid: {e}", "confidence": 0.0}
 
         response = self.hydrate(response, computed)
         return {self.output_key: response, "confidence": 1.0}

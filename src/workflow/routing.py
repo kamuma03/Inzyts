@@ -128,6 +128,12 @@ def route_phase2_recursion(
         # Trigger explicit rollback mechanism via Orchestrator
         return "Orchestrator", "ROLLBACK_TRIGGERED"
 
+    # 3b. Detect oscillation (Whac-A-Mole: fixing one thing breaks another).
+    # If quality is bouncing rather than converging, more iterations won't help —
+    # roll back to the best snapshot and stop burning budget on the loop.
+    if detect_oscillation(state.phase2_quality_trajectory):
+        return "Orchestrator", "ROLLBACK_TRIGGERED"
+
     # 4. Analyze specific issues to route correctly
     issues = validation_result.issues
 

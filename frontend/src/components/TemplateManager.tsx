@@ -17,7 +17,7 @@ export const TemplateManager: React.FC<TemplateManagerProps> = ({ onBack }) => {
     const [confirmState, setConfirmState] = useState<{ isOpen: boolean, message: string, onConfirm: () => void } | null>(null);
 
     const addToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
-        const id = Math.random().toString(36).substr(2, 9);
+        const id = Math.random().toString(36).slice(2, 11);
         setToasts(prev => [...prev, { id, message, type }]);
         setTimeout(() => removeToast(id), 5000);
     };

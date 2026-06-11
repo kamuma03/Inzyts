@@ -5,6 +5,8 @@ import { LivePanel } from './command-center/panels/live/LivePanel';
 import { FollowUpChat } from './FollowUpChat';
 import { SkeletonCard, Spinner } from './state';
 import { NotebookCellData } from '../types/notebook';
+import { useJobContext } from '../context/JobContext';
+import { getErrorMessage } from '../utils/errorMessage';
 
 interface NotebookViewerProps {
     jobId: string;
@@ -29,6 +31,7 @@ type ExportFormat = 'pdf' | 'html' | 'pptx' | 'markdown' | 'ipynb';
  *  chat dock. Report (executive summary) is a sibling top-level tab now,
  *  not a mode of this component. */
 export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPath, status = 'completed', embedded = false }) => {
+    const { addToast } = useJobContext();
     const [cells, setCells] = useState<NotebookCellData[]>([]);
     const [cellsLoading, setCellsLoading] = useState(true);
 
@@ -103,10 +106,14 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
             URL.revokeObjectURL(url);
         } catch (err) {
             if (import.meta.env.DEV) console.error(`Export ${format} failed`, err);
+            addToast(
+                getErrorMessage(err, `Export to ${format.toUpperCase()} failed`),
+                'error',
+            );
         } finally {
             setExportLoading(null);
         }
-    }, [jobId, resultPath]);
+    }, [jobId, resultPath, addToast]);
 
     const exportFormats: { key: ExportFormat; label: string; icon: React.ReactNode }[] = useMemo(() => [
         { key: 'pdf' as const, label: 'PDF', icon: <FileText size={14} /> },

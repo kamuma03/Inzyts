@@ -14,5 +14,15 @@ try {
     );
 } catch (error) {
     console.error("FATAL REACT BOOT ERROR:", error);
-    document.body.innerHTML = `<div style="padding: 20px; color: red;"><h1>Fatal Boot Error</h1><pre>${error}</pre></div>`;
+    // Build the fallback with the DOM API + textContent so the error value is
+    // never interpolated as HTML (avoids XSS if it ever carries markup).
+    const container = document.createElement('div');
+    container.style.padding = '20px';
+    container.style.color = 'red';
+    const heading = document.createElement('h1');
+    heading.textContent = 'Fatal Boot Error';
+    const pre = document.createElement('pre');
+    pre.textContent = error instanceof Error ? error.message : String(error);
+    container.append(heading, pre);
+    document.body.replaceChildren(container);
 }

@@ -71,7 +71,9 @@ def _audit(
             )
             session.commit()
     except Exception as e:
-        logger.debug(f"CellExecutionAudit write failed: {e}")
+        # The cell-execution audit row is a security trail for code execution;
+        # a write failure leaves a gap, so surface it at WARNING (not debug).
+        logger.warning(f"CellExecutionAudit write failed: {e}")
 
 
 def stream_execute(

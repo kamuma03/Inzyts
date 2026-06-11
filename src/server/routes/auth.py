@@ -10,7 +10,7 @@ import uuid
 from src.server.db.database import get_db
 from src.server.db.models import User, UserRole
 from src.server.middleware.auth import verify_password, create_access_token, get_password_hash, verify_token
-from src.server.middleware.audit import record_audit
+from src.server.middleware.audit import _client_ip, record_audit
 from src.server.rate_limiter import limiter
 from src.config import settings
 from src.utils.logger import get_logger
@@ -70,8 +70,10 @@ async def login_for_access_token(
         user.hashed_password if user else _DUMMY_HASH,
     )
     if not user or not password_ok:
-        # Audit failed login attempt
-        ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown")
+        # Audit failed login attempt. Use the proxy-aware client IP — trusting
+        # X-Forwarded-For directly lets an attacker forge the source IP in
+        # security-critical login_failed records.
+        ip = _client_ip(request)
         await record_audit(
             action="login_failed",
             username=form_data.username,
@@ -92,8 +94,8 @@ async def login_for_access_token(
         expires_delta=access_token_expires,
     )
 
-    # Audit successful login
-    ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown")
+    # Audit successful login (proxy-aware client IP, see above).
+    ip = _client_ip(request)
     await record_audit(
         action="login",
         user=user,

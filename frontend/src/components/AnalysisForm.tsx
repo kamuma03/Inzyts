@@ -5,6 +5,7 @@ import { Tabs } from './Tabs';
 import { useModeSuggestion } from '../hooks/useModeSuggestion';
 import { FileUploadSection, DatabaseSection, CloudSection, APISection, ConfigPanel } from './analysis-form';
 import { InlineError } from './state';
+import { getErrorMessage } from '../utils/errorMessage';
 
 /** Strip stack frames and noisy prefixes from network/Pydantic error
  *  messages so the InlineError shows a single readable sentence. */
@@ -13,9 +14,14 @@ const sanitiseFormError = (raw: string | null): string => {
     // Take the first line — drop multi-line stack frames.
     const firstLine = raw.split('\n')[0].trim();
     // Drop common HTTP-ish prefixes ("Error:", "AxiosError:", "Request failed with status code 422:")
-    return firstLine
+    const cleaned = firstLine
         .replace(/^(Error|AxiosError|TypeError|RangeError):\s*/i, '')
-        .replace(/^Request failed with status code \d+:?\s*/i, '');
+        .replace(/^Request failed with status code \d+:?\s*/i, '')
+        .trim();
+    // If stripping the prefixes left nothing (e.g. the message was just
+    // "Error:"), fall back to the original first line so the box is never
+    // empty — an empty InlineError renders a hollow red box with no text.
+    return cleaned || firstLine || 'Something went wrong. Please try again.';
 };
 
 const DATA_SOURCE_TABS = [
@@ -159,8 +165,8 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
             setUploadedFiles(prev => [...prev, ...uploadResps]);
             setFiles([]);
             if (fileInputRef.current) fileInputRef.current.value = '';
-        } catch (err: any) {
-            setError(err.message || 'Upload failed');
+        } catch (err) {
+            setError(getErrorMessage(err, 'Upload failed'));
         } finally {
             setLoading(false);
         }
@@ -181,8 +187,8 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
         try {
             const result = await AnalysisAPI.testDbConnection(dbUri);
             setDbTestResult(result);
-        } catch (err: any) {
-            setDbTestResult({ status: 'error', error: err.message || 'Connection test failed' });
+        } catch (err) {
+            setDbTestResult({ status: 'error', error: getErrorMessage(err, 'Connection test failed') });
         } finally {
             setDbTestLoading(false);
         }
@@ -282,8 +288,8 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({ onJobCreated, initialValue
                 exclude_columns: excludeCols ? excludeCols.split(',').map(s => s.trim()).filter(Boolean) : undefined
             });
             onJobCreated(analysisResp.job_id);
-        } catch (err: any) {
-            setError(err.message || 'Failed to start analysis');
+        } catch (err) {
+            setError(getErrorMessage(err, 'Failed to start analysis'));
         } finally {
             setLoading(false);
         }

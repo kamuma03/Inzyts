@@ -85,13 +85,17 @@ class DataProfilerAgent(BaseAgent):
 
         handoff: OrchestratorToProfilerHandoff | None = kwargs.get("handoff")
 
-        # Load DataFrame
+        # Load DataFrame. _profile_row_count carries the EXACT total row count
+        # even when a large file is sampled for in-memory profiling (see
+        # _load_csv_bounded); each load path below sets it.
+        self._profile_row_count = None
         if state.csv_data is not None:
             df = (
                 pd.DataFrame(state.csv_data)
                 if isinstance(state.csv_data, dict)
                 else state.csv_data
             )
+            self._profile_row_count = len(df)
         elif handoff and handoff.is_multi_file:
             logger.info("Detected multi-file input. Using DataLoader to merge.")
             loader = DataLoader()
@@ -100,6 +104,14 @@ class DataProfilerAgent(BaseAgent):
                 if not handoff.multi_file_input:
                     raise ValueError("multi_file_input is None")
                 df, merged_meta = loader.merge_datasets(handoff.multi_file_input)
+                # Guard against a merge that produced nothing usable (e.g. a
+                # join key mismatch yielding zero rows) — otherwise we'd write
+                # an empty CSV and silently profile a blank dataset.
+                if df is None or df.empty or len(df.columns) == 0:
+                    raise ValueError(
+                        "Multi-file merge produced an empty DataFrame "
+                        "(check join keys / overlapping rows)"
+                    )
                 # ProfileCodeGen needs a CSV on disk to read; persist the merged
                 # frame next to the primary input so downstream stays simple.
                 cache_dir = (
@@ -115,20 +127,30 @@ class DataProfilerAgent(BaseAgent):
                 handoff.merged_dataset.merged_df_path = merged_path
 
             except Exception as e:
-                logger.error(f"Multi-file merge failed: {e}")
-                # Fallback to single file load
+                # Surface the degradation loudly: we continue on the primary
+                # file only, so the analysis covers one file, not the merge the
+                # user requested. A WARNING (not a silent debug) makes that
+                # visible in the job log.
+                logger.warning(
+                    f"Multi-file merge failed ({e}); falling back to the primary "
+                    f"file only — analysis will NOT include the other files."
+                )
                 from src.utils.file_utils import load_csv_robust
 
                 df = load_csv_robust(state.csv_path)
+                self._profile_row_count = len(df)
         else:
             try:
                 # Check for Parquet first
                 if state.csv_path.lower().endswith(".parquet"):
                     df = pd.read_parquet(state.csv_path)
+                    self._profile_row_count = len(df)
                 else:
                     from src.utils.file_utils import load_csv_robust
 
-                    df = load_csv_robust(state.csv_path)
+                    df, self._profile_row_count = self._load_csv_bounded(
+                        state.csv_path, load_csv_robust
+                    )
             except pd.errors.EmptyDataError:
                 logger.error(f"Empty CSV file: {state.csv_path}")
                 return {
@@ -153,9 +175,13 @@ class DataProfilerAgent(BaseAgent):
 
         cache_manager = CacheManager()
         csv_hash = cache_manager.get_csv_hash(state.csv_path)
+        # Partition the cache by analysis intent — a new target/question/mode on
+        # the same file must not reuse a profile computed for a different intent.
+        intent_hash = cache_manager.get_intent_hash(state)
+        analysis_artifact = f"profiler_analysis_{intent_hash}"
 
         # Check for cached analysis
-        cached_analysis = cache_manager.load_artifact(csv_hash, "profiler_analysis")
+        cached_analysis = cache_manager.load_artifact(csv_hash, analysis_artifact)
         if cached_analysis:
             logger.info(f"Using cached profiler analysis for {state.csv_path}")
             analysis = cached_analysis
@@ -179,7 +205,7 @@ class DataProfilerAgent(BaseAgent):
                 analysis = self._heuristic_analysis(df)
 
             # Save final analysis (LLM or Heuristic) to cache
-            cache_manager.save_artifact(csv_hash, "profiler_analysis", analysis)
+            cache_manager.save_artifact(csv_hash, analysis_artifact, analysis)
 
         # Detect Domain (v1.8.0)
         template_manager = TemplateManager()
@@ -203,7 +229,7 @@ class DataProfilerAgent(BaseAgent):
         logger.agent_execution(
             "DataProfiler",
             "completed",
-            rows=len(df),
+            rows=getattr(self, "_profile_row_count", None) or len(df),
             columns=len(df.columns),
             confidence=confidence,
         )
@@ -239,6 +265,44 @@ class DataProfilerAgent(BaseAgent):
         {user_intent_json}
 
         Provide your analysis as JSON following the specified format."""
+
+    def _load_csv_bounded(self, path, loader):
+        """Load a CSV for profiling, bounding memory on very large files.
+
+        Returns ``(df, true_row_count)``. When the file has more rows than
+        ``settings.agent.max_rows_to_sample`` (and that cap is > 0), only the
+        first ``cap`` rows are loaded for the in-memory per-column profiling,
+        but the EXACT total row count is still computed cheaply (one streamed
+        line pass) and returned — so the locked profile's ``row_count`` data
+        contract stays accurate. Per-column distribution stats (null %, unique
+        ratios) are then sample-based estimates for oversized files; this is the
+        documented sampling trade-off, logged below.
+        """
+        from src.config import settings
+
+        cap = getattr(settings.agent, "max_rows_to_sample", 0) or 0
+        if cap <= 0:
+            df = loader(path)
+            return df, len(df)
+
+        # Peek cap+1 rows: if we get <= cap, the file fits and counts are exact.
+        df = loader(path, nrows=cap + 1)
+        if len(df) <= cap:
+            return df, len(df)
+
+        # Oversized: keep a cap-sized sample for profiling, but get the true
+        # row count cheaply (count data lines = total lines - 1 header).
+        df = df.head(cap)
+        try:
+            with open(path, "rb") as fh:
+                true_rows = max(sum(1 for _ in fh) - 1, len(df))
+        except Exception:
+            true_rows = len(df)  # fall back to sample size if the file is unreadable
+        logger.warning(
+            f"Profiling a sample: {path} has {true_rows} rows (> cap {cap}); "
+            f"per-column distribution stats are estimated from the first {cap} rows."
+        )
+        return df, true_rows
 
     def _build_analysis_context(
         self,
@@ -580,7 +644,7 @@ class DataProfilerAgent(BaseAgent):
 
         return ProfilerToCodeGenHandoff(
             csv_path=csv_path,
-            row_count=len(df),
+            row_count=getattr(self, "_profile_row_count", None) or len(df),
             column_count=len(df.columns),
             columns=columns,
             statistics_requirements=stats_reqs,

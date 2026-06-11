@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { getErrorMessage } from '../utils/errorMessage';
 
 interface UseFetchDataResult<T> {
     data: T | null;
@@ -32,13 +33,9 @@ export function useFetchData<T>(
             if (mountedRef.current) {
                 setData(result);
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             if (mountedRef.current) {
-                const message =
-                    typeof err === 'string'
-                        ? err
-                        : err?.message || 'An error occurred';
-                setError(message);
+                setError(getErrorMessage(err));
             }
         } finally {
             if (mountedRef.current) {

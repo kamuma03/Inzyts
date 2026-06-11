@@ -68,11 +68,25 @@ class TemplateManager:
 
         return None
 
+    def _resolve_within_dir(self, domain_name: str) -> Optional[Path]:
+        """Map a domain name to its JSON path, ensuring it stays inside the
+        template directory. Returns None if the name escapes the directory
+        (e.g. via path separators or ``..``), defeating traversal."""
+        filename = f"{domain_name.lower().replace(' ', '_')}.json"
+        base = Path(self.template_dir).resolve()
+        candidate = (base / filename).resolve()
+        if base != candidate.parent:
+            logger.warning(f"Rejected out-of-directory template path: {domain_name!r}")
+            return None
+        return candidate
+
     def save_template(self, template: DomainTemplate) -> bool:
         """Save a new template or update an existing one."""
         try:
-            filename = f"{template.domain_name.lower().replace(' ', '_')}.json"
-            path = str(Path(self.template_dir) / filename)
+            resolved = self._resolve_within_dir(template.domain_name)
+            if resolved is None:
+                return False
+            path = str(resolved)
 
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(template.model_dump(), f, indent=4)
@@ -107,9 +121,10 @@ class TemplateManager:
             if not template:
                 return False
 
-            # Delete file
-            filename = f"{template.domain_name.lower().replace(' ', '_')}.json"
-            file_path = Path(self.template_dir) / filename
+            # Delete file (validated to stay inside the template directory)
+            file_path = self._resolve_within_dir(template.domain_name)
+            if file_path is None:
+                return False
 
             if file_path.exists():
                 os.remove(file_path)

@@ -6,7 +6,8 @@ from pydantic import ValidationError
 from src.models.templates import DomainTemplate
 from src.services.template_manager import TemplateManager
 from src.utils.logger import get_logger
-from src.server.middleware.auth import verify_token
+from src.server.db.models import UserRole
+from src.server.middleware.auth import require_role, verify_token
 
 router = APIRouter(tags=["templates"])
 logger = get_logger()
@@ -29,9 +30,9 @@ async def list_templates(
 async def upload_template(
     file: UploadFile = File(...),
     manager: TemplateManager = Depends(get_template_manager),
-    _user=Depends(verify_token),
+    _user=Depends(require_role(UserRole.ANALYST)),
 ):
-    """Upload a new domain template (JSON file)."""
+    """Upload a new domain template (JSON file). Requires ANALYST or ADMIN."""
     try:
         content = await file.read()
         data = json.loads(content)
@@ -59,9 +60,12 @@ async def upload_template(
 async def delete_template(
     domain_name: str,
     manager: TemplateManager = Depends(get_template_manager),
-    _user=Depends(verify_token),
+    _user=Depends(require_role(UserRole.ANALYST)),
 ):
-    """Delete a domain template by name."""
+    """Delete a domain template by name. Requires ANALYST or ADMIN."""
+    # Reject path-traversal in the name before it reaches the filesystem.
+    if not domain_name or "/" in domain_name or "\\" in domain_name or ".." in domain_name:
+        raise HTTPException(status_code=400, detail="Invalid template name")
     if manager.delete_template(domain_name):
         return {"message": f"Template '{domain_name}' deleted successfully"}
     else:

@@ -99,10 +99,13 @@ class StrategyAgent(BaseAgent):
 
         cache_manager = CacheManager()
         csv_hash = cache_manager.get_csv_hash(state.csv_path)
+        # Partition by intent — a strategy is meaningless across a changed
+        # target/question/mode even on the same dataset.
+        strategy_artifact = f"analysis_strategy_{cache_manager.get_intent_hash(state)}"
 
         cached_strategy = None
         if state.using_cached_profile:
-            cached_strategy = cache_manager.load_artifact(csv_hash, "analysis_strategy")
+            cached_strategy = cache_manager.load_artifact(csv_hash, strategy_artifact)
 
         if cached_strategy:
             logger.info(f"Using cached strategy for {state.csv_path}")
@@ -116,7 +119,7 @@ class StrategyAgent(BaseAgent):
                 response = self.llm_agent.invoke_with_json(prompt)
                 strategy = json.loads(response)
                 # Save to cache if successful
-                cache_manager.save_artifact(csv_hash, "analysis_strategy", strategy)
+                cache_manager.save_artifact(csv_hash, strategy_artifact, strategy)
             except (json.JSONDecodeError, Exception) as e:
                 # Fall back to heuristic strategy
                 logger.warning(
@@ -125,7 +128,7 @@ class StrategyAgent(BaseAgent):
                 strategy = self._heuristic_strategy(profile, state)
                 # Allow fallback strategy to be cached too?
                 # Yes, to avoid repeated failures.
-                cache_manager.save_artifact(csv_hash, "analysis_strategy", strategy)
+                cache_manager.save_artifact(csv_hash, strategy_artifact, strategy)
 
         # Build handoff
         handoff = self._build_handoff(strategy, profile)
@@ -337,10 +340,12 @@ DOMAIN KPIS:
             target_column = candidate.column_name
             analysis_type = candidate.suggested_analysis_type
 
-        # Identify feature columns (exclude target and identifiers)
+        # Identify feature columns (exclude target and identifiers).
+        # Build a local set — never mutate user_intent.exclude_columns in place.
         feature_columns = []
-        exclude = state.user_intent.exclude_columns if state.user_intent else []
-        exclude.append(target_column) if target_column else None
+        exclude = list(state.user_intent.exclude_columns if state.user_intent else [])
+        if target_column:
+            exclude.append(target_column)
 
         for col in profile.column_profiles:
             if col.name not in exclude and col.detected_type.value != "identifier":

@@ -33,7 +33,8 @@ import signal
 import tempfile
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from contextlib import contextmanager
+from typing import Any, Callable, Dict, Iterator, List, Optional
 
 import jupyter_client
 
@@ -123,6 +124,28 @@ def _build_preexec_fn(policy: SandboxPolicy) -> Callable[[], None]:
     nproc = policy.max_processes
     nofile = policy.max_open_files
 
+    def _apply_rlimits(include_nproc: bool) -> None:
+        # RLIMIT_NPROC is enforced per *real UID* across the whole process
+        # group, so when the kernel shares the parent's pgid (setsid failed)
+        # applying it would also throttle the parent (worker / test runner).
+        # Every other limit here is per-process and safe to apply regardless.
+        limits = [
+            ("RLIMIT_AS", getattr(resource, "RLIMIT_AS", None), memory_bytes),
+            ("RLIMIT_CPU", getattr(resource, "RLIMIT_CPU", None), cpu_secs),
+            ("RLIMIT_NOFILE", getattr(resource, "RLIMIT_NOFILE", None), nofile),
+            ("RLIMIT_FSIZE", getattr(resource, "RLIMIT_FSIZE", None), file_size_bytes),
+        ]
+        if include_nproc:
+            limits.append(("RLIMIT_NPROC", getattr(resource, "RLIMIT_NPROC", None), nproc))
+        for _name, rlimit_const, value in limits:
+            if rlimit_const is None:
+                continue
+            try:
+                resource.setrlimit(rlimit_const, (value, value))
+            except (ValueError, OSError):
+                # Limit not supported on this platform — fall through.
+                pass
+
     def _apply() -> None:
         # New session/process group so the parent owns it for SIGKILL.
         #
@@ -136,11 +159,7 @@ def _build_preexec_fn(policy: SandboxPolicy) -> Callable[[], None]:
         #
         # The downstream ``_killpg`` already detects ``pgid == parent_pgid``
         # and falls back to ``kill(pid, SIGKILL)`` of just the kernel, so a
-        # kernel without its own session is recoverable. The dangerous case
-        # is rlimits: applying RLIMIT_NPROC to the parent's pgid persists
-        # (it's process-group-wide), so we still skip those when setsid
-        # failed. The kernel runs with no resource limits — acceptable in a
-        # sandbox-of-sandbox, where the outer layer enforces them.
+        # kernel without its own session is recoverable.
         try:
             os.setsid()
         except OSError as e:
@@ -149,24 +168,16 @@ def _build_preexec_fn(policy: SandboxPolicy) -> Callable[[], None]:
                 os.write(2, f"FATAL: kernel preexec setsid failed: {e}\n".encode())
                 os._exit(127)
                 return  # unreachable; safety net for mocked _exit
-            # Permissive mode: warn, skip rlimits, let the kernel start.
-            os.write(2, f"WARN: setsid failed ({e}); kernel will run without a new session\n".encode())
+            # Permissive mode: warn and continue, but still apply the
+            # per-process limits (memory / CPU / files). Only RLIMIT_NPROC is
+            # skipped because without our own session it would leak onto the
+            # parent's process group. A runaway fork bomb is then bounded by
+            # the outer sandbox; memory and CPU bombs are still capped here.
+            os.write(2, f"WARN: setsid failed ({e}); applying per-process rlimits without RLIMIT_NPROC\n".encode())
+            _apply_rlimits(include_nproc=False)
             return
 
-        for rlimit_name, rlimit_const, value in (
-            ("RLIMIT_AS", getattr(resource, "RLIMIT_AS", None), memory_bytes),
-            ("RLIMIT_CPU", getattr(resource, "RLIMIT_CPU", None), cpu_secs),
-            ("RLIMIT_NPROC", getattr(resource, "RLIMIT_NPROC", None), nproc),
-            ("RLIMIT_NOFILE", getattr(resource, "RLIMIT_NOFILE", None), nofile),
-            ("RLIMIT_FSIZE", getattr(resource, "RLIMIT_FSIZE", None), file_size_bytes),
-        ):
-            if rlimit_const is None:
-                continue
-            try:
-                resource.setrlimit(rlimit_const, (value, value))
-            except (ValueError, OSError):
-                # Limit not supported on this platform — fall through.
-                pass
+        _apply_rlimits(include_nproc=True)
 
     return _apply
 
@@ -636,6 +647,55 @@ class KernelSandbox:
                 logger.warning(f"KernelSandbox restart failed: {e}")
 
 
+class PooledKernelMixin:
+    """Reuse a single validation kernel across an agent's repeated ``process``
+    calls instead of cold-starting one per call.
+
+    A run validates a profile / analysis once per retry iteration; spinning up a
+    fresh Jupyter kernel each time (mkdtemp, env setup, ``setsid``, ready-wait)
+    dominates that latency. We keep one :class:`SandboxExecutor` on the instance
+    and reset its namespace via :meth:`SandboxExecutor.restart` between calls —
+    that preserves per-validation state isolation (each acquire sees a clean
+    namespace) while skipping the expensive process bring-up.
+
+    Lifecycle: ``AgentFactory.reset()`` calls :meth:`close` at the end of each
+    Celery task via the generic ``close()`` hook, so kernels never outlive a job.
+    """
+
+    _pooled_sandbox_executor: Optional["SandboxExecutor"] = None
+
+    @contextmanager
+    def pooled_sandbox(self, execution_timeout: int = 120) -> Iterator["SandboxExecutor"]:
+        if self._pooled_sandbox_executor is None:
+            self._pooled_sandbox_executor = SandboxExecutor(
+                execution_timeout=execution_timeout
+            )
+        else:
+            # Reset namespace for a clean run; fall back to a fresh kernel if the
+            # restart fails (e.g. the previous process died).
+            try:
+                self._pooled_sandbox_executor.restart()
+            except Exception:
+                try:
+                    self._pooled_sandbox_executor.shutdown()
+                except Exception:
+                    pass
+                self._pooled_sandbox_executor = SandboxExecutor(
+                    execution_timeout=execution_timeout
+                )
+        # Deliberately not shut down on exit — it is reused next call and torn
+        # down by close().
+        yield self._pooled_sandbox_executor
+
+    def close(self) -> None:
+        """Release the pooled kernel. Idempotent; safe to call repeatedly."""
+        if self._pooled_sandbox_executor is not None:
+            try:
+                self._pooled_sandbox_executor.shutdown()
+            finally:
+                self._pooled_sandbox_executor = None
+
+
 # ---------------------------------------------------------------------------
 # Backwards-compatible wrapper
 # ---------------------------------------------------------------------------
@@ -681,6 +741,10 @@ class SandboxExecutor:
 
     def execute_cell(self, code: str) -> ExecutionResult:
         return self._sandbox.execute_cell(code)
+
+    def restart(self) -> None:
+        """Reset the kernel namespace in place (cheaper than teardown+respawn)."""
+        self._sandbox.restart()
 
     def shutdown(self) -> None:
         self._sandbox.shutdown()

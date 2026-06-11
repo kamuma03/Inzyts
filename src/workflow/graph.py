@@ -103,16 +103,20 @@ def initialize_node(state: AnalysisState) -> Dict[str, Any]:
     start_time = time.time()
     orchestrator = AgentFactory.get_agent("orchestrator")
     with _track(orchestrator, state, "phase1") as updates:
-        result = orchestrator.process(
-            state,
-            action="initialize",
-            csv_path=state.csv_path,
-            user_intent=state.user_intent.model_dump() if state.user_intent else None,
-            mode=state.pipeline_mode,
-            use_cache=state.using_cached_profile,
-        )
-        if isinstance(result, dict):
-            updates.update(result)
+        try:
+            result = orchestrator.process(
+                state,
+                action="initialize",
+                csv_path=state.csv_path,
+                user_intent=state.user_intent.model_dump() if state.user_intent else None,
+                mode=state.pipeline_mode,
+                use_cache=state.using_cached_profile,
+            )
+            if isinstance(result, dict):
+                updates.update(result)
+        except Exception as e:
+            logger.critical(f"Initialize Node crashed: {e}", exc_info=True)
+            updates["errors"] = state.errors + [f"Initialize Crash: {str(e)}"]
     logger.log_execution_time("initialize_node", time.time() - start_time)
     return updates
 
@@ -122,9 +126,13 @@ def restore_cache_node(state: AnalysisState) -> Dict[str, Any]:
     start_time = time.time()
     orchestrator = AgentFactory.get_agent("orchestrator")
     with _track(orchestrator, state, "phase1") as updates:
-        result = orchestrator.process(state, action="restore_cache")
-        if isinstance(result, dict):
-            updates.update(result)
+        try:
+            result = orchestrator.process(state, action="restore_cache")
+            if isinstance(result, dict):
+                updates.update(result)
+        except Exception as e:
+            logger.critical(f"RestoreCache Node crashed: {e}", exc_info=True)
+            updates["errors"] = state.errors + [f"RestoreCache Crash: {str(e)}"]
     logger.log_execution_time("restore_cache_node", time.time() - start_time)
     return updates
 
@@ -134,9 +142,13 @@ def create_phase1_handoff_node(state: AnalysisState) -> Dict[str, Any]:
     start_time = time.time()
     orchestrator = AgentFactory.get_agent("orchestrator")
     with _track(orchestrator, state, "phase1") as updates:
-        result = orchestrator.process(state, action="phase1_handoff")
-        if isinstance(result, dict):
-            updates.update(result)
+        try:
+            result = orchestrator.process(state, action="phase1_handoff")
+            if isinstance(result, dict):
+                updates.update(result)
+        except Exception as e:
+            logger.critical(f"Phase1Handoff Node crashed: {e}", exc_info=True)
+            updates["errors"] = state.errors + [f"Phase1Handoff Crash: {str(e)}"]
     logger.log_execution_time("create_phase1_handoff_node", time.time() - start_time)
     return updates
 
@@ -145,7 +157,11 @@ def data_profiler_node(state: AnalysisState) -> Dict[str, Any]:
     """Run the Data Profiler — type/quality EDA → ProfilerToCodeGenHandoff."""
     start_time = time.time()
     data_profiler = AgentFactory.get_agent("data_profiler")
-    in_handoff = state.profiler_outputs[-1] if state.profiler_outputs else None
+    # Use the orchestrator's handoff (CSV preview + extended metadata), not the
+    # profiler's own previous output — they are different handoff types. Reading
+    # profiler_outputs[-1] here fed the profiler a ProfilerToCodeGenHandoff on
+    # retries and crashed on its missing is_multi_file attribute.
+    in_handoff = state.profiler_handoff
     with _track(data_profiler, state, "phase1") as updates:
         try:
             result = data_profiler.process(state, handoff=in_handoff)
@@ -263,19 +279,41 @@ def transition_to_phase2_node(state: AnalysisState) -> Dict[str, Any]:
     start_time = time.time()
     orchestrator = AgentFactory.get_agent("orchestrator")
 
-    # Phase-1 accounting: the save-cache call.
+    # Token accounting must survive a mid-call crash, so each snapshot is
+    # converted to a delta in ``finally`` — whether the call returned or threw,
+    # the tokens it burned are still attributed to the right phase bucket.
     save_delta = (0, 0, 0)
-    if state.profile_lock and state.profile_lock.is_locked():
-        snap = _llm_snapshot(orchestrator)
-        orchestrator.process(state, action="save_cache")
-        save_delta = _llm_delta(orchestrator, snap)
+    transition_delta = (0, 0, 0)
+    result: Any = {}
+    error: str | None = None
 
-    # Phase-2 accounting: the transition itself.
-    snap = _llm_snapshot(orchestrator)
-    result = orchestrator.process(state, action="transition_to_phase2")
-    transition_delta = _llm_delta(orchestrator, snap)
+    save_snap = None
+    trans_snap = None
+    try:
+        # Phase-1 accounting: the save-cache call.
+        if state.profile_lock and state.profile_lock.is_locked():
+            save_snap = _llm_snapshot(orchestrator)
+            orchestrator.process(state, action="save_cache")
+            save_delta = _llm_delta(orchestrator, save_snap)
+            save_snap = None
+
+        # Phase-2 accounting: the transition itself.
+        trans_snap = _llm_snapshot(orchestrator)
+        result = orchestrator.process(state, action="transition_to_phase2")
+        transition_delta = _llm_delta(orchestrator, trans_snap)
+        trans_snap = None
+    except Exception as e:
+        logger.critical(f"Transition Node crashed: {e}", exc_info=True)
+        error = f"Transition Crash: {str(e)}"
+    finally:
+        if save_snap is not None:
+            save_delta = _llm_delta(orchestrator, save_snap)
+        if trans_snap is not None:
+            transition_delta = _llm_delta(orchestrator, trans_snap)
 
     updates: Dict[str, Any] = dict(result) if isinstance(result, dict) else {}
+    if error:
+        updates["errors"] = state.errors + [error]
     _attribute_tokens(updates, state, *save_delta, "phase1")
     # _attribute_tokens has now written totals = state + save_delta; layer
     # the transition delta on top and bucket it under phase2.
@@ -375,6 +413,18 @@ def analysis_validator_node(state: AnalysisState) -> Dict[str, Any]:
             updates["analysis_validation_reports"] = reports
             updates["phase2_quality_trajectory"] = trajectory
             updates["issue_frequency"] = update_issue_frequency(state, result.get("issues", []))
+
+            # Snapshot the best-so-far strategy/code whenever quality improves, so
+            # route_phase2_recursion's rollback path has something real to restore.
+            # Without this the phase2_best_* fields stay at their defaults and a
+            # rollback silently reverts to nothing.
+            current_score = result.get("quality_score", 0.0)
+            current_strategy = state.strategy_outputs[-1] if state.strategy_outputs else None
+            if current_score > state.phase2_best_score and code_handoff is not None:
+                updates["phase2_best_score"] = current_score
+                updates["phase2_best_code"] = code_handoff
+                if current_strategy is not None:
+                    updates["phase2_best_strategy"] = current_strategy
 
             # Prune old phase-2 outputs — best state lives in phase2_best_*.
             try:
@@ -476,9 +526,13 @@ def rollback_recovery_node(state: AnalysisState) -> Dict[str, Any]:
     start_time = time.time()
     orchestrator = AgentFactory.get_agent("orchestrator")
     with _track(orchestrator, state, "phase2") as updates:
-        result = orchestrator.process(state, action="rollback_phase2")
-        if isinstance(result, dict):
-            updates.update(result)
+        try:
+            result = orchestrator.process(state, action="rollback_phase2")
+            if isinstance(result, dict):
+                updates.update(result)
+        except Exception as e:
+            logger.critical(f"Rollback Node crashed: {e}", exc_info=True)
+            updates["errors"] = state.errors + [f"Rollback Crash: {str(e)}"]
     logger.log_execution_time("rollback_recovery_node", time.time() - start_time)
     return updates
 
@@ -486,6 +540,25 @@ def rollback_recovery_node(state: AnalysisState) -> Dict[str, Any]:
 # ============================================================================
 # Routing Functions
 # ============================================================================
+
+
+def _over_token_budget(state: AnalysisState) -> bool:
+    """True if the run has burned its global token budget.
+
+    The per-phase iteration caps bound *how many* loops run, but a single
+    pathological loop (e.g. the LLM repeatedly emitting near-miss JSON at a high
+    max_tokens) can still burn unbounded cost within those caps. This is the hard
+    kill-switch the configured ``max_tokens_per_run`` was always meant to be.
+    """
+    budget = settings.recursion.max_tokens_per_run
+    used = getattr(state, "total_tokens_used", 0) or 0
+    if budget and used >= budget:
+        logger.warning(
+            f"Token budget exhausted: {used} >= {budget}; "
+            "halting recursion and salvaging current output."
+        )
+        return True
+    return False
 
 
 def route_after_profile_validation(
@@ -504,6 +577,10 @@ def route_after_profile_validation(
     if state.profile_lock.is_locked():
         return "exploratory_conclusions"
 
+    # Hard cost ceiling: stop retrying Phase 1 once the token budget is spent.
+    if _over_token_budget(state):
+        return "end"
+
     # Failure/Retry Path
     if state.profile_validation_reports:
         report = state.profile_validation_reports[-1]
@@ -515,9 +592,35 @@ def route_after_profile_validation(
             elif report.route_to == "Orchestrator":
                 # Max iterations or systemic issue - stop here
                 return "end"
+            else:
+                logger.warning(
+                    f"route_after_profile_validation: unrecognised route_to "
+                    f"'{report.route_to}' — retrying profile_codegen."
+                )
 
-    # Default fallback
+    # Default: no lock yet and no explicit route → retry code generation.
+    logger.debug("route_after_profile_validation: default → profile_codegen")
     return "profile_codegen"
+
+
+def route_after_restore_cache(
+    state: AnalysisState,
+) -> Literal["exploratory_conclusions", "create_phase1_handoff"]:
+    """Route out of the cache-restore node.
+
+    On a healthy restore the profile lock is rebuilt and LOCKED, so we proceed to
+    exploratory conclusions like any locked Phase 1. If the cached payload was
+    corrupt or partial and the lock did not come back LOCKED, restart Phase 1
+    cleanly instead of falling through to profile_codegen — which would read an
+    empty profiler_outputs and spin in a no-lock retry loop.
+    """
+    if state.profile_lock.is_locked():
+        return "exploratory_conclusions"
+    logger.warning(
+        "restore_cache produced an unlocked profile (corrupt/partial cache); "
+        "restarting Phase 1 from a fresh handoff."
+    )
+    return "create_phase1_handoff"
 
 
 def _extraction_node(state: AnalysisState, agent_key: str, label: str) -> Dict[str, Any]:
@@ -622,6 +725,10 @@ def route_after_analysis_validation(
     2. If logic flaws found -> Route to Strategy or Code Gen.
     3. If quality dropped sharply -> Trigger Rollback.
     """
+    # Hard cost ceiling: salvage whatever we have rather than loop on cost.
+    if _over_token_budget(state):
+        return "assemble_notebook"
+
     if state.analysis_validation_reports:
         report = state.analysis_validation_reports[-1]
         if report:
@@ -637,8 +744,14 @@ def route_after_analysis_validation(
                     return "rollback_recovery"
                 # Else likely max iterations
                 return "assemble_notebook"
+            else:
+                logger.warning(
+                    f"route_after_analysis_validation: unrecognised route_to "
+                    f"'{report.route_to}' — assembling notebook."
+                )
 
-    # Default fallback
+    # Default: nothing actionable left → assemble whatever we have.
+    logger.debug("route_after_analysis_validation: default → assemble_notebook")
     return "assemble_notebook"
 
 
@@ -713,12 +826,10 @@ def build_workflow() -> StateGraph:
 
     workflow.add_conditional_edges(
         "restore_cache",
-        route_after_profile_validation,
+        route_after_restore_cache,
         {
             "exploratory_conclusions": "exploratory_conclusions",
-            "profile_codegen": "profile_codegen",
-            "data_profiler": "data_profiler",
-            "end": END,
+            "create_phase1_handoff": "create_phase1_handoff",
         },
     )
 
@@ -776,10 +887,26 @@ def build_workflow() -> StateGraph:
     return workflow
 
 
+def _recursion_limit() -> int:
+    """Derive an explicit LangGraph recursion limit from the iteration caps.
+
+    LangGraph's default of 25 super-steps can be hit by a legitimate run (Phase 1
+    retries + Phase 2's validation ceiling of ``phase2_max_iterations * 3`` plus
+    the linear node chain), surfacing as an opaque ``GraphRecursionError``. We set
+    a generous explicit budget so the iteration caps and the token kill-switch are
+    the real stopping conditions, with this only as a final structural backstop.
+    """
+    r = settings.recursion
+    phase1 = r.phase1_max_iterations * 3      # profiler/codegen/validator per loop
+    phase2 = r.phase2_max_iterations * 3 + 6  # validation ceiling + strategy hops
+    fixed_chain = 12                          # init, extraction, assembly, etc.
+    return phase1 + phase2 + fixed_chain
+
+
 def compile_workflow():
     """Compile the workflow for execution."""
     workflow = build_workflow()
-    return workflow.compile()
+    return workflow.compile().with_config(recursion_limit=_recursion_limit())
 
 
 @lru_cache(maxsize=1)

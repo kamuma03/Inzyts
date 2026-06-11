@@ -233,15 +233,6 @@ stats = df[['age', 'salary']].describe()
         bad_penalty = lint_line(bad_line, 0, [bad_line])
         assert bad_penalty > 0.0
 
-    def test_process_method_exists(self, validator_agent):
-        """Test that process method exists and is callable."""
-        assert hasattr(validator_agent, 'process')
-        assert callable(validator_agent.process)
-
-    def test_orchestrator_passes(self):
-        """Placeholder test to ensure test file is valid."""
-        assert True
-
     def test_process_with_valid_handoff(self, validator_agent, mock_state, valid_notebook_cells, mock_sandbox_executor):
         """Test the main process method with a valid code handoff and mocked sandbox."""
         from src.models.handoffs import ProfileCodeToValidatorHandoff, ProfilerToCodeGenHandoff, ColumnSpec

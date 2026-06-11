@@ -57,7 +57,7 @@ jobs:
       - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
 
       - name: Run unit tests
         run: pytest tests/unit --tb=short
@@ -73,6 +73,56 @@ jobs:
                  tests/integration/test_idor_cross_user.py \
                  tests/integration/test_role_based_access.py \
                  --tb=short
+
+  integration:
+    name: Backend integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: backend-unit
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6399:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    env:
+      JWT_SECRET_KEY: test-secret-key-for-ci-only
+      ADMIN_PASSWORD: test-admin-password
+      REDIS_URL: redis://localhost:6399/0
+      INZYTS_NETWORK_ISOLATION: "off"
+      INZYTS__LLM__DEFAULT_PROVIDER: anthropic
+      INZYTS__LLM__ANTHROPIC_API_KEY: dummy
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmagic1 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libcairo2
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run integration tests
+        # The default addopts ignores tests/integration (it needs Docker for the
+        # testcontainers-backed Postgres suites); override to run it here, where
+        # the runner provides Docker. This closes the gap where the mode-workflow
+        # and API route suites previously ran in no automated context.
+        run: pytest tests/integration --override-ini "addopts=" -m "not slow" --tb=short
 
   contracts:
     name: OpenAPI contract fuzz (schemathesis)
@@ -108,7 +158,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libmagic1 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libcairo2
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
           # schemathesis is a CI-only test dep — kept out of requirements.txt
           # so the prod image doesn't ship hypothesis et al.
           pip install 'schemathesis==4.16.1'

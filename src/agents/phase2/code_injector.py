@@ -11,7 +11,7 @@ class CodeInjector:
         Inject safety net code to prevent string leakage.
         Finds the point before train/test split and forces selection of numeric types.
         """
-        safety_line = "\n# SAFETY NET: Drop any remaining string columns (like Surname) to prevent training errors\nX = X.select_dtypes(include=[np.number])\n"
+        safety_line = "\n# SAFETY NET: Drop any remaining non-numeric columns to prevent training errors\nX = X.select_dtypes(include=[np.number])\n"
 
         injected = False
         for cell in cells:

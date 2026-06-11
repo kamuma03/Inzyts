@@ -14,7 +14,7 @@ from tenacity import (
     retry,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
+    retry_if_exception,
 )
 import httpx
 
@@ -26,6 +26,41 @@ logger = get_logger()
 
 # Token estimation constant (average characters per token)
 CHARS_PER_TOKEN_ESTIMATE = 4
+
+# Exception class names that indicate a transient LLM failure worth retrying.
+# Matched by name so we don't have to import every provider SDK (some aren't
+# installed in a given deployment). Covers anthropic / openai / google clients.
+_RETRYABLE_EXC_NAMES = frozenset({
+    "RateLimitError",
+    "APIConnectionError",
+    "APITimeoutError",
+    "APIStatusError",
+    "InternalServerError",
+    "ServiceUnavailableError",
+    "OverloadedError",
+    "ResourceExhausted",
+    "TooManyRequests",
+})
+
+
+def _is_retryable_llm_error(exc: BaseException) -> bool:
+    """True for transient errors (network blips, rate limits, 429/5xx).
+
+    Permanent failures — auth errors, malformed requests (4xx other than 429),
+    context-length overflows — are NOT retried so we fail fast instead of
+    burning the backoff budget on a request that can never succeed.
+    """
+    if isinstance(exc, (ConnectionError, TimeoutError, httpx.RemoteProtocolError)):
+        return True
+    # Anything carrying an HTTP status code: retry 429 and 5xx only.
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        response = getattr(exc, "response", None)
+        status = getattr(response, "status_code", None)
+    if isinstance(status, int):
+        return status == 429 or status >= 500
+    # Fall back to matching the provider SDK's exception class name.
+    return type(exc).__name__ in _RETRYABLE_EXC_NAMES
 
 
 def get_llm(
@@ -154,14 +189,7 @@ class LLMAgent:
     @retry(
         stop=stop_after_attempt(5),
         wait=wait_exponential(multiplier=2, min=2, max=60),
-        retry=retry_if_exception_type(
-            (
-                ConnectionError,
-                TimeoutError,
-                httpx.HTTPStatusError,
-                httpx.RemoteProtocolError,
-            )
-        ),
+        retry=retry_if_exception(_is_retryable_llm_error),
         reraise=True,
     )
     def invoke(self, prompt: str) -> str:
@@ -192,6 +220,10 @@ class LLMAgent:
             completion_tok = int(meta.get("output_tokens", 0))
 
         # Fallback estimation when metadata is absent (e.g. Ollama local models).
+        # NOTE: this is a rough chars/CHARS_PER_TOKEN_ESTIMATE heuristic — for
+        # providers without usage metadata, token counts (and therefore the cost
+        # breakdown and the max_tokens_per_run budget guard) are approximate, not
+        # exact. Providers that return usage_metadata (Anthropic/OpenAI) are exact.
         if prompt_tok == 0 and completion_tok == 0 and response.content:
             prompt_tok = len(prompt) // CHARS_PER_TOKEN_ESTIMATE
             completion_tok = len(response.content) // CHARS_PER_TOKEN_ESTIMATE

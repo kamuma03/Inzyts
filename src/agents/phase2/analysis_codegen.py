@@ -85,11 +85,14 @@ class AnalysisCodeGeneratorAgent(BaseAgent):
         # Only check check cache if this is the first iteration
         cache_manager = CacheManager()
         csv_hash = cache_manager.get_csv_hash(state.csv_path)
+        # Partition by intent — generated analysis code is specific to the
+        # target/question/mode, not just the dataset content.
+        codegen_artifact = f"analysis_codegen_output_{cache_manager.get_intent_hash(state)}"
 
         cached_result = None
         if state.using_cached_profile:
             cached_result = cache_manager.load_artifact(
-                csv_hash, "analysis_codegen_output"
+                csv_hash, codegen_artifact
             )
 
         if cached_result:
@@ -166,7 +169,7 @@ class AnalysisCodeGeneratorAgent(BaseAgent):
             ],
             "result": result,
         }
-        cache_manager.save_artifact(csv_hash, "analysis_codegen_output", cache_data)
+        cache_manager.save_artifact(csv_hash, codegen_artifact, cache_data)
 
         # Build handoff
         handoff = AnalysisCodeToValidatorHandoff(

@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import pathlib
 
@@ -41,6 +42,62 @@ _LOG_BASE = settings.log_dir_resolved
 
 # Maximum log lines returned per request — prevents loading multi-MB files.
 _MAX_LOG_LINES = 500
+
+
+def _parse_log_file(log_path: pathlib.Path) -> list[dict]:
+    """Read the tail of a job log and parse it into structured entries.
+
+    Synchronous (file IO + parsing) — call via ``asyncio.to_thread`` from
+    async routes so a large log can't block the event loop.
+    """
+    entries: list[dict] = []
+    last_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with open(log_path, "r", encoding="utf-8") as f:
+        # Cap at _MAX_LOG_LINES to prevent loading multi-MB files into memory.
+        lines = f.readlines()[-_MAX_LOG_LINES:]
+    for line in lines:
+        parts = line.strip().split(" | ", 2)
+        if len(parts) == 3:
+            ts_raw = parts[0].strip()
+            # Normalise python timestamp (e.g. 2026-02-24 13:51:36,123) for JS date parsing
+            ts_iso = ts_raw.replace(",", ".").replace(" ", "T")
+            if "T" in ts_iso and "Z" not in ts_iso and "+" not in ts_iso:
+                ts_iso += "Z"  # Assuming UTC per Celery settings
+            last_timestamp = ts_iso
+            entries.append({"timestamp": ts_iso, "level": parts[1].strip(), "message": parts[2]})
+        else:
+            entries.append({"timestamp": last_timestamp, "level": "INFO", "message": line.strip()})
+    return entries
+
+
+async def _live_progress(job_id: str, db: AsyncSession) -> int:
+    """Best-effort live progress percentage for a running job.
+
+    Prefers Redis (the worker's real-time tracker); falls back to the most
+    recent ``JobProgress`` row, then to a nominal 10%. Redis access is sync,
+    so it runs off the event loop.
+    """
+    def _from_redis() -> int | None:
+        from src.server.services.progress_tracker import ProgressTracker
+        data = ProgressTracker().get_progress(job_id)
+        raw = data.get("progress") if data else None
+        return int(raw) if raw not in (None, "") else None
+
+    try:
+        value = await asyncio.to_thread(_from_redis)
+        if value is not None:
+            return value
+    except Exception as e:
+        logger.debug(f"Redis progress read failed for {job_id}, falling back to DB: {e}")
+
+    progress_result = await db.execute(
+        select(JobProgress.progress)
+        .where(JobProgress.job_id == job_id)
+        .order_by(JobProgress.timestamp.desc())
+        .limit(1)
+    )
+    latest_progress = progress_result.scalar_one_or_none()
+    return latest_progress if latest_progress is not None else 10
 
 
 @router.get("/jobs", response_model=list[JobSummary])
@@ -128,50 +185,19 @@ async def get_job_status(
                 log_path = None
 
             if log_path and log_path.exists() and log_path.is_file():
-                last_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
-                with open(log_path, "r", encoding="utf-8") as f:
-                    # Cap at _MAX_LOG_LINES to prevent loading multi-MB files into memory.
-                    lines = f.readlines()[-_MAX_LOG_LINES:]
-                    for line in lines:
-                        parts = line.strip().split(" | ", 2)
-                        if len(parts) == 3:
-                            ts_raw = parts[0].strip()
-                            # Normalise python timestamp (e.g. 2026-02-24 13:51:36,123) for JS date parsing
-                            ts_iso = ts_raw.replace(",", ".").replace(" ", "T")
-                            if "T" in ts_iso and "Z" not in ts_iso and "+" not in ts_iso:
-                                ts_iso += "Z"  # Assuming UTC per Celery settings
-                            last_timestamp = ts_iso
-                            logs.append(
-                                {
-                                    "timestamp": ts_iso,
-                                    "level": parts[1].strip(),
-                                    "message": parts[2],
-                                }
-                            )
-                        else:
-                            logs.append(
-                                {
-                                    "timestamp": last_timestamp,
-                                    "level": "INFO",
-                                    "message": line.strip(),
-                                }
-                            )
+                logs.extend(await asyncio.to_thread(_parse_log_file, log_path))
         except Exception as e:
             logger.error(f"Error reading logs for {job_id}: {e}")
 
-    # Dynamic progress: query JobProgress table for the latest entry
+    # Dynamic progress for a running job. Redis (ProgressTracker) is the
+    # worker's live source of truth and is updated on every event, so read it
+    # first and only fall back to the JobProgress table if Redis is empty or
+    # unreachable — this takes the per-poll query off the database hot path.
     progress = 0
     if job.status in [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED]:
         progress = 100
     elif job.status == JobStatus.RUNNING:
-        progress_result = await db.execute(
-            select(JobProgress.progress)
-            .where(JobProgress.job_id == job_id)
-            .order_by(JobProgress.timestamp.desc())
-            .limit(1)
-        )
-        latest_progress = progress_result.scalar_one_or_none()
-        progress = latest_progress if latest_progress is not None else 10
+        progress = await _live_progress(job_id, db)
 
     return JobStatusResponse(
         job_id=job.id,  # type: ignore

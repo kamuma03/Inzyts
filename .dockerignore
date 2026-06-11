@@ -1,0 +1,38 @@
+# Secrets — never bake into the image (runtime config comes from compose env_file)
+.env
+.env.*
+*.key
+*.pem
+
+# VCS and CI
+.git
+.github
+
+# Tests and dev tooling
+tests
+MagicMock
+.pytest_cache
+.mutmut-cache
+htmlcov
+coverage.json
+coverage_after.json
+.coverage
+
+# Runtime artifacts
+logs
+output
+data
+*.log
+
+# Frontend (built separately in its own image)
+frontend
+node_modules
+
+# Python build cruft
+__pycache__
+*.py[cod]
+*.egg-info
+build
+dist
+.venv
+venv

@@ -39,13 +39,13 @@ from src.models.validation import (
     ValidationReport,
     calculate_phase1_quality,
 )
-from src.services.sandbox_executor import SandboxExecutor
+from src.services.sandbox_executor import PooledKernelMixin, SandboxExecutor
 from src.utils.logger import get_logger
 
 logger = get_logger()
 
 
-class ProfileValidatorAgent(BaseAgent):
+class ProfileValidatorAgent(PooledKernelMixin, BaseAgent):
     """
     Profile Validator Agent for Phase 1.
 
@@ -157,7 +157,7 @@ class ProfileValidatorAgent(BaseAgent):
         min_confidence = 1.0
         stats_columns: List[str] = []
 
-        with SandboxExecutor(execution_timeout=120) as executor:
+        with self.pooled_sandbox(execution_timeout=120) as executor:
             for idx, cell in enumerate(cells):
                 try:
                     if cell.cell_type == "code":

@@ -105,17 +105,31 @@ def _is_db_host_blocked(db_uri: str) -> bool:
     if hostname in blocked_names:
         return True
 
+    # Resolve *every* address the hostname maps to (both A and AAAA records),
+    # not just the first. A DNS-rebinding attacker round-robins a public IP
+    # alongside an internal one; checking only ``gethostbyname``'s single
+    # answer can be steered past the block. If any resolved address is
+    # internal we refuse the whole host.
     try:
-        ip = ipaddress.ip_address(socket.gethostbyname(hostname))
-    except (socket.gaierror, ValueError):
+        infos = socket.getaddrinfo(hostname, None)
+    except (socket.gaierror, UnicodeError):
         # Don't block on DNS failure — it's a real DB outage signal that the
         # caller wants to see. The scheme check is the primary guard here.
         return False
 
-    # is_unspecified covers ``0.0.0.0`` (the "any" address), which on Linux
-    # routes back to the local interface and is therefore equivalent to
-    # loopback for SSRF purposes.
-    return ip.is_loopback or ip.is_link_local or ip.is_unspecified
+    for info in infos:
+        addr = info[4][0]
+        try:
+            ip = ipaddress.ip_address(addr)
+        except ValueError:
+            continue
+        # is_unspecified covers ``0.0.0.0`` (the "any" address), which on Linux
+        # routes back to the local interface and is therefore equivalent to
+        # loopback for SSRF purposes.
+        if ip.is_loopback or ip.is_link_local or ip.is_unspecified:
+            return True
+
+    return False
 
 
 def validate_db_uri(db_uri: str) -> None:

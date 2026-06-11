@@ -42,6 +42,13 @@ vi.mock('../../../../api', async () => {
     };
 });
 
+// LivePanel reads addToast from the job context to surface save/edit errors.
+// Provide a lightweight mock so the component can render without a JobProvider.
+const addToastMock = vi.fn();
+vi.mock('../../../../context/JobContext', () => ({
+    useJobContext: () => ({ addToast: addToastMock }),
+}));
+
 // Capture the handlers passed to useSocket so the test can drive WS events.
 let capturedHandlers: UseSocketHandlers | undefined;
 vi.mock('../../../../hooks/useSocket', () => ({

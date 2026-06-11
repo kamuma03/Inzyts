@@ -38,6 +38,11 @@ vi.mock('../hooks/useSocket', () => ({
     }),
 }));
 
+// NotebookViewer + LivePanel both read addToast from the job context.
+vi.mock('../context/JobContext', () => ({
+    useJobContext: () => ({ addToast: vi.fn() }),
+}));
+
 // CodeMirror requires DOM measurement APIs jsdom does not implement — swap
 // in a textarea so the cell stack renders.
 vi.mock('./command-center/panels/live/CellSourceEditor', () => ({

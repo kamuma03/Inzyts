@@ -3,9 +3,18 @@ from typing import Any, Dict
 import pandas as pd
 
 from src.agents.extensions.base_extension import BaseExtensionAgent
-from src.models.handoffs import ComparativeExtension, ProfileToStrategyHandoff
+from src.models.handoffs import ComparativeExtension, DataType, ProfileToStrategyHandoff
 from src.models.state import AnalysisState
 from src.prompts import COMPARATIVE_EXTENSION_PROMPT
+
+_CATEGORICAL_TYPES = (
+    DataType.CATEGORICAL,
+    DataType.CATEGORICAL_NOMINAL,
+    DataType.CATEGORICAL_ORDINAL,
+    DataType.BINARY,
+    DataType.CATEGORICAL_BINARY,
+)
+_NUMERIC_TYPES = (DataType.NUMERIC_CONTINUOUS, DataType.NUMERIC_DISCRETE)
 
 
 class ComparativeExtensionAgent(BaseExtensionAgent):
@@ -23,7 +32,7 @@ class ComparativeExtensionAgent(BaseExtensionAgent):
     ) -> Dict[str, Any]:
         categorical_candidates = [
             c.name for c in profile.column_profiles
-            if c.detected_type in ("categorical", "categorical_nominal", "categorical_ordinal", "binary", "categorical_binary")
+            if c.detected_type in _CATEGORICAL_TYPES
             and c.unique_count < 20
         ]
 
@@ -44,7 +53,7 @@ class ComparativeExtensionAgent(BaseExtensionAgent):
 
         numeric_cols = [
             c.name for c in profile.column_profiles
-            if c.detected_type in ("numeric_continuous", "numeric_discrete")
+            if c.detected_type in _NUMERIC_TYPES
         ]
 
         return {

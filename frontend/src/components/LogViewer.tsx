@@ -7,10 +7,25 @@ interface LogViewerProps {
 }
 
 export const LogViewer: React.FC<LogViewerProps> = ({ logs }) => {
-    const bottomRef = useRef<HTMLDivElement>(null);
+    const scrollRef = useRef<HTMLDivElement>(null);
+    // Only auto-follow when the user is already pinned near the bottom — if
+    // they've scrolled up to read history, leave their position alone.
+    const nearBottomRef = useRef(true);
+
+    const handleScroll = () => {
+        const el = scrollRef.current;
+        if (!el) return;
+        const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        nearBottomRef.current = distanceFromBottom < 40;
+    };
 
     useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+        const el = scrollRef.current;
+        if (!el || !nearBottomRef.current) return;
+        // Assign scrollTop directly rather than scrollIntoView: the latter can
+        // scroll an ancestor (e.g. a hidden tab panel) into view, yanking the
+        // page around when this log view isn't the visible tab.
+        el.scrollTop = el.scrollHeight;
     }, [logs.length]);
 
     if (logs.length === 0) {
@@ -26,7 +41,11 @@ export const LogViewer: React.FC<LogViewerProps> = ({ logs }) => {
     }
 
     return (
-        <div className="bg-[var(--surface-0)] text-[var(--text-secondary)] font-mono text-[0.82rem] leading-[1.7] rounded-lg flex-1 min-h-0 border border-[var(--rule)] overflow-y-auto p-4">
+        <div
+            ref={scrollRef}
+            onScroll={handleScroll}
+            className="bg-[var(--surface-0)] text-[var(--text-secondary)] font-mono text-[0.82rem] leading-[1.7] rounded-lg flex-1 min-h-0 border border-[var(--rule)] overflow-y-auto p-4"
+        >
             {logs.map((log, index) => (
                 <div key={`${log.timestamp}-${index}`} className="whitespace-nowrap overflow-hidden text-ellipsis">
                     <span className="text-[var(--accent)] mr-2">
@@ -43,7 +62,6 @@ export const LogViewer: React.FC<LogViewerProps> = ({ logs }) => {
                     </span>
                 </div>
             ))}
-            <div ref={bottomRef} />
         </div>
     );
 };

@@ -81,36 +81,6 @@ async def verify_token_async(token: str, db: AsyncSession) -> Optional[User]:
         return None
     return user
 
-def verify_token_sync(token: str, db: Optional[Session] = None) -> Optional[User]:
-    """
-    Synchronously verifies validity of the JWT token string.
-    If valid, returns the User object, else None.
-
-    When ``db`` is None the function can only authenticate system API tokens.
-    It will NOT return a User from a JWT without a DB lookup — that would bypass
-    deactivated-account and deletion checks.  Pass a Session for full JWT validation.
-    """
-    sys_user = check_system_token(token)
-    if sys_user:
-        return sys_user
-
-    username = decode_token(token)
-    if not username:
-        return None
-
-    if db:
-        user = db.query(User).filter(User.username == username).first()
-        if user is None or not user.is_active:
-            return None
-        return user
-
-    # No DB session — cannot verify user existence/active status; reject.
-    logger.warning(
-        "verify_token_sync called without a DB session for a JWT token; "
-        "cannot verify user status — rejecting."
-    )
-    return None
-
 async def verify_token(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Security(security),

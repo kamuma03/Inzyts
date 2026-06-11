@@ -1,8 +1,15 @@
 
+# Manual load/perf script — NOT a pytest test. Run it directly against a live
+# stack: `python tests/performance/test_perf_workload.py`. It is intentionally
+# not collected as an automated test (no test_* functions; driven by __main__).
+import os
+
 import requests
 import time
 
-BASE_URL = "http://localhost:5000/api"
+# Backend serves on :8000 under /api/v2 (see docker-compose, e2e.yml). Override
+# with PERF_BASE_URL when pointing at a remote deployment.
+BASE_URL = os.environ.get("PERF_BASE_URL", "http://localhost:8000/api/v2")
 CSV_FILENAME = "airline_passenger_satisfaction.csv"
 QUESTION = "What are the primary drivers of passenger satisfaction?"
 

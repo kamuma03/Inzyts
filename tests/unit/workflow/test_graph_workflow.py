@@ -49,6 +49,9 @@ def make_state(**overrides):
     state.prompt_tokens_used = 0
     state.completion_tokens_used = 0
     state.errors = []
+    # Orchestrator→profiler handoff field (read by data_profiler_node); default
+    # to None so tests that don't exercise it don't need to set it explicitly.
+    state.profiler_handoff = None
     for k, v in overrides.items():
         setattr(state, k, v)
     return state

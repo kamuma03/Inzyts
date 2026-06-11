@@ -176,7 +176,15 @@ async def analyze(
         )
         csv_path = str(csv_abs)
 
-        cost_data = cost_estimator.estimate_job_cost(csv_path, analysis_request.mode)
+        # Cost estimation reads + samples the CSV synchronously; run it off the
+        # event loop, and never let an estimation failure block job creation.
+        try:
+            cost_data = await asyncio.to_thread(
+                cost_estimator.estimate_job_cost, csv_path, analysis_request.mode
+            )
+        except Exception as e:
+            logger.warning(f"Cost estimation failed for {csv_path}: {e}")
+            cost_data = {"estimated_cost_usd": 0.0, "total": 0.0}
 
     # Hash the resolved CSV bytes for opportunistic previous-job matching.
     # Path B (SQL deferred) and Path D (API deferred) leave csv_path = None;
@@ -185,10 +193,15 @@ async def analyze(
     csv_hash = await asyncio.to_thread(hash_csv_file, csv_path) if csv_path else None
 
     # 2. Create Job Record
+    # The synthetic system token (auth middleware) has id="system" with no row in
+    # the users table; persisting it as user_id would violate the FK. Store NULL
+    # instead — resolve_owned_job already treats NULL-owner jobs as admin-only,
+    # and the system token is ADMIN, so ownership semantics are preserved.
     job_id = str(uuid.uuid4())
+    owner_id = None if current_user.id == "system" else current_user.id
     new_job = Job(
         id=job_id,
-        user_id=current_user.id,
+        user_id=owner_id,
         status=JobStatus.PENDING,
         mode=analysis_request.mode,
         title=analysis_request.title,
@@ -208,6 +221,7 @@ async def analyze(
 
     # 3. Trigger Celery Task
     from src.server.services.engine import execution_task
+    from src.server.utils.secret_transport import encrypt_value
 
     try:
         execution_task.apply_async(
@@ -215,7 +229,10 @@ async def analyze(
                 "job_id": job_id,
                 "csv_path": csv_path,
                 "mode": analysis_request.mode.value,
-                "db_uri": db_uri,
+                # Encrypt secret-bearing fields — the broker (Redis) stores task
+                # kwargs as JSON in the clear; db_uri / api creds must not be
+                # readable there. Decrypted in execution_task.
+                "db_uri": encrypt_value(db_uri),
                 "target": analysis_request.target_column,
                 "question": analysis_request.question,
                 "title": analysis_request.title,
@@ -225,8 +242,8 @@ async def analyze(
                 "exclude_columns": analysis_request.exclude_columns,
                 "use_cache": analysis_request.use_cache,
                 "api_url": api_url,
-                "api_headers": analysis_request.api_headers,
-                "api_auth": analysis_request.api_auth,
+                "api_headers": encrypt_value(analysis_request.api_headers),
+                "api_auth": encrypt_value(analysis_request.api_auth),
                 "json_path": analysis_request.json_path,
             },
             task_id=job_id,

@@ -21,9 +21,10 @@ DEFAULT_TTL_SECONDS = 30 * 60
 class KernelSession:
     """Represents a single active kernel session tied to a job."""
 
-    def __init__(self, job_id: str, csv_path: str):
+    def __init__(self, job_id: str, csv_path: str, user_id: Optional[str] = None):
         self.job_id = job_id
         self.csv_path = csv_path
+        self.user_id = user_id
         self.executor: Optional[SandboxExecutor] = None
         self.created_at: float = time.time()
         self.last_activity: float = time.time()
@@ -212,7 +213,12 @@ class KernelSessionManager:
     Includes automatic cleanup of expired sessions.
     """
 
-    MAX_SESSIONS = 20  # Prevent unbounded kernel process creation
+    MAX_SESSIONS = 20  # Global cap — prevents unbounded kernel process creation
+    # Per-user cap. With a global cap alone, one user can open MAX_SESSIONS
+    # kernels and the LRU eviction then silently tears down *other* users'
+    # live sessions (losing their in-kernel dataframes). Capping per user
+    # keeps a single account from monopolising — or evicting across — the pool.
+    MAX_SESSIONS_PER_USER = 5
 
     _instance: Optional["KernelSessionManager"] = None
     _lock = threading.Lock()
@@ -255,13 +261,17 @@ class KernelSessionManager:
                 logger.error(f"Session cleanup error: {e}")
             time.sleep(60)  # Check every minute
 
-    def get_or_create_session(self, job_id: str, csv_path: str) -> KernelSession:
+    def get_or_create_session(
+        self, job_id: str, csv_path: str, user_id: Optional[str] = None
+    ) -> KernelSession:
         """
         Get an existing session or create a new one for a job.
 
         Args:
             job_id: The job identifier.
             csv_path: Path to the CSV file for this job.
+            user_id: Owner of the job; used to scope the per-user session cap
+                so one account can't evict another's live kernels.
 
         Returns:
             An active KernelSession.
@@ -275,24 +285,23 @@ class KernelSessionManager:
                 else:
                     # Expired — shut it down and create a new one
                     session.shutdown()
+                    del self._sessions[job_id]
 
-            # Enforce session limit to prevent resource exhaustion.
-            # If at capacity after cleanup, evict the oldest idle session (LRU).
             self.cleanup_expired()
+
+            # Enforce the per-user cap first so a single account can only ever
+            # evict its *own* oldest kernel, never another user's.
+            if user_id is not None:
+                self._enforce_user_limit(user_id)
+
+            # Global cap is the backstop across all users. Prefer evicting an
+            # idle session owned by the requesting user; only reach across to
+            # the globally-oldest session when the caller has none to give up.
             if len(self._sessions) >= self.MAX_SESSIONS:
-                oldest_id = min(
-                    self._sessions,
-                    key=lambda jid: self._sessions[jid].last_activity,
-                )
-                logger.warning(
-                    f"MAX_SESSIONS ({self.MAX_SESSIONS}) reached — "
-                    f"evicting oldest idle session: {oldest_id}"
-                )
-                self._sessions[oldest_id].shutdown()
-                del self._sessions[oldest_id]
+                self._evict_for_capacity(user_id)
 
             # Create new session
-            session = KernelSession(job_id=job_id, csv_path=csv_path)
+            session = KernelSession(job_id=job_id, csv_path=csv_path, user_id=user_id)
             session.start()
             self._sessions[job_id] = session
 
@@ -301,6 +310,43 @@ class KernelSessionManager:
                 self.start_cleanup_daemon()
 
             return session
+
+    def _enforce_user_limit(self, user_id: str) -> None:
+        """Evict the user's own oldest sessions until they're under the cap.
+
+        Caller must hold ``self._session_lock``.
+        """
+        while True:
+            user_sessions = [
+                (jid, s) for jid, s in self._sessions.items() if s.user_id == user_id
+            ]
+            if len(user_sessions) < self.MAX_SESSIONS_PER_USER:
+                return
+            oldest_id, _ = min(user_sessions, key=lambda kv: kv[1].last_activity)
+            logger.warning(
+                f"MAX_SESSIONS_PER_USER ({self.MAX_SESSIONS_PER_USER}) reached for "
+                f"user {user_id} — evicting their oldest idle session: {oldest_id}"
+            )
+            self._sessions[oldest_id].shutdown()
+            del self._sessions[oldest_id]
+
+    def _evict_for_capacity(self, user_id: Optional[str]) -> None:
+        """Free one global slot, preferring the requesting user's own session.
+
+        Caller must hold ``self._session_lock``.
+        """
+        candidates = self._sessions
+        if user_id is not None:
+            own = {jid: s for jid, s in self._sessions.items() if s.user_id == user_id}
+            if own:
+                candidates = own
+        oldest_id = min(candidates, key=lambda jid: candidates[jid].last_activity)
+        logger.warning(
+            f"MAX_SESSIONS ({self.MAX_SESSIONS}) reached — "
+            f"evicting oldest session: {oldest_id}"
+        )
+        self._sessions[oldest_id].shutdown()
+        del self._sessions[oldest_id]
 
     def get_session(self, job_id: str) -> Optional[KernelSession]:
         """Get an existing session without creating a new one."""

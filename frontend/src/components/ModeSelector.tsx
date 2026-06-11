@@ -374,11 +374,22 @@ interface ModeTileProps {
 
 const ModeTile: FC<ModeTileProps> = ({ mode, isSelected, onSelect }) => {
     const Icon = mode.icon;
+    // The tile is a div with role="radio" rather than a <button> so the
+    // InfoTooltip (which renders its own <button>) isn't nested inside a
+    // button — interactive-element nesting is invalid HTML and breaks
+    // keyboard/AT behaviour. Arrow-key navigation lives on the parent
+    // radiogroup; here we handle Enter/Space to select.
+    const handleKey = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect(mode.id);
+        }
+    };
     return (
-        <button
+        <div
             id={`mode-${mode.id}`}
             onClick={() => onSelect(mode.id)}
-            type="button"
+            onKeyDown={handleKey}
             role="radio"
             aria-checked={isSelected}
             aria-label={`${mode.label} mode: ${mode.desc}`}
@@ -414,6 +425,6 @@ const ModeTile: FC<ModeTileProps> = ({ mode, isSelected, onSelect }) => {
             <p className="m-0 text-[11px] text-[var(--text-dim)] leading-[1.4]">
                 {mode.desc}
             </p>
-        </button>
+        </div>
     );
 };

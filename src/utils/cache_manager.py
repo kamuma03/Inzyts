@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 import tempfile
+from collections import OrderedDict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -86,17 +87,19 @@ class CacheManager:
     CACHE_DIR = _resolve_cache_dir()
     CACHE_TTL_DAYS = 7
     VERSION = "1.5.0"
+    # Bound the in-memory path→hash map so a long-running worker that ingests
+    # many distinct files doesn't leak memory. Oldest entries are dropped FIFO.
+    MAX_HASH_CACHE_ENTRIES = 1024
 
     def __init__(self):
         ensure_dir(self.CACHE_DIR)
-        self._hash_cache: Dict[
-            str, str
-        ] = {}  # Cache hash results to avoid recomputation
+        self._hash_cache: "OrderedDict[str, str]" = OrderedDict()  # path → sha256
 
     def get_csv_hash(self, csv_path: str) -> str:
         """Calculate SHA256 hash of CSV file content. Results are cached."""
-        # Check cache first
+        # Check cache first (and refresh recency for LRU-style eviction).
         if csv_path in self._hash_cache:
+            self._hash_cache.move_to_end(csv_path)
             return self._hash_cache[csv_path]
 
         sha256_hash = hashlib.sha256()
@@ -107,9 +110,31 @@ class CacheManager:
                     sha256_hash.update(byte_block)
             result = sha256_hash.hexdigest()
             self._hash_cache[csv_path] = result  # Store in cache
+            if len(self._hash_cache) > self.MAX_HASH_CACHE_ENTRIES:
+                self._hash_cache.popitem(last=False)  # evict oldest
             return result
         except FileNotFoundError:
             return ""
+
+    def get_intent_hash(self, state: Any) -> str:
+        """Short, stable hash of the fields that change an analysis's *meaning*.
+
+        Profiler / strategy / codegen artifacts are keyed on CSV content alone,
+        but two runs on the same file with a different question, target column,
+        excluded columns, or pipeline mode must NOT share cached artifacts — that
+        cross-contaminates results. Fold this into the artifact name so the cache
+        is partitioned by intent as well as by data.
+        """
+        intent = getattr(state, "user_intent", None)
+        mode = getattr(state, "pipeline_mode", None)
+        parts = [
+            str(getattr(intent, "analysis_question", "") or ""),
+            str(getattr(intent, "target_column", "") or ""),
+            ",".join(sorted(getattr(intent, "exclude_columns", []) or [])),
+            str(getattr(mode, "value", mode) or ""),
+        ]
+        digest = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+        return digest[:16]
 
     def compute_combined_hash(self, file_paths: List[str]) -> str:
         """

@@ -1,6 +1,8 @@
 """
 Tests for ComparativeExtensionAgent.
 """
+import os
+import tempfile
 import pytest
 from datetime import datetime
 from unittest.mock import patch, MagicMock
@@ -21,7 +23,16 @@ def _make_col_profile(name, detected_type, unique_count=5):
 
 def _make_state(csv_data=None, profile_locked=True, col_profiles=None):
     state = MagicMock(spec=AnalysisState)
-    state.csv_data = csv_data
+    # Extensions load the frame from csv_path (the full DataFrame is never put on
+    # state); materialise the test data to a real temp CSV. No data => empty path.
+    if csv_data is not None:
+        fd, path = tempfile.mkstemp(suffix=".csv")
+        os.close(fd)
+        pd.DataFrame(csv_data).to_csv(path, index=False)
+        state.csv_path = path
+    else:
+        state.csv_path = ""
+    state.csv_data = None
     state.user_intent = MagicMock()
     state.user_intent.model_dump.return_value = {"analysis_question": "Compare groups"}
 
@@ -213,7 +224,9 @@ class TestBalanceRatio:
 
 class TestLLMInteraction:
 
-    def test_llm_invalid_json_raises(self, agent):
+    def test_llm_invalid_json_degrades_gracefully(self, agent):
+        # A malformed LLM reply must NOT kill the run — the agent returns a
+        # low-confidence error so the graph can continue to the strategy node.
         csv_data = {"g": ["A", "B"], "v": [1, 2]}
         col_profiles = [
             _make_col_profile("g", "categorical", unique_count=2),
@@ -222,5 +235,6 @@ class TestLLMInteraction:
         state = _make_state(csv_data=csv_data, col_profiles=col_profiles)
         agent.llm_agent.invoke_with_json.return_value = "not json"
 
-        with pytest.raises(Exception):
-            agent.process(state)
+        result = agent.process(state)
+        assert "error" in result
+        assert result.get("confidence") == 0.0
