@@ -11,6 +11,7 @@ from src.server.main import fastapi_app
 from src.server.middleware.auth import verify_token
 from src.server.db.database import get_db
 from src.server.db.models import User, UserRole, Job
+from src.server.routes.reports import get_exporter, get_summary_gen
 
 mock_db_session = AsyncMock()
 
@@ -76,8 +77,7 @@ class TestExportReportGet:
         mock_result.scalar_one_or_none.return_value = mock_job
         mock_db_session.execute = AsyncMock(return_value=mock_result)
 
-        with patch("src.services.report_exporter.settings") as mock_settings, \
-             patch("src.server.routes.reports._get_exporter") as mock_get_exporter:
+        with patch("src.services.report_exporter.settings") as mock_settings:
             mock_settings.output_dir = str(tmp_path)
             mock_settings.app_version = "0.10.0"
             mock_settings.llm = MagicMock()
@@ -95,9 +95,12 @@ class TestExportReportGet:
                 has_executive_summary=True,
                 has_pii_warnings=False,
             )
-            mock_get_exporter.return_value = mock_exporter
-
-            response = client.get("/api/v2/reports/job-123/export?format=html")
+            # Inject the fake exporter via the DI provider override.
+            fastapi_app.dependency_overrides[get_exporter] = lambda: mock_exporter
+            try:
+                response = client.get("/api/v2/reports/job-123/export?format=html")
+            finally:
+                fastapi_app.dependency_overrides.pop(get_exporter, None)
 
         assert response.status_code == 200
         assert "text/html" in response.headers.get("content-type", "")
@@ -147,20 +150,21 @@ class TestExportReportPost:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text("# Report")
 
-        with patch("src.server.routes.reports._get_exporter") as mock_get_exporter:
-            mock_exporter = MagicMock()
-            mock_exporter.export.return_value = MagicMock(
-                file_path=str(report_path),
-                has_executive_summary=False,
-                has_pii_warnings=True,
-            )
-            mock_get_exporter.return_value = mock_exporter
-
+        mock_exporter = MagicMock()
+        mock_exporter.export.return_value = MagicMock(
+            file_path=str(report_path),
+            has_executive_summary=False,
+            has_pii_warnings=True,
+        )
+        fastapi_app.dependency_overrides[get_exporter] = lambda: mock_exporter
+        try:
             response = client.post("/api/v2/reports/job-123/export", json={
                 "format": "markdown",
                 "include_executive_summary": False,
                 "include_pii_masking": True,
             })
+        finally:
+            fastapi_app.dependency_overrides.pop(get_exporter, None)
 
         assert response.status_code == 200
 
@@ -184,9 +188,13 @@ class TestExecutiveSummaryEndpoint:
             generated_by="fallback",
         )
 
-        with patch("src.server.routes.reports._get_summary_gen") as mock_gen:
-            mock_gen.return_value.generate.return_value = mock_summary
+        mock_gen = MagicMock()
+        mock_gen.generate.return_value = mock_summary
+        fastapi_app.dependency_overrides[get_summary_gen] = lambda: mock_gen
+        try:
             response = client.get("/api/v2/reports/job-123/executive-summary")
+        finally:
+            fastapi_app.dependency_overrides.pop(get_summary_gen, None)
 
         assert response.status_code == 200
         data = response.json()

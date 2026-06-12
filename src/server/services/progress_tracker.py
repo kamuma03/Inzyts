@@ -68,9 +68,13 @@ class ProgressTracker:
     PHASE_KEY_PREFIX = "job_phases"
     TTL_SECONDS = 86400  # 24 hours
 
-    def __init__(self):
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        self._redis = redis.Redis.from_url(redis_url, decode_responses=True)
+    def __init__(self, redis_client: Optional["redis.Redis"] = None):
+        # Accept an injected client for testability; default to one built from
+        # REDIS_URL so existing ``ProgressTracker()`` call sites are unchanged.
+        if redis_client is None:
+            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+            redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
+        self._redis = redis_client
 
     def _key(self, job_id: str) -> str:
         return f"{self.REDIS_KEY_PREFIX}:{job_id}"

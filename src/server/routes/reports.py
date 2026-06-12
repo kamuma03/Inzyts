@@ -38,19 +38,23 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 # Resolve once at module load so the path is stable regardless of CWD at request time.
 _OUTPUT_DIR = settings.output_dir_resolved
 
-# Lazy-initialized singletons
+# Lazy-initialized singletons, exposed as FastAPI dependency providers so tests
+# can substitute fakes via ``app.dependency_overrides[get_exporter] = ...``
+# instead of monkeypatching a module global.
 _exporter: ReportExporter | None = None
 _summary_gen: ExecutiveSummaryGenerator | None = None
 
 
-def _get_exporter() -> ReportExporter:
+def get_exporter() -> ReportExporter:
+    """DI provider for the (lazily constructed) report exporter."""
     global _exporter
     if _exporter is None:
         _exporter = ReportExporter()
     return _exporter
 
 
-def _get_summary_gen() -> ExecutiveSummaryGenerator:
+def get_summary_gen() -> ExecutiveSummaryGenerator:
+    """DI provider for the (lazily constructed) executive-summary generator."""
     global _summary_gen
     if _summary_gen is None:
         _summary_gen = ExecutiveSummaryGenerator()
@@ -144,6 +148,7 @@ async def export_report_get(
     format: str = Query(default="html", description="Export format: html, pdf, pptx, markdown"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(verify_token),
+    exporter: ReportExporter = Depends(get_exporter),
 ):
     """Generate and download a report in the specified format."""
     report_format = _parse_format(format)
@@ -152,7 +157,6 @@ async def export_report_get(
 
     stored_summary = job.executive_summary
     try:
-        exporter = _get_exporter()
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(
             None,
@@ -191,6 +195,7 @@ async def export_report_post(
     request: ReportExportRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(verify_token),
+    exporter: ReportExporter = Depends(get_exporter),
 ):
     """Generate and download a report with custom options."""
     report_format = _parse_format(request.format)
@@ -199,7 +204,6 @@ async def export_report_post(
 
     stored_summary = job.executive_summary if request.include_executive_summary else None
     try:
-        exporter = _get_exporter()
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(
             None,
@@ -238,6 +242,7 @@ async def get_executive_summary(
     job_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(verify_token),
+    summary_gen: ExecutiveSummaryGenerator = Depends(get_summary_gen),
 ):
     """Return the executive summary for a completed analysis.
 
@@ -261,10 +266,9 @@ async def get_executive_summary(
 
     # Backfill: generate once for old jobs, then persist
     try:
-        gen = _get_summary_gen()
         loop = asyncio.get_running_loop()
         summary = await loop.run_in_executor(
-            None, lambda: gen.generate(str(notebook_path))
+            None, lambda: summary_gen.generate(str(notebook_path))
         )
     except Exception as e:
         logger.error(f"Executive summary failed for job {job_id}: {e}")
