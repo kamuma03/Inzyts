@@ -714,54 +714,37 @@ def route_after_analysis_validation(
 # ============================================================================
 
 
-def build_workflow() -> StateGraph:
-    """
-    Construct the StateGraph logic.
-
-    Defines the nodes (agents/actions) and edges (transitions) of the
-    application.
-    """
-
-    # Create graph with state schema
-    workflow = StateGraph(AnalysisState)
-
-    # --- Add Nodes ---
+def _register_nodes(workflow: StateGraph) -> None:
+    """Register every node (entry/ingestion, Phase 1, transition, Phase 2, final)."""
+    # Entry + data ingestion
     workflow.add_node("initialize", initialize_node)
     workflow.add_node("sql_extraction", sql_extraction_node)
     workflow.add_node("api_extraction", api_extraction_node)
     workflow.add_node("data_merger", data_merger_node)
     workflow.add_node("create_phase1_handoff", create_phase1_handoff_node)
+    workflow.add_node("restore_cache", restore_cache_node)
 
-    # Phase 1 Nodes
+    # Phase 1 — data understanding
     workflow.add_node("data_profiler", data_profiler_node)
     workflow.add_node("profile_codegen", profile_codegen_node)
     workflow.add_node("profile_validator", profile_validator_node)
+    workflow.add_node("exploratory_conclusions", exploratory_conclusions_node)
 
-    # Transition
+    # Transition + Phase 2 — analysis & modeling
     workflow.add_node("transition_to_phase2", transition_to_phase2_node)
-
-    # Extension Node (New)
     workflow.add_node("extension_node", extension_node)
-
-    # Phase 2 Nodes
     workflow.add_node("strategy", strategy_node)
     workflow.add_node("analysis_codegen", analysis_codegen_node)
     workflow.add_node("analysis_validator", analysis_validator_node)
 
-    # New Nodes (v0.10.0)
-    workflow.add_node("exploratory_conclusions", exploratory_conclusions_node)
-    workflow.add_node("restore_cache", restore_cache_node)
-
-    # Special Nodes
+    # Final / recovery
     workflow.add_node("rollback_recovery", rollback_recovery_node)
     workflow.add_node("assemble_notebook", assemble_notebook_node)
 
-    # --- Set Entry Point ---
-    workflow.set_entry_point("initialize")
 
-    # --- Phase 1 Edges ---
-    # Linear flow until validation
-    # v0.10.0: Conditional start based on cache
+def _register_phase1_edges(workflow: StateGraph) -> None:
+    """Entry routing, data-ingestion fan-in, and the Phase 1 recursion loop."""
+    # Conditional start: cache / SQL / API / multi-file / standard.
     workflow.add_conditional_edges(
         "initialize",
         route_after_initialize,
@@ -774,6 +757,7 @@ def build_workflow() -> StateGraph:
         },
     )
 
+    # All ingestion paths converge on the profiler handoff.
     workflow.add_edge("sql_extraction", "create_phase1_handoff")
     workflow.add_edge("api_extraction", "create_phase1_handoff")
     workflow.add_edge("data_merger", "create_phase1_handoff")
@@ -787,12 +771,10 @@ def build_workflow() -> StateGraph:
         },
     )
 
-    # Standard Phase 1 flow
+    # Standard Phase 1 linear flow → validation, then the recursion loop.
     workflow.add_edge("create_phase1_handoff", "data_profiler")
     workflow.add_edge("data_profiler", "profile_codegen")
     workflow.add_edge("profile_codegen", "profile_validator")
-
-    # Conditional Routing (Recursion) for Phase 1
     workflow.add_conditional_edges(
         "profile_validator",
         route_after_profile_validation,
@@ -804,14 +786,24 @@ def build_workflow() -> StateGraph:
         },
     )
 
-    # --- Phase 2 Edges ---
-    # Linear flow until validation
+
+def _register_phase2_edges(workflow: StateGraph) -> None:
+    """Exploratory branch, the Phase 2 recursion loop, and final assembly."""
+    # Exploratory conclusions either finish (exploratory mode) or enter Phase 2.
+    workflow.add_conditional_edges(
+        "exploratory_conclusions",
+        route_after_exploratory_conclusions,
+        {
+            "assemble_notebook": "assemble_notebook",
+            "transition_to_phase2": "transition_to_phase2",
+        },
+    )
+
+    # Phase 2 linear flow → validation, then the recursion loop.
     workflow.add_edge("transition_to_phase2", "extension_node")
     workflow.add_edge("extension_node", "strategy")
     workflow.add_edge("strategy", "analysis_codegen")
     workflow.add_edge("analysis_codegen", "analysis_validator")
-
-    # Conditional Routing (Recursion) for Phase 2
     workflow.add_conditional_edges(
         "analysis_validator",
         route_after_analysis_validation,
@@ -823,21 +815,18 @@ def build_workflow() -> StateGraph:
         },
     )
 
-    # --- Exploratory Conclusions Routing ---
-    # After exploratory conclusions, either go to Phase 2 or directly to assembly
-    workflow.add_conditional_edges(
-        "exploratory_conclusions",
-        route_after_exploratory_conclusions,
-        {
-            "assemble_notebook": "assemble_notebook",
-            "transition_to_phase2": "transition_to_phase2",
-        },
-    )
-
-    # --- Final Edges ---
+    # Final edges.
     workflow.add_edge("rollback_recovery", "assemble_notebook")  # Recover then save
-    workflow.add_edge("assemble_notebook", END)  # Done
+    workflow.add_edge("assemble_notebook", END)
 
+
+def build_workflow() -> StateGraph:
+    """Construct the StateGraph: nodes (agents/actions) and edges (transitions)."""
+    workflow = StateGraph(AnalysisState)
+    _register_nodes(workflow)
+    workflow.set_entry_point("initialize")
+    _register_phase1_edges(workflow)
+    _register_phase2_edges(workflow)
     return workflow
 
 
