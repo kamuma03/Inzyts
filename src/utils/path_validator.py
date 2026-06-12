@@ -46,12 +46,21 @@ def validate_path_within(
         HTTPException: 403 on traversal / symlink violations, 404 on missing
             files.
     """
+    # Reject malformed paths (e.g. an embedded NUL byte) up front with a clean
+    # 400 — otherwise the os.stat/realpath calls below raise ValueError/OSError,
+    # which surfaces as an unhandled 500 (caught by the OpenAPI fuzzer).
+    if "\x00" in str(path):
+        raise HTTPException(status_code=400, detail=f"Invalid {error_label} path")
+
     p = Path(path)
 
     if not p.is_absolute() and resolve_relative_to is not None:
         p = (resolve_relative_to / p)
 
-    resolved = p.resolve()
+    try:
+        resolved = p.resolve()
+    except (ValueError, OSError):
+        raise HTTPException(status_code=400, detail=f"Invalid {error_label} path")
 
     if reject_symlinks and (Path(path).is_symlink() or resolved.is_symlink()):
         raise HTTPException(status_code=403, detail="Symbolic links are not permitted")
