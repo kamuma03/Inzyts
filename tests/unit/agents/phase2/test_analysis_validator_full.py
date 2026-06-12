@@ -36,7 +36,12 @@ class TestAnalysisValidatorFull:
     @pytest.fixture
     def validator_agent(self):
         """Create an Analysis Validator instance with Sandbox mocked."""
-        with patch('src.agents.phase2.analysis_validator.SandboxExecutor') as mock_sandbox:
+        # Patch at the instantiation site: the validator now acquires its kernel
+        # via PooledKernelMixin.pooled_sandbox (in src.services.sandbox_executor),
+        # which constructs SandboxExecutor there and yields it directly (no
+        # __enter__ indirection). Patching the validator module would be bypassed
+        # and spin up a real Jupyter kernel.
+        with patch('src.services.sandbox_executor.SandboxExecutor') as mock_sandbox:
             mock_instance = MagicMock()
             mock_result = MagicMock()
             mock_result.success = True
@@ -45,7 +50,7 @@ class TestAnalysisValidatorFull:
             mock_result.error_name = None
             mock_result.error_value = None
             mock_instance.execute_cell.return_value = mock_result
-            mock_sandbox.return_value.__enter__.return_value = mock_instance
+            mock_sandbox.return_value = mock_instance
             yield AnalysisValidatorAgent()
 
     @pytest.fixture

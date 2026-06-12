@@ -23,7 +23,10 @@ class TestProfileValidatorAgent:
     def mock_sandbox_executor(self):
         """Mock SandboxExecutor to prevent actual code execution during tests."""
         from unittest.mock import patch, MagicMock
-        with patch('src.agents.phase1.profile_validator.SandboxExecutor') as mock_sandbox:
+        # Patch the instantiation site (PooledKernelMixin.pooled_sandbox in
+        # src.services.sandbox_executor) — it constructs SandboxExecutor and
+        # yields it directly, so patching the validator module is bypassed.
+        with patch('src.services.sandbox_executor.SandboxExecutor') as mock_sandbox:
             mock_instance = MagicMock()
             mock_result = MagicMock()
             mock_result.success = True
@@ -32,7 +35,7 @@ class TestProfileValidatorAgent:
             mock_result.error_name = None
             mock_result.error_value = None
             mock_instance.execute_cell.return_value = mock_result
-            mock_sandbox.return_value.__enter__.return_value = mock_instance
+            mock_sandbox.return_value = mock_instance
             yield mock_sandbox
 
     @pytest.fixture
@@ -410,9 +413,9 @@ stats = df[['age', 'salary']].describe()
             source_specification=mock_spec
         )
         
-        with patch('src.agents.phase1.profile_validator.SandboxExecutor') as mock_sandbox:
+        with patch('src.services.sandbox_executor.SandboxExecutor') as mock_sandbox:
             mock_instance = MagicMock()
-            
+
             def side_effect(code):
                 mock_result = MagicMock()
                 if "import pandas" in code:
@@ -422,10 +425,10 @@ stats = df[['age', 'salary']].describe()
                     mock_result.error_name = "AttributeError"
                     mock_result.error_value = "Method not found"
                 return mock_result
-                
+
             mock_instance.execute_cell.side_effect = side_effect
-            mock_sandbox.return_value.__enter__.return_value = mock_instance
-            
+            mock_sandbox.return_value = mock_instance
+
             result = validator_agent._validate_cells(handoff, mock_state)
             
             # 1 missing input/output, 1 syntax error, 1 runtime error
