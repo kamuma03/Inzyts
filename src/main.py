@@ -167,6 +167,252 @@ def resolve_file_path(path_str: str) -> Path:
     return path
 
 
+def _announce_start(
+    resolved_csv_path: Path,
+    target_column: str | None,
+    analysis_type: str | None,
+    mode: str | None,
+) -> None:
+    """Log + print the starting banner for the run."""
+    msg = (
+        f"Multi-Agent Data Analysis System ({settings.app_version})\n"
+        f"CSV: {resolved_csv_path.name}\n"
+        f"Target: {target_column or 'Auto-detect'}\n"
+        f"Type: {analysis_type or 'Auto-detect'}\n"
+        f"Mode: {mode or 'Auto-detect'}"
+    )
+    logger.info(msg)
+    console.print(Panel(msg, title="Starting Analysis"))
+
+
+def _decide_cache(
+    resolved_csv_path: Path,
+    mode: str | None,
+    use_cache: bool,
+    no_cache: bool,
+    interactive: bool,
+) -> tuple:
+    """Resolve the cache decision for this run.
+
+    Returns ``(preloaded_cache, using_cache_decision, pipeline_mode_decision)``.
+    """
+    cache_manager = CacheManager()
+    preloaded_cache = None
+    using_cache_decision = use_cache
+    pipeline_mode_decision = PipelineMode(mode.lower()) if mode else None
+
+    if no_cache:
+        return preloaded_cache, using_cache_decision, pipeline_mode_decision
+
+    check = cache_manager.check_cache(str(resolved_csv_path))
+    if check.status == CacheStatus.VALID and check.cache:
+        if use_cache:
+            # Force use
+            msg = f"Using cached profile (expires in {check.cache.days_until_expiry()} days)"
+            logger.info(msg)
+            console.print(f"[green]{msg}[/green]")
+            preloaded_cache = check.cache
+            using_cache_decision = True
+        else:
+            # Prompt user if interactive; default to skipping the cache.
+            should_use = "n"
+            if interactive:
+                try:
+                    should_use = (
+                        input(
+                            f"\n[?] Found valid cached profile ({check.cache.days_until_expiry()} days left). Use it? [Y/n] "
+                        )
+                        .strip()
+                        .lower()
+                    )
+                except EOFError:
+                    should_use = "n"
+
+            if should_use in ["", "y", "yes"] and interactive:
+                logger.info("Using cached profile.")
+                console.print("[green]Using cached profile.[/green]")
+                preloaded_cache = check.cache
+                using_cache_decision = True
+            else:
+                logger.info("Ignoring cache, running fresh profile.")
+                console.print(
+                    "[yellow]Ignoring cache (Interactive=False or selected No), running fresh profile.[/yellow]"
+                )
+
+    return preloaded_cache, using_cache_decision, pipeline_mode_decision
+
+
+def _load_data_dictionary(data_dictionary_path: str | None, verbose: bool) -> dict:
+    """Parse an optional data-dictionary file into a {column: description} map."""
+    data_dictionary: dict = {}
+    if not data_dictionary_path:
+        return data_dictionary
+
+    dictionary_path = resolve_file_path(data_dictionary_path)
+    if not dictionary_path.exists():
+        logger.warning(f"Data Dictionary file not found: {data_dictionary_path}")
+        console.print(
+            f"[yellow]Warning: Data Dictionary file not found: {data_dictionary_path}[/yellow]"
+        )
+        return data_dictionary
+
+    try:
+        from src.services.dictionary_manager import DictionaryParser
+
+        parsed_dict = DictionaryParser.parse(str(dictionary_path))
+        if parsed_dict and parsed_dict.entries:
+            for entry in parsed_dict.entries:
+                if entry.column_name and entry.description:
+                    data_dictionary[entry.column_name.lower()] = entry.description
+            if verbose:
+                logger.info(
+                    f"Loaded Data Dictionary with {len(data_dictionary)} definitions"
+                )
+                console.print(
+                    f"[green]Loaded Data Dictionary with {len(data_dictionary)} definitions[/green]"
+                )
+        else:
+            console.print(
+                f"[yellow]Warning: Data Dictionary could not be parsed or was empty: {dictionary_path}[/yellow]"
+            )
+    except Exception as e:
+        console.print(f"[red]Error loading Data Dictionary: {e}[/red]")
+        if verbose:
+            console.print(traceback.format_exc())
+
+    return data_dictionary
+
+
+def _execute_graph_stream(
+    initial_state: AnalysisState,
+    cancellation_check: Callable[[], bool] | None,
+    verbose: bool,
+    start_time: float,
+) -> Optional[dict]:
+    """Stream the workflow to completion, returning the final state dict.
+
+    Returns ``None`` if the run was cancelled by ``cancellation_check``. The
+    graph generator is always closed so LangGraph releases internal resources.
+    """
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Running analysis workflow...", total=None)
+
+        # LangGraph's stream(mode="values") yields the full accumulated state
+        # dict after each node, so final_state is always a dict after the loop.
+        current_state_dict: dict = initial_state.model_dump()
+        graph = get_graph()
+        graph_stream = graph.stream(initial_state, stream_mode="values")
+
+        try:
+            for event in graph_stream:
+                output_state = event
+                current_state_dict = output_state
+
+                # External cancellation.
+                if cancellation_check and cancellation_check():
+                    console.print("[bold red]Analysis Cancelled by User.[/bold red]")
+                    if verbose:
+                        console.print("[dim]Stopping graph execution...[/dim]")
+                    return None
+
+                # Wall-clock kill-switch: the token budget guards cost inside
+                # routing; this guards against a hung node or a stalled provider.
+                # We break (not return) so partial state is still assembled below.
+                max_seconds = settings.recursion.max_execution_time_seconds
+                if max_seconds and (time.time() - start_time) > max_seconds:
+                    console.print(
+                        f"[bold yellow]Time budget exceeded "
+                        f"({max_seconds}s); finalizing with current output."
+                        f"[/bold yellow]"
+                    )
+                    graph_stream.close()
+                    break
+
+                if "current_phase" in output_state:
+                    phase = output_state["current_phase"]
+                    if phase == Phase.PHASE_2:
+                        progress.update(task, description="Phase 2: Analysis & Modeling...")
+                    elif phase == Phase.COMPLETE:
+                        progress.update(task, description="Assembling notebook...")
+
+            return current_state_dict
+
+        except (ValueError, KeyError, TypeError, FileNotFoundError) as e:
+            logger.error(f"Configuration/Input error during analysis: {e}")
+            console.print(f"[red]Error during analysis: {e}[/red]")
+            current_state_dict.setdefault("errors", [])
+            current_state_dict["errors"].append(str(e))
+            return current_state_dict
+        except Exception as e:
+            logger.critical(
+                f"Critical system failure during analysis: {e}", exc_info=True
+            )
+            console.print(f"[bold red]Critical system failure: {e}[/bold red]")
+            current_state_dict.setdefault("errors", [])
+            current_state_dict["errors"].append(f"System Crash: {e}")
+            return current_state_dict
+        finally:
+            # Close the generator so LangGraph can release any internal resources.
+            graph_stream.close()
+
+
+def _reconstruct_final_state(
+    final_state_dict: dict, initial_state: AnalysisState
+) -> AnalysisState:
+    """Rebuild an AnalysisState from the streamed dict, with a safe fallback."""
+    try:
+        return AnalysisState.model_validate(final_state_dict)
+    except Exception as e:
+        logger.warning(f"Could not reconstruct full AnalysisState from dictionary: {e}")
+        logger.debug(f"Corrupted state dict keys: {list(final_state_dict.keys())}")
+        console.print(f"[red]Warning: State corruption detected: {e}[/red]")
+        # Fall back to a minimal valid state preserving any partial results.
+        # model_copy avoids direct attribute mutation on the Pydantic instance.
+        existing_errors = list(initial_state.errors) if hasattr(initial_state, "errors") else []
+        partial_update: dict = {
+            "total_tokens_used": final_state_dict.get("total_tokens_used", 0),
+            "errors": existing_errors + [f"State Reconstruction Error: {e}"] + final_state_dict.get("errors", []),
+        }
+        for key in ("final_notebook_path", "result_path", "execution_time"):
+            if final_state_dict.get(key) is not None:
+                partial_update[key] = final_state_dict[key]
+        return initial_state.model_copy(update=partial_update)
+
+
+def _report_results(
+    final_state_obj: AnalysisState, execution_time: float
+) -> AnalysisState:
+    """Print the results panel and return the final state."""
+    if final_state_obj and getattr(final_state_obj, "final_notebook_path", None):
+        msg = (
+            f"Analysis Complete!\n"
+            f"Notebook: {final_state_obj.final_notebook_path}\n"
+            f"Quality Score: {final_state_obj.final_quality_score:.2f}\n"
+            f"Time: {execution_time:.1f}s"
+        )
+        logger.info(msg)
+        console.print(
+            Panel(
+                f"[green]✓ Analysis Complete![/green]\n\n"
+                f"Notebook: {final_state_obj.final_notebook_path}\n"
+                f"Quality Score: {final_state_obj.final_quality_score:.2f}\n"
+                f"Time: {execution_time:.1f}s\n"
+                f"Total Iterations: {final_state_obj.phase1_iteration + final_state_obj.phase2_iteration}",
+                title="Results",
+            )
+        )
+    else:
+        logger.warning("Analysis completed but no notebook generated")
+        console.print(
+            "[yellow]Warning: Analysis completed but no notebook generated[/yellow]"
+        )
+    return final_state_obj
+
+
 def run_analysis(
     csv_path: Optional[str] = None,
     target_column: str | None = None,
@@ -192,137 +438,25 @@ def run_analysis(
     """
     Run the complete data analysis workflow.
 
-    This function initializes the analysis state and executes the LangGraph workflow.
-    It handles:
-    1. Input validation
-    2. User Intent creation
-    3. State initialization
-    4. Graph execution and monitoring
-    5. Result reporting
+    Orchestrates: input validation → cache decision → user-intent/state setup →
+    graph execution & monitoring → state reconstruction → result reporting.
 
-    Args:
-        csv_path: Absolute or relative path to the CSV file.
-        target_column: Name of the target variable for predictive modeling.
-        analysis_type: User's hint about the type of analysis (e.g., 'classification').
-        analysis_question: Specific question the user wants answered.
-        exclude_columns: List of column names to ignore.
-        verbose: If True, prints detailed step-by-step logs.
-
-    Returns:
-        Final AnalysisState object containing results and notebook path,
-        or None if execution failed.
+    Returns the final AnalysisState (with results + notebook path), or None if
+    the run was cancelled.
     """
     # Validate CSV exists (skip when using autonomous SQL agent — no CSV yet)
     resolved_csv_path = resolve_file_path(csv_path) if csv_path else Path("")
     if csv_path and not resolved_csv_path.exists():
         raise FileNotFoundError(f"CSV file not found: {resolved_csv_path}")
 
-    msg = (
-        f"Multi-Agent Data Analysis System ({settings.app_version})\n"
-        f"CSV: {resolved_csv_path.name}\n"
-        f"Target: {target_column or 'Auto-detect'}\n"
-        f"Type: {analysis_type or 'Auto-detect'}\n"
-        f"Mode: {mode or 'Auto-detect'}"
+    _announce_start(resolved_csv_path, target_column, analysis_type, mode)
+
+    preloaded_cache, using_cache_decision, pipeline_mode_decision = _decide_cache(
+        resolved_csv_path, mode, use_cache, no_cache, interactive
     )
-    logger.info(msg)
-    console.print(Panel(msg, title="Starting Analysis"))
 
-    # Cache Management Logic
-    cache_manager = CacheManager()
-    preloaded_cache = None
-    using_cache_decision = use_cache
-    pipeline_mode_decision = None
-
-    # Determine Mode Hint
-    if mode:
-        pipeline_mode_decision = PipelineMode(mode.lower())
-
-    if not no_cache:
-        # Check if we have a valid cache
-        check = cache_manager.check_cache(str(resolved_csv_path))
-
-        if check.status == CacheStatus.VALID and check.cache:
-            if use_cache:
-                # Force use
-                msg = f"Using cached profile (expires in {check.cache.days_until_expiry()} days)"
-                logger.info(msg)
-                console.print(f"[green]{msg}[/green]")
-                preloaded_cache = check.cache
-                using_cache_decision = True
-            else:
-                # Prompt user if interactive
-                should_use = "n"  # default: skip cache; only use if user explicitly confirms
-                if interactive:
-                    try:
-                        should_use = (
-                            input(
-                                f"\n[?] Found valid cached profile ({check.cache.days_until_expiry()} days left). Use it? [Y/n] "
-                            )
-                            .strip()
-                            .lower()
-                        )
-                    except EOFError:
-                        should_use = "n"
-
-                if should_use in ["", "y", "yes"] and interactive:
-                    logger.info("Using cached profile.")
-                    console.print("[green]Using cached profile.[/green]")
-                    preloaded_cache = check.cache
-                    using_cache_decision = True
-                else:
-                    logger.info("Ignoring cache, running fresh profile.")
-                    console.print(
-                        "[yellow]Ignoring cache (Interactive=False or selected No), running fresh profile.[/yellow]"
-                    )
-
-    # If using cache, we allow skipping Phase 1.
-    # The Orchestrator and Graph handle this if `using_cached_profile=True` in initial state.
-
-    # Create user intent
-    analysis_type_enum = None
-    if analysis_type:
-        analysis_type_enum = AnalysisType(analysis_type)
-
-    # Parse Data Dictionary if provided
-    data_dictionary = {}
-    if data_dictionary_path:
-        dictionary_path = resolve_file_path(data_dictionary_path)
-        if dictionary_path.exists():
-            try:
-                from src.services.dictionary_manager import DictionaryParser
-
-                parsed_dict = DictionaryParser.parse(str(dictionary_path))
-
-                if parsed_dict and parsed_dict.entries:
-                    # Convert to Dict[str, str] format expected by UserIntent
-                    # Format: {column_name: description}
-                    for entry in parsed_dict.entries:
-                        if entry.column_name and entry.description:
-                            data_dictionary[entry.column_name.lower()] = (
-                                entry.description
-                            )
-
-                    if verbose:
-                        logger.info(
-                            f"Loaded Data Dictionary with {len(data_dictionary)} definitions"
-                        )
-                        console.print(
-                            f"[green]Loaded Data Dictionary with {len(data_dictionary)} definitions[/green]"
-                        )
-                else:
-                    console.print(
-                        f"[yellow]Warning: Data Dictionary could not be parsed or was empty: {dictionary_path}[/yellow]"
-                    )
-
-            except Exception as e:
-                console.print(f"[red]Error loading Data Dictionary: {e}[/red]")
-                if verbose:
-                    console.print(traceback.format_exc())
-        else:
-            logger.warning(f"Data Dictionary file not found: {data_dictionary_path}")
-            console.print(
-                f"[yellow]Warning: Data Dictionary file not found: {data_dictionary_path}[/yellow]"
-            )
+    analysis_type_enum = AnalysisType(analysis_type) if analysis_type else None
+    data_dictionary = _load_data_dictionary(data_dictionary_path, verbose)
 
     user_intent = UserIntent(
         csv_path=str(resolved_csv_path) if csv_path else "",
@@ -340,7 +474,6 @@ def run_analysis(
         json_path=json_path,
     )
 
-    # Create initial state
     initial_state = AnalysisState(
         csv_path=str(resolved_csv_path) if (csv_path and resolved_csv_path.exists()) else "",
         user_intent=user_intent,
@@ -352,139 +485,15 @@ def run_analysis(
 
     # Run workflow
     start_time = time.time()
-
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Running analysis workflow...", total=None)
-
-        # Execute graph. LangGraph's stream(mode="values") yields full state dicts
-        # after each node, so final_state is always a dict after the loop.
-        current_state_dict: dict = initial_state.model_dump()
-
-        # Use stream_mode="values" to get the fully accumulated state at each step.
-        # Store the generator in a variable so we can close it explicitly on exception
-        # to avoid leaving LangGraph in an inconsistent state with dangling coroutines.
-        graph = get_graph()
-        graph_stream = graph.stream(initial_state, stream_mode="values")
-
-        try:
-            # We iterate over the stream of full state snapshots
-            for event in graph_stream:
-                # With stream_mode="values", event is the full state dict after each node.
-                output_state = event
-                current_state_dict = output_state
-
-                # Check for external cancellation
-                if cancellation_check and cancellation_check():
-                    console.print("[bold red]Analysis Cancelled by User.[/bold red]")
-                    if verbose:
-                        console.print("[dim]Stopping graph execution...[/dim]")
-                    return None
-
-                # Wall-clock kill-switch: enforce the configured per-run time
-                # budget. Token budget guards cost inside routing; this guards
-                # against a single node hanging or a slow provider stalling the
-                # whole run. We break (not return) so the partial state is still
-                # assembled/persisted below.
-                max_seconds = settings.recursion.max_execution_time_seconds
-                if max_seconds and (time.time() - start_time) > max_seconds:
-                    console.print(
-                        f"[bold yellow]Time budget exceeded "
-                        f"({max_seconds}s); finalizing with current output."
-                        f"[/bold yellow]"
-                    )
-                    graph_stream.close()
-                    break
-
-                # User logging: we can try to diff to see what changed, or just log the phase
-                if verbose:
-                    # Heuristic to detect phase change or step completion
-                    # For now, just print current phase if available
-                    phase = output_state.get("current_phase")
-                    # node_name isn't explicitly yielded in 'values' mode, checking last step is harder
-                    # but state checking is reliable.
-
-                if "current_phase" in output_state:
-                    phase = output_state["current_phase"]
-                    if phase == Phase.PHASE_2:
-                        progress.update(
-                            task, description="Phase 2: Analysis & Modeling..."
-                        )
-                    elif phase == Phase.COMPLETE:
-                        progress.update(task, description="Assembling notebook...")
-
-            # The last event is the final state dict.
-            final_state_dict = current_state_dict
-
-        except (ValueError, KeyError, TypeError, FileNotFoundError) as e:
-            logger.error(f"Configuration/Input error during analysis: {e}")
-            console.print(f"[red]Error during analysis: {e}[/red]")
-            current_state_dict.setdefault("errors", [])
-            current_state_dict["errors"].append(str(e))
-            final_state_dict = current_state_dict
-        except Exception as e:
-            logger.critical(
-                f"Critical system failure during analysis: {e}", exc_info=True
-            )
-            console.print(f"[bold red]Critical system failure: {e}[/bold red]")
-            current_state_dict.setdefault("errors", [])
-            current_state_dict["errors"].append(f"System Crash: {e}")
-            final_state_dict = current_state_dict
-        finally:
-            # Close the generator so LangGraph can release any internal resources.
-            graph_stream.close()
-
+    final_state_dict = _execute_graph_stream(
+        initial_state, cancellation_check, verbose, start_time
+    )
+    if final_state_dict is None:  # Cancelled mid-run
+        return None
     execution_time = time.time() - start_time
 
-    # Convert the final state dict back to an object for a consistent return type.
-    try:
-        final_state_obj = AnalysisState.model_validate(final_state_dict)
-    except Exception as e:
-        logger.warning(f"Could not reconstruct full AnalysisState from dictionary: {e}")
-        logger.debug(f"Corrupted state dict keys: {list(final_state_dict.keys())}")
-        console.print(f"[red]Warning: State corruption detected: {e}[/red]")
-        # Fall back to a minimal valid state preserving any partial results.
-        # Use model_copy to avoid direct attribute mutation on a Pydantic model instance.
-        existing_errors = list(initial_state.errors) if hasattr(initial_state, "errors") else []
-        partial_update: dict = {
-            "total_tokens_used": final_state_dict.get("total_tokens_used", 0),
-            "errors": existing_errors + [f"State Reconstruction Error: {e}"] + final_state_dict.get("errors", []),
-        }
-        # Carry over any partial results that survived the crash.
-        for key in ("final_notebook_path", "result_path", "execution_time"):
-            if final_state_dict.get(key) is not None:
-                partial_update[key] = final_state_dict[key]
-        final_state_obj = initial_state.model_copy(update=partial_update)
-
-    # Report results
-    if final_state_obj and getattr(final_state_obj, "final_notebook_path", None):
-        msg = (
-            f"Analysis Complete!\n"
-            f"Notebook: {final_state_obj.final_notebook_path}\n"
-            f"Quality Score: {final_state_obj.final_quality_score:.2f}\n"
-            f"Time: {execution_time:.1f}s"
-        )
-        logger.info(msg)
-        console.print(
-            Panel(
-                f"[green]✓ Analysis Complete![/green]\n\n"
-                f"Notebook: {final_state_obj.final_notebook_path}\n"
-                f"Quality Score: {final_state_obj.final_quality_score:.2f}\n"
-                f"Time: {execution_time:.1f}s\n"
-                f"Total Iterations: {final_state_obj.phase1_iteration + final_state_obj.phase2_iteration}",
-                title="Results",
-            )
-        )
-        return final_state_obj
-    else:
-        logger.warning("Analysis completed but no notebook generated")
-        console.print(
-            "[yellow]Warning: Analysis completed but no notebook generated[/yellow]"
-        )
-        return final_state_obj
+    final_state_obj = _reconstruct_final_state(final_state_dict, initial_state)
+    return _report_results(final_state_obj, execution_time)
 
 
 def main():
