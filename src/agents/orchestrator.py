@@ -134,6 +134,95 @@ class OrchestratorAgent(BaseAgent):
         else:
             return {"error": f"Unknown action: {action}"}
 
+    def _validate_csv_loadable(self, csv_path: str) -> Optional[Dict[str, Any]]:
+        """Return an error-update dict if the CSV can't be loaded, else None."""
+        try:
+            self.data_manager.load_data(csv_path)
+            return None
+        except (pd.errors.EmptyDataError, pd.errors.ParserError) as e:
+            logger.error(f"Data loading error: {e}")
+            return {"error": f"Invalid CSV/Excel file: {str(e)}", "confidence": 0.0}
+        except FileNotFoundError as e:
+            logger.error(f"File not found: {e}")
+            return {"error": f"File not found: {str(e)}", "confidence": 0.0}
+        except Exception as e:
+            logger.error(f"Unexpected error loading data: {e}\n{traceback.format_exc()}")
+            return {"error": f"Failed to load data: {str(e)}", "confidence": 0.0}
+
+    @staticmethod
+    def _parse_init_data_dictionary(data_dictionary_path: Optional[str]) -> dict:
+        """Parse an optional Field/Description data-dictionary CSV into a map."""
+        data_dictionary: dict = {}
+        if not data_dictionary_path:
+            return data_dictionary
+        try:
+            from src.utils.file_utils import load_csv_robust
+
+            dict_df = load_csv_robust(data_dictionary_path)
+            # Expect 'Field' and 'Description', robust to case.
+            cols = {c.lower(): c for c in dict_df.columns}
+            if "field" in cols and "description" in cols:
+                data_dictionary = dict(zip(dict_df[cols["field"]], dict_df[cols["description"]]))
+        except Exception as e:
+            logger.warning(f"Failed to load Data Dictionary: {e}")
+        return data_dictionary
+
+    @staticmethod
+    def _resolve_multi_file_input(user_intent: Optional[Dict]) -> Optional[MultiFileInput]:
+        """Build a MultiFileInput from the intent, if one was provided.
+
+        Actual merging is deferred to the DataMergerAgent node in the graph.
+        """
+        if not (user_intent and user_intent.get("multi_file_input")):
+            return None
+        try:
+            multi_file_input = MultiFileInput(**user_intent["multi_file_input"])
+            logger.info(f"Multi-file input detected: {len(multi_file_input.files)} files.")
+            return multi_file_input
+        except Exception as e:
+            logger.error(f"Multi-file input parsing failed: {e}")
+            logger.error(traceback.format_exc())
+            return None  # Fall back to single-file logic (original csv_path).
+
+    def _check_init_cache(
+        self,
+        csv_path: str,
+        multi_file_input: Optional[MultiFileInput],
+        no_cache: bool,
+        use_cache: bool,
+        pipeline_mode: Any,
+    ) -> tuple:
+        """Check for a reusable cached profile.
+
+        Returns ``(cache_status, cached_profile, using_cache)``.
+        """
+        cache_status = CacheStatus.NOT_FOUND
+        cached_profile = None
+        using_cache = False
+        if no_cache:
+            return cache_status, cached_profile, using_cache
+
+        if multi_file_input:
+            input_paths = [f.file_path for f in multi_file_input.files]
+            cache_result = self.cache_manager.check_multi_file_cache(input_paths)
+        else:
+            cache_result = self.cache_manager.check_cache(csv_path)
+
+        cache_status = cache_result.status
+        logger.cache_check(csv_path, cache_status.value)
+
+        if cache_result.status == CacheStatus.VALID and use_cache:
+            cached_profile = cache_result.cache
+            using_cache = True
+            from src.utils.logger import LogEvents
+
+            logger.log_event(
+                LogEvents.UPGRADE_FROM_CACHE,
+                f"Using cached profile for {pipeline_mode.value} analysis",
+                level="info",
+            )
+        return cache_status, cached_profile, using_cache
+
     def _initialize(
         self,
         state: AnalysisState,
@@ -150,120 +239,37 @@ class OrchestratorAgent(BaseAgent):
         Loads the CSV, verifies its existence, and populates the initial state.
         Determines Pipeline Mode and checks for cached profiles.
         """
-        # Validate CSV can be loaded
-        try:
-            self.data_manager.load_data(csv_path)
-        except (pd.errors.EmptyDataError, pd.errors.ParserError) as e:
-            logger.error(f"Data loading error: {e}")
-            return {"error": f"Invalid CSV/Excel file: {str(e)}", "confidence": 0.0}
-        except FileNotFoundError as e:
-            logger.error(f"File not found: {e}")
-            return {"error": f"File not found: {str(e)}", "confidence": 0.0}
-        except Exception as e:
-            logger.error(
-                f"Unexpected error loading data: {e}\n{traceback.format_exc()}"
-            )
-            return {"error": f"Failed to load data: {str(e)}", "confidence": 0.0}
+        load_error = self._validate_csv_loadable(csv_path)
+        if load_error:
+            return load_error
 
-        # Parse Data Dictionary if provided
-        data_dictionary = {}
-        if data_dictionary_path:
-            try:
-                from src.utils.file_utils import load_csv_robust
+        data_dictionary = self._parse_init_data_dictionary(data_dictionary_path)
 
-                dict_df = load_csv_robust(data_dictionary_path)
-                # Expect 'Field' and 'Description', robust to case
-                cols = {c.lower(): c for c in dict_df.columns}
-                if "field" in cols and "description" in cols:
-                    field_col = cols["field"]
-                    desc_col = cols["description"]
-                    data_dictionary = dict(zip(dict_df[field_col], dict_df[desc_col]))
-            except Exception as e:
-                logger.warning(f"Failed to load Data Dictionary: {e}")
-
-        # Extract intent details
+        # Extract intent details + determine pipeline mode.
         target = user_intent.get("target_column") if user_intent else None
         question = user_intent.get("analysis_question") if user_intent else None
-
-        # Determine Pipeline Mode using Service
         pipeline_mode, detection_method = self.mode_detector.determine_mode(
             mode_arg=mode, target_column=target, user_question=question
         )
-
-        # Log mode detection
         logger.mode_detected(pipeline_mode.value, detection_method)
 
-        # Multi-File Handling (v1.8.0)
-        multi_file_input = None
-        merged_dataset = None
-        join_report = None
+        # Multi-file input (merging deferred to the graph) + cache check.
+        multi_file_input = self._resolve_multi_file_input(user_intent)
+        cache_status, cached_profile, using_cache = self._check_init_cache(
+            csv_path, multi_file_input, no_cache, use_cache, pipeline_mode
+        )
 
-        # Check if multi-file input provided in intent
-        if user_intent and user_intent.get("multi_file_input"):
-            try:
-                # Load multi-file input
-                multi_file_input = MultiFileInput(**user_intent["multi_file_input"])
-                logger.info(
-                    f"Multi-file input detected: {len(multi_file_input.files)} files."
-                )
-                # We defer actual merging to the DataMergerAgent node in the graph.
-
-            except Exception as e:
-                logger.error(f"Multi-file input parsing failed: {e}")
-                logger.error(traceback.format_exc())
-                # Fallback to single file logic (original csv_path)
-
-        # Check Cache
-        cache_status = CacheStatus.NOT_FOUND
-        cached_profile = None
-        using_cache = False
-
-        if not no_cache:
-            if multi_file_input:
-                # Use combined hash of INPUTS because merged file changes content/hash slightly?
-                # Or just to utilize the combined_hash feature explicitly.
-                # Note: We need the ORIGINAL input paths.
-                # multi_file_input object has them.
-                input_paths = [f.file_path for f in multi_file_input.files]
-                cache_result = self.cache_manager.check_multi_file_cache(input_paths)
-            else:
-                cache_result = self.cache_manager.check_cache(csv_path)
-
-            cache_status = cache_result.status
-
-            # Log cache check result
-            logger.cache_check(csv_path, cache_status.value)
-
-            if cache_result.status == CacheStatus.VALID and use_cache:
-                cached_profile = cache_result.cache
-                using_cache = True
-                from src.utils.logger import LogEvents
-
-                logger.log_event(
-                    LogEvents.UPGRADE_FROM_CACHE,
-                    f"Using cached profile for {pipeline_mode.value} analysis",
-                    level="info",
-                )
-
-        # Normalize UserIntent into Pydantic model
+        # Normalize UserIntent into Pydantic model.
         intent = UserIntent(
             csv_path=csv_path,
             analysis_question=question,
             target_column=target,
             title=user_intent.get("title") if user_intent else None,
-            analysis_type_hint=user_intent.get("analysis_type")
-            if user_intent
-            else None,
-            exclude_columns=user_intent.get("exclude_columns", [])
-            if user_intent
-            else [],
+            analysis_type_hint=user_intent.get("analysis_type") if user_intent else None,
+            exclude_columns=user_intent.get("exclude_columns", []) if user_intent else [],
             data_dictionary=data_dictionary,
             multi_file_input=multi_file_input,
         )
-
-        # State updates
-        # If using cache, we might prepopulate lock?
-        # Graph logic handles the skipping. We just set flags here.
 
         return {
             "csv_path": csv_path,
@@ -277,8 +283,8 @@ class OrchestratorAgent(BaseAgent):
             "phase1_iteration": 0,
             "confidence": 1.0,
             "multi_file_input": multi_file_input,
-            "merged_dataset": merged_dataset,
-            "join_report": join_report,
+            "merged_dataset": None,  # Set by the DataMergerAgent node, not here.
+            "join_report": None,
         }
 
     def _create_phase1_handoff(self, state: AnalysisState) -> Dict[str, Any]:
