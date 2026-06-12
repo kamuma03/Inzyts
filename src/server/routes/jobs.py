@@ -9,7 +9,7 @@ from sqlalchemy import select
 from src.config import settings
 from src.server.db.database import get_db
 from src.server.db.models import Job, JobProgress, JobStatus, User, UserRole
-from src.server.models.schemas import (
+from src.server.schemas import (
     ColumnProfileResponse,
     ColumnStats,
     CostBreakdownResponse,

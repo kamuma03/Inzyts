@@ -11,7 +11,7 @@ from src.server.db.database import get_db
 from src.server.db.models import Job, JobStatus, UserRole
 from src.server.db.models import User
 from src.server.middleware.auth import require_role, verify_token
-from src.server.models.schemas import (
+from src.server.schemas import (
     AnalysisMode,
     AnalysisRequest,
     AnalysisResponse,

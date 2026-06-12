@@ -10,7 +10,7 @@ from src.server.middleware.auth import require_role, verify_token
 from src.server.rate_limiter import limiter
 from src.utils.logger import get_logger
 from src.utils.path_validator import validate_path_within, ensure_dir
-from src.server.models.schemas import FilePreview, DBTestRequest, DBTestResponse, SQLPreviewRequest, APIPreviewRequest
+from src.server.schemas import FilePreview, DBTestRequest, DBTestResponse, SQLPreviewRequest, APIPreviewRequest
 import magic
 
 logger = get_logger()

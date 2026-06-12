@@ -18,7 +18,7 @@ from src.server.db.database import get_db
 from src.server.db.models import Job, User
 from src.server.db.queries import resolve_owned_job
 from src.server.middleware.auth import verify_token
-from src.server.models.schemas import (
+from src.server.schemas import (
     ExecutiveSummaryResponse,
     PIIFindingSchema,
     PIIScanResponse,
