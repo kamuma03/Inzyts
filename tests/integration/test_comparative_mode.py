@@ -61,11 +61,15 @@ def comparative_profile(comparative_data):
     )
 
 @pytest.fixture
-def mock_state(comparative_data, comparative_profile):
+def mock_state(comparative_data, comparative_profile, tmp_path):
     state = MagicMock(spec=AnalysisState)
     state.pipeline_mode = PipelineMode.COMPARATIVE
-    state.csv_data = comparative_data.to_dict(orient='records')
-    
+    # Extensions load the frame from csv_path (csv_data is never serialised).
+    csv_path = tmp_path / "comparative.csv"
+    comparative_data.to_csv(csv_path, index=False)
+    state.csv_path = str(csv_path)
+    state.csv_data = None
+
     # Mock Profile Lock
     state.profile_lock = MagicMock(spec=ProfileLock)
     state.profile_lock.is_locked.return_value = True

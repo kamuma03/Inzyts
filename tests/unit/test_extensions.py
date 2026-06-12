@@ -1,29 +1,34 @@
 import pytest
+import pandas as pd
 from unittest.mock import MagicMock, patch
 from src.agents.extensions import ForecastingExtensionAgent, ComparativeExtensionAgent, DiagnosticExtensionAgent
 from src.models.state import AnalysisState, PipelineMode, ProfileLock
 from src.models.handoffs import ProfileToStrategyHandoff
 
 @pytest.fixture
-def mock_state():
+def mock_state(tmp_path):
     state = MagicMock(spec=AnalysisState)
     state.pipeline_mode = PipelineMode.EXPLORATORY
     state.user_intent = None
     state.profile_lock = MagicMock(spec=ProfileLock)
     state.profile_lock.is_locked.return_value = True
-    
+
     # Mock handoff
     handoff = MagicMock(spec=ProfileToStrategyHandoff)
     handoff.column_profiles = []
     handoff.model_dump.return_value = {}
     state.profile_lock.get_locked_handoff.return_value = handoff
-    
-    # Mock csv_data
-    state.csv_data = [
-        {"date": "2023-01-01", "value": 100, "category": "A"}, 
+
+    # Extensions load the frame from csv_path (the full DataFrame is never put on
+    # state); materialise the sample to a real temp CSV.
+    csv_path = tmp_path / "ext_data.csv"
+    pd.DataFrame([
+        {"date": "2023-01-01", "value": 100, "category": "A"},
         {"date": "2023-01-02", "value": 110, "category": "B"},
-        {"date": "2023-01-03", "value": 120, "category": "A"}
-    ]
+        {"date": "2023-01-03", "value": 120, "category": "A"},
+    ]).to_csv(csv_path, index=False)
+    state.csv_path = str(csv_path)
+    state.csv_data = None
     return state
 
 @pytest.fixture

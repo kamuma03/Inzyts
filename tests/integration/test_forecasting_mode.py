@@ -52,11 +52,15 @@ def forecasting_profile(forecasting_data):
     )
 
 @pytest.fixture
-def mock_state(forecasting_data, forecasting_profile):
+def mock_state(forecasting_data, forecasting_profile, tmp_path):
     state = MagicMock(spec=AnalysisState)
     state.pipeline_mode = PipelineMode.FORECASTING
-    state.csv_data = forecasting_data.to_dict(orient='records')
-    
+    # Extensions load the frame from csv_path (csv_data is never serialised).
+    csv_path = tmp_path / "forecasting.csv"
+    forecasting_data.to_csv(csv_path, index=False)
+    state.csv_path = str(csv_path)
+    state.csv_data = None
+
     # Mock Profile Lock — `spec=ProfileLock` doesn't expose Pydantic
     # instance fields (only class attributes), so set `lock_hash` directly.
     state.profile_lock = MagicMock(spec=ProfileLock)
