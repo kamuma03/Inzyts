@@ -173,3 +173,79 @@ def test_shutdown_and_context_manager(mock_jupyter_client):
         
     mock_kc.stop_channels.assert_called_once()
     mock_km.shutdown_kernel.assert_called_once_with(now=True)
+
+
+# ---------------------------------------------------------------------------
+# Thread-pool pinning (#1) — keep BLAS/OpenMP single-threaded by default so a
+# constrained kernel doesn't stall on import (manifesting as a bootstrap hang).
+# ---------------------------------------------------------------------------
+
+THREAD_VARS = (
+    "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS",
+)
+
+
+def test_thread_pinning_defaults(mock_jupyter_client):
+    """The kernel env pins each BLAS/OMP thread var to 1 by default."""
+    executor = SandboxExecutor()
+    env = executor._sandbox._build_kernel_env()
+    for var in THREAD_VARS:
+        assert env[var] == "1", f"{var} should default to 1"
+
+
+def test_thread_pinning_respects_operator_override(mock_jupyter_client):
+    """An operator-exported value wins over the default (setdefault semantics)."""
+    with patch.dict("os.environ", {"OMP_NUM_THREADS": "8"}):
+        executor = SandboxExecutor()
+        env = executor._sandbox._build_kernel_env()
+    assert env["OMP_NUM_THREADS"] == "8"
+    # Untouched vars still default.
+    assert env["OPENBLAS_NUM_THREADS"] == "1"
+
+
+def test_thread_pinning_extra_env_override(mock_jupyter_client):
+    """Per-kernel extra_env still overrides the default (applied last)."""
+    executor = SandboxExecutor(extra_env={"OMP_NUM_THREADS": "4"})
+    env = executor._sandbox._build_kernel_env()
+    assert env["OMP_NUM_THREADS"] == "4"
+
+
+# ---------------------------------------------------------------------------
+# Fast-fail kernel startup (#2) — a kernel that dies during startup must raise
+# an actionable error in seconds, not hang to the cell wall-clock timeout.
+# ---------------------------------------------------------------------------
+
+def test_startup_timeout_is_bounded(mock_jupyter_client):
+    """start_new_kernel is called with a bounded startup_timeout (default 30s)."""
+    with patch("src.services.sandbox_executor.jupyter_client") as mock_jc:
+        mock_km = MagicMock()
+        mock_km.is_alive.return_value = True
+        mock_jc.manager.start_new_kernel.return_value = (mock_km, MagicMock())
+        SandboxExecutor()
+        _, kwargs = mock_jc.manager.start_new_kernel.call_args
+        assert kwargs.get("startup_timeout") == 30
+
+
+def test_dead_kernel_fails_fast_with_hint():
+    """A kernel that started but isn't alive raises with the setsid hint."""
+    with patch("src.services.sandbox_executor.jupyter_client") as mock_jc:
+        mock_km = MagicMock()
+        mock_km.is_alive.return_value = False  # exited during startup
+        mock_jc.manager.start_new_kernel.return_value = (mock_km, MagicMock())
+        with patch.dict("os.environ", {"INZYTS_SANDBOX_REQUIRE_SETSID": "1"}):
+            with pytest.raises(RuntimeError, match="INZYTS_SANDBOX_REQUIRE_SETSID=0"):
+                SandboxExecutor()
+
+
+def test_dead_kernel_hint_suppressed_when_setsid_disabled():
+    """With setsid already permissive, don't suggest the toggle again."""
+    with patch("src.services.sandbox_executor.jupyter_client") as mock_jc:
+        mock_km = MagicMock()
+        mock_km.is_alive.return_value = False
+        mock_jc.manager.start_new_kernel.return_value = (mock_km, MagicMock())
+        with patch.dict("os.environ", {"INZYTS_SANDBOX_REQUIRE_SETSID": "0"}):
+            with pytest.raises(RuntimeError) as exc:
+                SandboxExecutor()
+    assert "INZYTS_SANDBOX_REQUIRE_SETSID=0" not in str(exc.value)
+    assert "Sandbox kernel initialization failed" in str(exc.value)

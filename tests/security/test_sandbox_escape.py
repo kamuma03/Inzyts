@@ -87,7 +87,14 @@ class TestPreexecFnSetsidGuard:
         """
         preexec = _build_preexec_fn(PRODUCTION_POLICY)
 
-        with patch(
+        # Hermetic: this asserts the STRICT path, so pin the toggle rather than
+        # inherit ambient os.environ. The agent stack (crewai/litellm) calls
+        # load_dotenv() on import, which can pull a developer's
+        # INZYTS_SANDBOX_REQUIRE_SETSID=0 from .env into os.environ and flip
+        # this test to the permissive branch.
+        with patch.dict(
+            "os.environ", {"INZYTS_SANDBOX_REQUIRE_SETSID": "1"}
+        ), patch(
             "src.services.sandbox_executor.os.setsid",
             side_effect=OSError("EPERM"),
         ), patch(

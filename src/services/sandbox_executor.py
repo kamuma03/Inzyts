@@ -75,6 +75,12 @@ class SandboxPolicy:
     # Wall-clock timeout per cell. Enforced by the parent — on overrun we
     # SIGKILL the kernel's process group.
     timeout_seconds: int = 60
+    # Max seconds to wait for a freshly-launched kernel to become ready before
+    # giving up. Bounded and short so a kernel that dies during startup (e.g.
+    # ``setsid`` denied under a nested/rootless container, killing the child in
+    # ``preexec``) fails fast with an actionable error instead of letting the
+    # first execute hang to ``timeout_seconds``.
+    startup_timeout_seconds: int = 30
     # Max child processes the kernel can fork (RLIMIT_NPROC). Stops fork bombs.
     max_processes: int = 64
     # Max open file descriptors (RLIMIT_NOFILE).
@@ -298,6 +304,28 @@ class KernelSandbox:
             env["no_proxy"] = ""
             env["NO_PROXY"] = ""
 
+        # Pin BLAS / OpenMP thread pools to a single thread by default.
+        #
+        # numpy / scipy / scikit-learn pull in OpenBLAS / MKL / OpenMP, which
+        # each spawn one worker thread per CPU on import or first use. Under the
+        # sandbox's resource limits (and on constrained / nested container
+        # runtimes) that thread storm can stall the import — manifesting as the
+        # kernel bootstrap hanging until the wall-clock timeout SIGKILLs it.
+        # Single-threaded BLAS makes startup deterministic and stops one cell
+        # from grabbing every core (fairer in a multi-session pool).
+        #
+        # ``setdefault`` so an operator who exported these (e.g. for a
+        # heavy-compute deployment) keeps their value, and ``extra_env`` below
+        # can still override per kernel.
+        for _thread_var in (
+            "OMP_NUM_THREADS",
+            "OPENBLAS_NUM_THREADS",
+            "MKL_NUM_THREADS",
+            "NUMEXPR_NUM_THREADS",
+            "VECLIB_MAXIMUM_THREADS",
+        ):
+            env.setdefault(_thread_var, "1")
+
         # Pin HOME and Jupyter/IPython dirs to the kernel's working dir.
         # In Docker the inzyts user has --no-create-home and HOME=/app is
         # not writable, so ipykernel can't write its connection file and
@@ -328,17 +356,22 @@ class KernelSandbox:
 
         preexec = _build_preexec_fn(self.policy)
         kernel_env = self._build_kernel_env()
+        startup_timeout = self.policy.startup_timeout_seconds
 
         try:
             # ``preexec_fn`` and ``env`` flow through
             # jupyter_client.manager.start_new_kernel →
             # KernelManager.start_kernel → launch_kernel → subprocess.Popen.
+            # ``startup_timeout`` bounds the kernel_info handshake wait so a
+            # kernel that dies in preexec fails in seconds, not at the cell
+            # wall-clock timeout.
             try:
                 self.km, self.kc = jupyter_client.manager.start_new_kernel(
                     kernel_name=self.kernel_name,
                     cwd=self._working_dir,
                     preexec_fn=preexec,
                     env=kernel_env,
+                    startup_timeout=startup_timeout,
                 )
             except TypeError:
                 # Older jupyter_client builds don't forward preexec_fn —
@@ -352,7 +385,14 @@ class KernelSandbox:
                     kernel_name=self.kernel_name,
                     cwd=self._working_dir,
                     env=kernel_env,
+                    startup_timeout=startup_timeout,
                 )
+            # Belt-and-suspenders: a kernel that exited during startup (e.g. the
+            # preexec ``_exit(127)`` when setsid is denied) can slip past
+            # wait_for_ready as a dead manager. Surface it immediately rather
+            # than letting the first execute hang.
+            if self.km is None or not self.km.is_alive():
+                raise RuntimeError("kernel process exited during startup")
             logger.info(
                 f"KernelSandbox started (policy={self.policy.name}, "
                 f"egress_blocked={self.policy.network_egress_blocked}, "
@@ -361,7 +401,26 @@ class KernelSandbox:
         except Exception as e:
             logger.error(f"Failed to start KernelSandbox: {e}")
             self.shutdown()
-            raise RuntimeError(f"Sandbox kernel initialization failed: {e}") from e
+            raise RuntimeError(self._startup_error_hint(e)) from e
+
+    @staticmethod
+    def _startup_error_hint(err: Exception) -> str:
+        """Build an actionable kernel-startup failure message.
+
+        A kernel that never replies to kernel_info is almost always either a
+        denied ``setsid`` (the preexec kills the child under nested/rootless
+        container runtimes) or a resource cap that's too low. Point the operator
+        straight at the fix instead of leaving a bare timeout.
+        """
+        base = f"Sandbox kernel initialization failed: {err}"
+        if os.environ.get("INZYTS_SANDBOX_REQUIRE_SETSID", "1") != "0":
+            base += (
+                " — if running in a rootless/nested container where setsid() is "
+                "denied, set INZYTS_SANDBOX_REQUIRE_SETSID=0 so the kernel can "
+                "start without its own session (the container/cgroup remains the "
+                "isolation boundary)."
+            )
+        return base
 
     def shutdown(self) -> None:
         if self.kc:
