@@ -122,3 +122,53 @@ textarea:focus-visible {
   animation: shimmer 1.5s ease-in-out infinite;
   border-radius: 6px;
 }
+
+/* ── Notebook code editor (CellSourceEditor) ───────────────────────────── */
+/* Error-line marking (FR-8): a subtle red tint + wavy underline on the line
+   the traceback points at. Cleared on next run / edit by the editor itself. */
+.cm-errorLine {
+  background: rgba(248, 113, 113, 0.08);
+  text-decoration: underline wavy var(--bad);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
+}
+
+/* Drag-to-resize handle on the bottom edge of each cell editor (FR-5). */
+.cell-resize-handle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 28px;
+  height: 2px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: var(--rule-strong);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.cell-source-editor:hover .cell-resize-handle::after,
+.cell-resize-handle:hover::after {
+  opacity: 0.7;
+}
+
+/* ── Workspace layout (KernelInspector / ChatDock) ─────────────────────── */
+.kernel-inspector,
+.chat-dock-body {
+  transition: width 0.18s ease, max-height 0.18s ease;
+}
+
+/* Responsive collapse (FR-3): hide the inspector on narrow viewports; the
+   toolbar toggle still governs it above this breakpoint. */
+@media (max-width: 1180px) {
+  .kernel-inspector { display: none; }
+}
+
+/* Honour reduced-motion across the new surfaces (NFR-accessibility). */
+@media (prefers-reduced-motion: reduce) {
+  .kernel-inspector,
+  .chat-dock-body,
+  .cell-resize-handle::after {
+    transition: none;
+  }
+}

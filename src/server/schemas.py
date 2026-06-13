@@ -206,6 +206,38 @@ class NotebookSaveResponse(BaseModel):
     path: str = Field(description="Filesystem path of the rewritten notebook")
 
 
+class KernelVariable(BaseModel):
+    """A single name defined in the live notebook kernel namespace."""
+
+    name: str = Field(description="Variable name")
+    type_name: str = Field(description="Python type name, e.g. 'DataFrame'")
+    kind: str = Field(default="value", description="value | callable | module")
+    shape: list[int] | None = Field(
+        default=None, description="Shape for array/DataFrame-like objects"
+    )
+    length: int | None = Field(
+        default=None, description="len() for sized objects without a shape"
+    )
+    columns: list[str] | None = Field(
+        default=None, description="Column names for DataFrame-like objects (truncated)"
+    )
+    preview: str | None = Field(
+        default=None, description="Short repr() preview for value-kind variables"
+    )
+
+
+class KernelVariablesResponse(BaseModel):
+    """Snapshot of the live kernel namespace for the notebook inspector."""
+
+    job_id: str = Field(description="Job whose kernel was introspected")
+    kernel_active: bool = Field(
+        description="False when no live kernel session exists yet for the job"
+    )
+    variables: list[KernelVariable] = Field(
+        default_factory=list, description="Inferred kernel variables"
+    )
+
+
 class FollowUpRequest(BaseModel):
     """Request schema for asking a follow-up question about an analysis."""
 

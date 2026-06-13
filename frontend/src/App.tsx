@@ -4,6 +4,7 @@ import { JobProvider } from './context/JobContext';
 import { MainLayout } from './layouts/MainLayout';
 import { NewAnalysisPage } from './pages/NewAnalysisPage';
 import { JobDetailsPage } from './pages/JobDetailsPage';
+import { NotebookWorkspacePage } from './pages/NotebookWorkspacePage';
 import { TemplatesPage } from './pages/TemplatesPage';
 import LoginPage from './pages/LoginPage';
 import AdminUsersPage from './pages/AdminUsersPage';
@@ -46,6 +47,9 @@ function App() {
                                 <Route path="/jobs/:jobId" element={<JobDetailsPage />} />
                                 <Route path="/templates" element={<TemplatesPage />} />
                             </Route>
+                            {/* Full-screen notebook workspace — rendered outside
+                                MainLayout so the cell stack fills the viewport. */}
+                            <Route path="/workspace/notebook/:jobId" element={<NotebookWorkspacePage />} />
                         </Route>
                         <Route element={<AdminRoute />}>
                             <Route element={<MainLayout />}>

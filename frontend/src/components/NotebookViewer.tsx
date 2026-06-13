@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { AnalysisAPI } from '../api';
-import { Loader, Download, FileText, AlertTriangle, ChevronDown, Presentation, Clock, FileCode } from 'lucide-react';
+import { Loader, Download, FileText, AlertTriangle, ChevronDown, Presentation, Clock, FileCode, Maximize2, Minimize2 } from 'lucide-react';
 import { LivePanel } from './command-center/panels/live/LivePanel';
-import { FollowUpChat } from './FollowUpChat';
+import { ChatDock } from './command-center/panels/live/ChatDock';
 import { SkeletonCard, Spinner } from './state';
 import { NotebookCellData } from '../types/notebook';
 import { useJobContext } from '../context/JobContext';
@@ -16,6 +16,12 @@ interface NotebookViewerProps {
     /** When true, the consumer already provides outer chrome — drop our
      *  border + radius to avoid the border-inside-a-border stack. */
     embedded?: boolean;
+    /** Render the full-screen Workspace layout (widened column + inspector). */
+    workspace?: boolean;
+    /** Navigate to the full-screen workspace route (shown in embedded mode). */
+    onOpenWorkspace?: () => void;
+    /** Leave the workspace route (shown in workspace mode). */
+    onExitWorkspace?: () => void;
 }
 
 interface PIIScanResult {
@@ -30,7 +36,7 @@ type ExportFormat = 'pdf' | 'html' | 'pptx' | 'markdown' | 'ipynb';
  *  editor/sandbox cell stack with an export-menu header and a follow-up
  *  chat dock. Report (executive summary) is a sibling top-level tab now,
  *  not a mode of this component. */
-export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPath, status = 'completed', embedded = false }) => {
+export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPath, status = 'completed', embedded = false, workspace = false, onOpenWorkspace, onExitWorkspace }) => {
     const { addToast } = useJobContext();
     const [cells, setCells] = useState<NotebookCellData[]>([]);
     const [cellsLoading, setCellsLoading] = useState(true);
@@ -185,6 +191,26 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                 </h3>
 
                 <div className="flex items-center gap-2">
+                    {onOpenWorkspace && !workspace && (
+                        <button
+                            onClick={onOpenWorkspace}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-[var(--rule)] text-[var(--text-secondary)] text-[0.8rem] font-medium hover:border-[var(--accent)] hover:text-[var(--accent)] cursor-pointer"
+                            title="Open the full-screen notebook workspace"
+                        >
+                            <Maximize2 size={14} />
+                            Workspace
+                        </button>
+                    )}
+                    {onExitWorkspace && workspace && (
+                        <button
+                            onClick={onExitWorkspace}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-[var(--rule)] text-[var(--text-secondary)] text-[0.8rem] font-medium hover:border-[var(--accent)] hover:text-[var(--accent)] cursor-pointer"
+                            title="Exit workspace — back to job"
+                        >
+                            <Minimize2 size={14} />
+                            Exit
+                        </button>
+                    )}
                     <div ref={exportMenuRef} className="relative">
                         <button
                             onClick={() => setExportMenuOpen(prev => !prev)}
@@ -228,11 +254,9 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ jobId, resultPat
                 ) : (
                     <>
                         <div className="flex-1 min-h-0">
-                            <LivePanel jobId={jobId} initialNotebookCells={seed} />
+                            <LivePanel jobId={jobId} initialNotebookCells={seed} workspace={workspace} />
                         </div>
-                        <div className="shrink-0 border-t border-[var(--rule)] px-4 py-3">
-                            <FollowUpChat jobId={jobId} />
-                        </div>
+                        <ChatDock jobId={jobId} />
                     </>
                 )}
             </div>

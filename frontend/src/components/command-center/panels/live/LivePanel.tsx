@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
-import { Plus, RotateCcw, Loader2, Check, PlayCircle, Save } from 'lucide-react';
-import { AnalysisAPI } from '../../../../api';
+import { Plus, RotateCcw, Loader2, Check, PlayCircle, Save, PanelRight } from 'lucide-react';
+import { AnalysisAPI, type KernelVariable } from '../../../../api';
 import { useSocket } from '../../../../hooks/useSocket';
 import { getErrorMessage } from '../../../../utils/errorMessage';
 import { useJobContext } from '../../../../context/JobContext';
 import { CellRow, type CellHandlers } from './CellRow';
 import { makeCell, seedToCells } from './cellHelpers';
 import { useCellExecution } from './useCellExecution';
+import { KernelInspector, inferVariables, type KernelStatus } from './KernelInspector';
+import { EditorSupportContext } from './EditorSupportContext';
 import type {
     CellCompleteEvent,
     CellOutput,
@@ -22,6 +24,9 @@ interface LivePanelProps {
     initialCells?: string[];
     /** Preferred typed seed — supports code + markdown cells. */
     initialNotebookCells?: NotebookCellSeed[];
+    /** Workspace layout: widened/centered column + kernel inspector. Driven by
+     *  the dedicated full-screen route (/workspace/notebook/:jobId). */
+    workspace?: boolean;
 }
 
 /** Notebook surface — merges the AI-edit ("Editor") and live-kernel ("Sandbox")
@@ -32,10 +37,76 @@ interface LivePanelProps {
  *  output via the cell_status / cell_output / cell_complete WS events. Each
  *  code cell also exposes a "Tweak" affordance that rewrites the source via
  *  the natural-language `editCell` agent. */
-export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells, initialNotebookCells }) => {
-    const { addToast } = useJobContext();
+/** localStorage helpers for the persisted Workspace layout preferences
+ *  (FR-1/FR-10/NFR-persistence). Guarded so SSR / disabled storage degrade to
+ *  the default rather than throwing. */
+const readPref = (key: string, fallback: string): string => {
+    try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+};
+const writePref = (key: string, value: string): void => {
+    try { localStorage.setItem(key, value); } catch { /* noop */ }
+};
+
+export const LivePanel: FC<LivePanelProps> = ({
+    jobId, initialCells, initialNotebookCells, workspace = false,
+}) => {
+    const { addToast, metrics } = useJobContext();
     const [cells, setCells] = useState<LiveCell[]>(() =>
         seedToCells(initialCells, initialNotebookCells),
+    );
+
+    // -- Workspace layout state ---------------------------------------------
+    // `workspace` (layout on/off) is owned by the route; only the inspector's
+    // open/collapsed state is a persisted user preference here.
+    const [inspectorOpen, setInspectorOpen] = useState<boolean>(
+        () => readPref('inzyts.notebook.inspectorOpen', '1') === '1',
+    );
+    const toggleInspector = useCallback(() => {
+        setInspectorOpen((prev) => {
+            const next = !prev;
+            writePref('inzyts.notebook.inspectorOpen', next ? '1' : '0');
+            return next;
+        });
+    }, []);
+
+    // -- Live kernel variables (introspection endpoint, FR-10) --------------
+    const [kernelVars, setKernelVars] = useState<KernelVariable[]>([]);
+    const [kernelActive, setKernelActive] = useState(false);
+    const [varsLoading, setVarsLoading] = useState(false);
+    // Bumped after a successful run / restart to trigger a re-introspection.
+    const [varsNonce, setVarsNonce] = useState(0);
+
+    const fetchVariables = useCallback(async () => {
+        if (!jobId) return;
+        setVarsLoading(true);
+        try {
+            const res = await AnalysisAPI.getKernelVariables(jobId);
+            setKernelActive(res.kernel_active);
+            setKernelVars(res.variables ?? []);
+        } catch {
+            // Non-fatal — the inspector falls back to inferred variables.
+        } finally {
+            setVarsLoading(false);
+        }
+    }, [jobId]);
+
+    // Only introspect when the inspector is actually visible — avoids running a
+    // kernel snippet on every notebook view.
+    useEffect(() => {
+        if (workspace && inspectorOpen) fetchVariables();
+    }, [workspace, inspectorOpen, jobId, varsNonce, fetchVariables]);
+
+    // Stable ref feeding the editors' autocomplete source the variable names —
+    // live kernel names when available, else inferred-from-source (kept current
+    // each render; identity never changes so CellRow memoisation holds).
+    const completionsRef = useRef<string[]>([]);
+    completionsRef.current = useMemo(() => {
+        if (kernelActive && kernelVars.length) return kernelVars.map((v) => v.name);
+        return inferVariables(cells).map((v) => v.name);
+    }, [kernelActive, kernelVars, cells]);
+    const editorSupport = useMemo(
+        () => ({ completionsRef, jobId }),
+        [jobId],
     );
     // Mirror of `cells` so stable callbacks (run/tweak/save) can read the
     // latest cells without listing `cells` in their deps — that keeps the
@@ -119,6 +190,9 @@ export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells, initialNote
             killed_reason: evt.killed_reason,
         });
         executionToCellRef.current.delete(evt.execution_id);
+        // A successful run may have mutated the namespace — refresh the
+        // inspector's live variables (no-op unless the inspector is open).
+        if (evt.success) setVarsNonce((n) => n + 1);
     }, [updateCell]);
 
     useSocket(jobId, { onCellStatus, onCellOutput, onCellComplete });
@@ -418,7 +492,14 @@ export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells, initialNote
         deleteCell, moveCellUp, moveCellDown, toggleCellType, runAbove, runBelow,
     ]);
 
+    const kernelStatus: KernelStatus = restartPending
+        ? 'restarting'
+        : cells.some((c) => c.state === 'busy' || c.state === 'queued')
+        ? 'busy'
+        : 'idle';
+
     return (
+        <EditorSupportContext.Provider value={editorSupport}>
         <div className="flex flex-col h-full min-h-0 bg-[var(--surface-0)]">
             <header className="shrink-0 px-3 py-2 flex items-center gap-2 border-b border-[var(--rule)]">
                 <span className="text-[12px] uppercase tracking-[0.04em] text-[var(--text-dim)]">
@@ -483,22 +564,57 @@ export const LivePanel: FC<LivePanelProps> = ({ jobId, initialCells, initialNote
                         )}
                         Restart
                     </button>
+                    {workspace && (
+                        <>
+                            <span className="mx-0.5 h-4 border-l border-[var(--rule)]" />
+                            <button
+                                type="button"
+                                onClick={toggleInspector}
+                                className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded border-none bg-transparent cursor-pointer hover:bg-[rgba(255,255,255,0.05)] ${
+                                    inspectorOpen ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'
+                                }`}
+                                aria-label="Toggle kernel inspector"
+                                aria-pressed={inspectorOpen}
+                                title="Kernel inspector"
+                            >
+                                <PanelRight size={12} />
+                                Inspector
+                            </button>
+                        </>
+                    )}
                 </span>
             </header>
 
-            <div className="flex-1 min-h-0 overflow-y-auto">
-                {cells.map((cell, idx) => (
-                    <CellRow
-                        key={cell.id}
-                        index={idx}
-                        cell={cell}
-                        isFirst={idx === 0}
-                        isLast={idx === cells.length - 1}
-                        canDelete={cells.length > 1}
-                        handlers={cellHandlers}
+            <div className="flex-1 min-h-0 flex">
+                <div className="flex-1 min-w-0 overflow-y-auto">
+                    <div className={workspace ? 'mx-auto w-full max-w-[1260px]' : ''}>
+                        {cells.map((cell, idx) => (
+                            <CellRow
+                                key={cell.id}
+                                index={idx}
+                                cell={cell}
+                                isFirst={idx === 0}
+                                isLast={idx === cells.length - 1}
+                                canDelete={cells.length > 1}
+                                handlers={cellHandlers}
+                            />
+                        ))}
+                    </div>
+                </div>
+                {workspace && inspectorOpen && (
+                    <KernelInspector
+                        cells={cells}
+                        variables={kernelVars}
+                        kernelActive={kernelActive}
+                        variablesLoading={varsLoading}
+                        onRefresh={fetchVariables}
+                        metrics={metrics ?? null}
+                        kernelStatus={kernelStatus}
+                        onClose={toggleInspector}
                     />
-                ))}
+                )}
             </div>
         </div>
+        </EditorSupportContext.Provider>
     );
 };

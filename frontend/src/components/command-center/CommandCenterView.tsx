@@ -191,7 +191,7 @@ export const CommandCenterView: FC<CommandCenterViewProps> = ({ job }) => {
                                 ),
                                 data: <DataPanel jobId={job.id} />,
                                 report: <ReportPanel job={job} />,
-                                notebook: <NotebookPanel job={job} events={events} />,
+                                notebook: <NotebookPanel job={job} events={events} onOpenWorkspace={() => navigate(`/workspace/notebook/${job.id}`)} />,
                             }}
                         </PreviewTabPanels>
                     </div>

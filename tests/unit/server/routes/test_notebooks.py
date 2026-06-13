@@ -321,3 +321,60 @@ def test_get_conversation_history_empty(sample_job):
     assert response.status_code == 200
     data = response.json()
     assert data["messages"] == []
+
+
+# --- Kernel introspection endpoint (FR-10) ---------------------------------
+
+def test_get_kernel_variables_no_session(sample_job):
+    """No live kernel yet → kernel_active False, empty list, not a 404."""
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = sample_job
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    with patch("src.services.kernel_session_manager.kernel_session_manager") as mock_ksm:
+        mock_ksm.get_session.return_value = None
+        response = client.get("/api/v2/notebooks/job-nb/cells/variables")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["job_id"] == "job-nb"
+    assert data["kernel_active"] is False
+    assert data["variables"] == []
+
+
+def test_get_kernel_variables_success(sample_job):
+    """Live kernel → introspect_variables() rows surfaced as KernelVariable."""
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = sample_job
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    with patch("src.services.kernel_session_manager.kernel_session_manager") as mock_ksm:
+        mock_session = MagicMock()
+        mock_session.introspect_variables.return_value = [
+            {"name": "df", "type_name": "DataFrame", "kind": "value",
+             "shape": [100, 5], "columns": ["a", "b"], "preview": "a b ..."},
+            {"name": "total", "type_name": "int", "kind": "value", "preview": "42"},
+            {"name": "pd", "type_name": "module", "kind": "module"},
+            {"type_name": "int"},  # malformed (no name) — must be dropped
+        ]
+        mock_ksm.get_session.return_value = mock_session
+        response = client.get("/api/v2/notebooks/job-nb/cells/variables")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["kernel_active"] is True
+    names = [v["name"] for v in data["variables"]]
+    assert names == ["df", "total", "pd"]  # nameless row filtered out
+    df_var = data["variables"][0]
+    assert df_var["shape"] == [100, 5]
+    assert df_var["columns"] == ["a", "b"]
+
+
+def test_get_kernel_variables_job_not_found():
+    """Unowned / missing job → 404 from the ownership guard."""
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+    response = client.get("/api/v2/notebooks/job-zzz/cells/variables")
+    assert response.status_code == 404

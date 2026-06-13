@@ -5,8 +5,12 @@ Keeps kernels alive after job completion so users can iteratively edit cells
 without re-running the full analysis pipeline. Sessions expire after an idle TTL.
 """
 
+import json
+import os
+import tempfile
 import threading
 import time
+import uuid
 from typing import Dict, Optional, Any, List
 
 from src.services.sandbox_executor import SandboxExecutor, ExecutionResult
@@ -161,6 +165,109 @@ print("\\n".join(_lines[:50]))
             logger.warning(f"Kernel introspection failed for job {self.job_id}: {e}")
 
         return self.df_context  # Fallback
+
+    def introspect_variables(self, limit: int = 60) -> list:
+        """Structured introspection of the live kernel namespace.
+
+        Returns a list of dicts (one per user-defined name) with ``name``,
+        ``type_name``, ``kind`` (value | callable | module), and — where the
+        object exposes them — ``shape`` / ``length`` / ``columns`` / a short
+        ``preview`` repr. Backs the notebook Kernel Inspector's Variables list
+        (FR-10). Returns an empty list if the kernel isn't ready or the snippet
+        fails — callers treat that as "no introspection available".
+
+        Unlike ``introspect`` (a free-text summary for the follow-up agent),
+        this emits JSON between sentinels so the result parses deterministically
+        regardless of any incidental stdout the namespace scan triggers.
+        """
+        if not self.executor or not self.executor.kc:
+            return []
+
+        # The kernel writes the JSON to a temp file rather than stdout: cell
+        # output is capped at MAX_OUTPUT_LEN, which truncates the payload (and
+        # corrupts the JSON) once a notebook defines more than a handful of
+        # variables. The kernel is a child of this process, so the file it
+        # writes is readable here. Unique per call to avoid stale reads.
+        out_path = os.path.join(
+            tempfile.gettempdir(), f"inzyts_kvars_{self.job_id}_{uuid.uuid4().hex}.json"
+        )
+
+        # NB: runs INSIDE the kernel. Keep names underscore-prefixed so the
+        # scan filters its own temporaries, and never let one bad repr abort
+        # the whole sweep.
+        introspect_code = (
+            """
+import json as _json, types as _types
+_ignore = {'__builtins__', '__name__', '__doc__', '__package__', '__loader__',
+           '__spec__', '_csv_path', '_base', 'warnings', 'os', 'In', 'Out',
+           'get_ipython', 'exit', 'quit'}
+_out = []
+for _name, _obj in sorted(globals().items()):
+    if _name.startswith('_') or _name in _ignore:
+        continue
+    try:
+        _entry = {'name': _name, 'type_name': type(_obj).__name__}
+        if isinstance(_obj, _types.ModuleType):
+            _entry['kind'] = 'module'
+        elif isinstance(_obj, (_types.FunctionType, _types.BuiltinFunctionType, type)) or callable(_obj):
+            _entry['kind'] = 'callable'
+        else:
+            _entry['kind'] = 'value'
+        _shape = getattr(_obj, 'shape', None)
+        if _shape is not None:
+            try:
+                _entry['shape'] = [int(_d) for _d in _shape]
+            except Exception:
+                pass
+        elif hasattr(_obj, '__len__') and not isinstance(_obj, str):
+            try:
+                _entry['length'] = int(len(_obj))
+            except Exception:
+                pass
+        _cols = getattr(_obj, 'columns', None)
+        if _cols is not None:
+            try:
+                _entry['columns'] = [str(_c) for _c in list(_cols)[:24]]
+            except Exception:
+                pass
+        if _entry['kind'] == 'value':
+            try:
+                _r = repr(_obj)
+            except Exception:
+                _r = '<unrepresentable>'
+            _r = ' '.join(_r.split())
+            if len(_r) > 140:
+                _r = _r[:137] + '...'
+            _entry['preview'] = _r
+        _out.append(_entry)
+    except Exception:
+        continue
+with open(%(path)r, 'w') as _f:
+    _json.dump(_out[:%(limit)d], _f)
+"""
+            % {"path": out_path, "limit": int(limit)}
+        )
+
+        try:
+            result = self.executor.execute_cell(introspect_code)
+            if not result.success:
+                return []
+            try:
+                with open(out_path, "r") as f:
+                    data = json.load(f)
+            except (OSError, ValueError):
+                return []
+            return data if isinstance(data, list) else []
+        except Exception as e:
+            logger.warning(
+                f"Structured kernel introspection failed for job {self.job_id}: {e}"
+            )
+            return []
+        finally:
+            try:
+                os.unlink(out_path)
+            except OSError:
+                pass
 
     def restart(self) -> None:
         """Restart the underlying kernel.

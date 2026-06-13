@@ -20,6 +20,8 @@ from src.server.schemas import (
     FollowUpCell,
     ConversationHistoryResponse,
     ConversationMessageSchema,
+    KernelVariable,
+    KernelVariablesResponse,
     NotebookSaveRequest,
     NotebookSaveResponse,
 )
@@ -244,6 +246,34 @@ async def interrupt_cell_session(
     if not ok:
         raise HTTPException(status_code=404, detail="No active session for job")
     return {"job_id": job_id, "status": "interrupted"}
+
+
+@router.get("/{job_id}/cells/variables", response_model=KernelVariablesResponse)
+async def get_kernel_variables(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(verify_token),
+):
+    """Introspect the live kernel namespace for the notebook inspector (FR-10).
+
+    Returns the user-defined variables (name / type / shape / preview) currently
+    held in the job's kernel session. If no kernel session exists yet (e.g. the
+    user hasn't run a cell), responds with ``kernel_active=false`` and an empty
+    list rather than 404 so the inspector can show an empty state cleanly.
+    """
+    await resolve_owned_job(job_id, db, current_user)
+
+    from src.services.kernel_session_manager import kernel_session_manager
+    session = kernel_session_manager.get_session(job_id)
+    if session is None:
+        return KernelVariablesResponse(job_id=job_id, kernel_active=False, variables=[])
+
+    # Introspection runs a snippet in the kernel — keep it off the event loop.
+    raw = await asyncio.to_thread(session.introspect_variables)
+    variables = [KernelVariable(**v) for v in raw if isinstance(v, dict) and v.get("name")]
+    return KernelVariablesResponse(
+        job_id=job_id, kernel_active=True, variables=variables
+    )
 
 
 @router.get("/{job_id}/cells")

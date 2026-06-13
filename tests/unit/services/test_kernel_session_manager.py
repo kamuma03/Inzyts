@@ -304,3 +304,67 @@ class TestKernelSessionIntrospect:
         context = session.introspect()
         assert context == "col1: float64"
 
+    @staticmethod
+    def _path_from_code(code: str) -> str:
+        """Extract the temp-file path the introspection snippet writes to."""
+        import re
+        m = re.search(r"open\('([^']+\.json)', 'w'\)", code)
+        assert m, "introspection snippet should open a .json temp file"
+        return m.group(1)
+
+    @patch('src.services.kernel_session_manager.SandboxExecutor')
+    def test_introspect_variables_parses_json(self, mock_executor_class):
+        """Structured introspection reads the JSON the kernel writes to file.
+
+        The kernel writes to a temp file (stdout is capped and would truncate
+        large payloads). The mock stands in for the kernel by writing the
+        expected JSON to the path embedded in the executed snippet.
+        """
+        import json
+
+        payload = [
+            {"name": "df", "type_name": "DataFrame", "kind": "value",
+             "shape": [100, 5], "columns": ["a", "b"]},
+            {"name": "total", "type_name": "int", "kind": "value", "preview": "42"},
+        ]
+
+        def fake_execute(code):
+            path = self._path_from_code(code)
+            with open(path, "w") as f:
+                json.dump(payload, f)
+            r = MagicMock()
+            r.success = True
+            return r
+
+        mock_executor = MagicMock()
+        mock_executor.kc = MagicMock()
+        mock_executor.execute_cell.side_effect = fake_execute
+        mock_executor_class.return_value = mock_executor
+
+        session = KernelSession(job_id="test-job", csv_path="/data/test.csv")
+        session.executor = mock_executor
+
+        result = session.introspect_variables()
+        assert [v["name"] for v in result] == ["df", "total"]
+        assert result[0]["shape"] == [100, 5]
+
+    def test_introspect_variables_no_executor(self):
+        """No kernel → empty list (inspector falls back to inferred names)."""
+        session = KernelSession(job_id="test-job", csv_path="/data/test.csv")
+        session.executor = None
+        assert session.introspect_variables() == []
+
+    @patch('src.services.kernel_session_manager.SandboxExecutor')
+    def test_introspect_variables_handles_missing_file(self, mock_executor_class):
+        """Snippet ran but wrote no file → empty list, never raises."""
+        mock_executor = MagicMock()
+        mock_executor.kc = MagicMock()
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_executor.execute_cell.return_value = mock_result  # writes nothing
+        mock_executor_class.return_value = mock_executor
+
+        session = KernelSession(job_id="test-job", csv_path="/data/test.csv")
+        session.executor = mock_executor
+        assert session.introspect_variables() == []
+

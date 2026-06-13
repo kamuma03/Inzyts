@@ -8,12 +8,14 @@ interface NotebookPanelProps {
     /** Agent-event stream — used to render generated source live while the
      *  job is running (the niche the legacy Code tab served). */
     events: AgentEvent[];
+    /** Navigate to the full-screen notebook workspace route. */
+    onOpenWorkspace?: () => void;
 }
 
 /** Notebook tab — completed jobs show the merged editor (NotebookViewer);
  *  running jobs show a streaming view of the source the codegen agents are
  *  producing, so the user has something useful before the kernel exists. */
-export const NotebookPanel: FC<NotebookPanelProps> = ({ job, events }) => {
+export const NotebookPanel: FC<NotebookPanelProps> = ({ job, events, onOpenWorkspace }) => {
     const isCompleted = job.status === 'completed';
 
     const streamingLines = useMemo(() => {
@@ -38,6 +40,7 @@ export const NotebookPanel: FC<NotebookPanelProps> = ({ job, events }) => {
                     status={job.status}
                     mode={job.mode}
                     embedded
+                    onOpenWorkspace={onOpenWorkspace}
                 />
             </div>
         );

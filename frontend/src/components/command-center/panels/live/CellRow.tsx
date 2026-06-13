@@ -3,6 +3,7 @@ import { Play, StopCircle, Plus, Loader2, Sparkles, Check, AlertTriangle, Pencil
 import { formatMarkdown } from '../../../../utils/formatMarkdown';
 import { CellOutputView } from './outputs/CellOutputView';
 import { CellSourceEditor } from './CellSourceEditor';
+import { errorLineFromTraceback } from './pythonEditorSupport';
 import type { LiveCell } from './types';
 
 /** Stable, cellId-keyed handlers shared by every CellRow. Because the object
@@ -71,6 +72,14 @@ export const CellRow: FC<CellRowProps> = memo(({
     const isBusy = cell.state === 'busy' || cell.state === 'queued';
     const isError = cell.state === 'error';
     const tweakStatus = cell.tweak_status ?? 'idle';
+
+    // Derive the error line (FR-8) from this cell's own error output. Cheap and
+    // local — recomputed only when the memoised `cell` reference changes.
+    const errorOutput = cell.outputs.find((o) => o.output_type === 'error');
+    const errorLine =
+        isError && errorOutput?.output_type === 'error'
+            ? errorLineFromTraceback(errorOutput.traceback)
+            : null;
 
     const stateColor =
         cell.state === 'busy'
@@ -321,6 +330,8 @@ export const CellRow: FC<CellRowProps> = memo(({
                             onKeyDown={handleSourceKey}
                             language="python"
                             ariaLabel={`Cell ${index + 1} source`}
+                            cellId={id}
+                            errorLine={errorLine}
                         />
                     ) : cell.md_editing ? (
                         <CellSourceEditor
@@ -329,6 +340,7 @@ export const CellRow: FC<CellRowProps> = memo(({
                             onKeyDown={handleSourceKey}
                             language="markdown"
                             ariaLabel={`Markdown cell ${index + 1} source`}
+                            cellId={id}
                         />
                     ) : (
                         <button

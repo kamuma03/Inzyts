@@ -307,6 +307,11 @@ export const AnalysisAPI = {
         return response.data; // { cells: [...], job_id: string }
     },
 
+    getKernelVariables: async (jobId: string) => {
+        const response = await api.get(notebookUrl(jobId, 'cells/variables'));
+        return response.data as KernelVariablesResponse;
+    },
+
     editCell: async (jobId: string, cellIndex: number, currentCode: string, instruction: string) => {
         const response = await api.post(notebookUrl(jobId, 'cells/edit'), {
             cell_index: cellIndex,
@@ -426,6 +431,22 @@ export interface PreviousMetrics {
     cost_usd: number | null;
     elapsed_seconds: number | null;
     quality_score: number | null;
+}
+
+export interface KernelVariable {
+    name: string;
+    type_name: string;
+    kind: 'value' | 'callable' | 'module';
+    shape?: number[] | null;
+    length?: number | null;
+    columns?: string[] | null;
+    preview?: string | null;
+}
+
+export interface KernelVariablesResponse {
+    job_id: string;
+    kernel_active: boolean;
+    variables: KernelVariable[];
 }
 
 export interface RunMetrics {
