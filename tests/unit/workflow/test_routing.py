@@ -21,6 +21,7 @@ from src.models.validation import (
     ProfileValidationResult,
     AnalysisValidationResult
 )
+from tests.factories import make_analysis_state
 
 
 class TestRoutePhase1Recursion:
@@ -29,7 +30,7 @@ class TestRoutePhase1Recursion:
     @pytest.fixture
     def mock_state(self):
         """Create mock analysis state."""
-        state = MagicMock(spec=AnalysisState)
+        state = make_analysis_state()
         state.phase1_iteration = 0
         state.issue_frequency = {}
         return state
@@ -201,7 +202,7 @@ class TestRoutePhase2Recursion:
     @pytest.fixture
     def mock_state(self):
         """Create mock analysis state with profile lock."""
-        state = MagicMock(spec=AnalysisState)
+        state = make_analysis_state()
         state.phase2_iteration = 0
         state.issue_frequency = {}
         state.phase2_quality_trajectory = []
@@ -376,7 +377,7 @@ class TestUpdateIssueFrequency:
 
     def test_update_frequency_new_issues(self):
         """Test updating frequency with new issues."""
-        state = MagicMock(spec=AnalysisState)
+        state = make_analysis_state()
         state.issue_frequency = {}
 
         issues = [
@@ -405,7 +406,7 @@ class TestUpdateIssueFrequency:
 
     def test_update_frequency_existing_issues(self):
         """Test updating frequency with repeat issues."""
-        state = MagicMock(spec=AnalysisState)
+        state = make_analysis_state()
         state.issue_frequency = {
             "syntax_error": 2
         }
@@ -427,7 +428,7 @@ class TestUpdateIssueFrequency:
 
     def test_update_frequency_multiple_same_type(self):
         """Test updating frequency with multiple issues of same type."""
-        state = MagicMock(spec=AnalysisState)
+        state = make_analysis_state()
         state.issue_frequency = {}
 
         issues = [

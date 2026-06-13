@@ -4,10 +4,11 @@ from unittest.mock import MagicMock, patch
 from src.agents.extensions import ForecastingExtensionAgent, ComparativeExtensionAgent, DiagnosticExtensionAgent
 from src.models.state import AnalysisState, PipelineMode, ProfileLock
 from src.models.handoffs import ProfileToStrategyHandoff
+from tests.factories import make_analysis_state
 
 @pytest.fixture
 def mock_state(tmp_path):
-    state = MagicMock(spec=AnalysisState)
+    state = make_analysis_state()
     state.pipeline_mode = PipelineMode.EXPLORATORY
     state.user_intent = None
     state.profile_lock = MagicMock(spec=ProfileLock)

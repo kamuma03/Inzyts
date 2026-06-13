@@ -1,0 +1,95 @@
+# Direct (top-level) production dependencies — the SOURCE for requirements.txt.
+#
+# requirements.txt is the fully-pinned lock (direct + transitive). Regenerate it
+# from this file with a resolver so version conflicts fail at compile time
+# instead of at a fresh `pip install` in CI (which is how the python-jose 3.4.0
+# / pyasn1 0.6.1 conflict slipped in):
+#
+#     uv pip compile requirements.in -o requirements.txt
+#     # or: pip-compile requirements.in -o requirements.txt
+#
+# Versions are intentionally left unpinned/loosely-bound here; the compiler picks
+# a mutually-consistent, pinned set. Keep this list in sync when adding a direct
+# dependency. The deps-check CI job validates requirements.txt still resolves.
+
+# --- Web / API ---
+fastapi
+uvicorn
+starlette
+slowapi
+python-multipart
+python-socketio
+sse-starlette
+pydantic
+pydantic-settings
+
+# --- Auth / security ---
+python-jose[cryptography]>=3.5.0   # <3.5 caps pyasn1<0.5.0 (conflicts w/ google-auth)
+passlib[bcrypt]
+bcrypt
+cryptography
+python-magic
+werkzeug
+
+# --- LLM / agent stack ---
+langgraph
+langchain
+langchain-anthropic
+langchain-community
+langchain-google-genai
+langchain-ollama
+anthropic
+openai
+google-generativeai
+ollama
+crewai
+litellm
+instructor
+tiktoken
+
+# --- Data / ML ---
+pandas
+numpy
+scikit-learn
+scipy
+xgboost
+lightgbm
+prophet
+pyarrow
+openpyxl
+sqlglot
+
+# --- Persistence / infra ---
+SQLAlchemy
+alembic
+asyncpg
+psycopg2-binary
+aiosqlite
+redis
+celery
+
+# --- Notebook / execution ---
+jupyter
+nbformat
+nbconvert
+ipykernel
+papermill
+
+# --- Reporting / export ---
+weasyprint
+python-pptx
+markdown
+pdfplumber
+
+# --- Cloud / ingestion (optional features) ---
+boto3
+google-cloud-storage
+azure-storage-blob
+jmespath
+
+# --- Utilities ---
+python-dotenv
+rich
+tenacity
+httpx
+requests

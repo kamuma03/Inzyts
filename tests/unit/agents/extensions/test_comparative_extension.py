@@ -11,6 +11,7 @@ import pandas as pd
 from src.agents.extensions.comparative_extension_agent import ComparativeExtensionAgent
 from src.models.state import AnalysisState, Phase
 from src.models.handoffs import ComparativeExtension
+from tests.factories import make_analysis_state
 
 
 def _make_col_profile(name, detected_type, unique_count=5):
@@ -22,7 +23,7 @@ def _make_col_profile(name, detected_type, unique_count=5):
 
 
 def _make_state(csv_data=None, profile_locked=True, col_profiles=None):
-    state = MagicMock(spec=AnalysisState)
+    state = make_analysis_state()
     # Extensions load the frame from csv_path (the full DataFrame is never put on
     # state); materialise the test data to a real temp CSV. No data => empty path.
     if csv_data is not None:

@@ -12,6 +12,7 @@ from src.models.handoffs import (
     StrategyToCodeGenHandoff,
     AnalysisType
 )
+from tests.factories import make_analysis_state
 
 @pytest.fixture
 def segmentation_data():
@@ -54,7 +55,7 @@ def segmentation_profile(segmentation_data):
 
 @pytest.fixture
 def mock_state(segmentation_data, segmentation_profile):
-    state = MagicMock(spec=AnalysisState)
+    state = make_analysis_state()
     state.pipeline_mode = PipelineMode.SEGMENTATION
     state.csv_data = segmentation_data.to_dict(orient='records')
     

@@ -32,6 +32,7 @@ from src.workflow.graph import (
 from src.models.state import AnalysisState, ProfileLock, PipelineMode
 from src.models.handoffs import UserIntent
 from src.models.cells import NotebookCell
+from tests.factories import make_analysis_state
 
 
 # ---------------------------------------------------------------------------
@@ -42,9 +43,9 @@ from src.models.cells import NotebookCell
 
 
 def make_state(**overrides):
-    """Build a MagicMock(spec=AnalysisState) with the running-totals fields
+    """Build a make_analysis_state() with the running-totals fields
     every node reads zeroed, plus any per-test overrides."""
-    state = MagicMock(spec=AnalysisState)
+    state = make_analysis_state()
     state.total_tokens_used = 0
     state.prompt_tokens_used = 0
     state.completion_tokens_used = 0
@@ -238,7 +239,7 @@ class TestExtensionNode:
         state = make_state(pipeline_mode=PipelineMode.FORECASTING)
         mock_factory.get_agent.return_value = make_agent(side_effect=Exception("boom"))
         result = extension_node(state)
-        assert "Extension forecasting failed" in result["errors"][0]
+        assert "Extension Crash" in result["errors"][0]
 
 
 # ---------------------------------------------------------------------------
@@ -370,7 +371,7 @@ class TestRollbackRecoveryNode:
 class TestConditionalRouting:
     @pytest.mark.parametrize("mode", [PipelineMode.PREDICTIVE, PipelineMode.EXPLORATORY])
     def test_route_after_profile_validation_lock_granted(self, mode):
-        state = MagicMock(spec=AnalysisState)
+        state = make_analysis_state()
         state.profile_lock = MagicMock()
         state.profile_lock.is_locked.return_value = True
         state.pipeline_mode = mode
@@ -382,27 +383,27 @@ class TestConditionalRouting:
         ("Orchestrator",         "end"),
     ])
     def test_route_after_profile_validation_routes(self, route_to, expected):
-        state = MagicMock(spec=AnalysisState)
+        state = make_analysis_state()
         state.profile_lock = MagicMock()
         state.profile_lock.is_locked.return_value = False
         state.profile_validation_reports = [MagicMock(route_to=route_to)]
         assert route_after_profile_validation(state) == expected
 
     def test_route_after_profile_validation_default_fallback(self):
-        state = MagicMock(spec=AnalysisState)
+        state = make_analysis_state()
         state.profile_lock = MagicMock()
         state.profile_lock.is_locked.return_value = False
         state.profile_validation_reports = []
         assert route_after_profile_validation(state) == "profile_codegen"
 
     def test_route_after_initialize_with_cache(self):
-        state = MagicMock(spec=AnalysisState)
+        state = make_analysis_state()
         state.using_cached_profile = True
         state.cache = MagicMock()
         assert route_after_initialize(state) == "restore_cache"
 
     def test_route_after_initialize_without_cache(self):
-        state = MagicMock(spec=AnalysisState)
+        state = make_analysis_state()
         state.using_cached_profile = False
         state.user_intent = MagicMock(db_uri=None, api_url=None, multi_file_input=None)
         assert route_after_initialize(state) == "create_phase1_handoff"
@@ -415,12 +416,12 @@ class TestConditionalRouting:
         ("Orchestrator",          "Max iterations",    "assemble_notebook"),
     ])
     def test_route_after_analysis_validation(self, route_to, route_reason, expected):
-        state = MagicMock(spec=AnalysisState)
+        state = make_analysis_state()
         state.analysis_validation_reports = [MagicMock(route_to=route_to, route_reason=route_reason)]
         assert route_after_analysis_validation(state) == expected
 
     def test_route_after_analysis_validation_default_fallback(self):
-        state = MagicMock(spec=AnalysisState)
+        state = make_analysis_state()
         state.analysis_validation_reports = []
         assert route_after_analysis_validation(state) == "assemble_notebook"
 

@@ -42,6 +42,7 @@ from src.models.handoffs import (
 )
 from src.models.state import AnalysisState, ProfileLock
 from src.services.mode_detector import ModeDetector
+from tests.factories import make_analysis_state
 
 
 # ============================================================================
@@ -776,7 +777,7 @@ class TestDimensionalityStrategyAgent:
     @pytest.fixture
     def mock_state(self):
         """Create a mock AnalysisState."""
-        state = MagicMock(spec=AnalysisState)
+        state = make_analysis_state()
         state.pipeline_mode = PipelineMode.DIMENSIONALITY
         state.user_intent = None
 

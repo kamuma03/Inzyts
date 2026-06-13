@@ -8,10 +8,11 @@ from src.agents.phase2 import (
 )
 from src.models.state import AnalysisState, PipelineMode, ProfileLock
 from src.models.handoffs import StrategyToCodeGenHandoff, AnalysisType
+from tests.factories import make_analysis_state
 
 @pytest.fixture
 def mock_state():
-    state = MagicMock(spec=AnalysisState)
+    state = make_analysis_state()
     state.pipeline_mode = PipelineMode.FORECASTING
     state.user_intent = None
     state.profile_lock = MagicMock(spec=ProfileLock)

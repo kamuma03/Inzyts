@@ -20,7 +20,9 @@ from unittest.mock import patch
 from src.agents.sql_agent import _validate_select_only
 from src.server.services.data_ingestion import ingest_from_sql
 
-pytestmark = pytest.mark.requires_db
+# Needs a real PostgreSQL via testcontainers, which needs a Docker daemon — both
+# markers so a CI job can deselect with `-m "not requires_docker"` cleanly.
+pytestmark = [pytest.mark.requires_db, pytest.mark.requires_docker]
 
 
 # ── ingest_from_sql against real Postgres ──────────────────────────────

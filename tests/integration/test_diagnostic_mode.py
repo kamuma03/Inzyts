@@ -15,6 +15,7 @@ from src.models.handoffs import (
     StrategyToCodeGenHandoff,
     AnalysisType
 )
+from tests.factories import make_analysis_state
 
 @pytest.fixture
 def diagnostic_data():
@@ -63,7 +64,7 @@ def diagnostic_profile(diagnostic_data):
 
 @pytest.fixture
 def mock_state(diagnostic_data, diagnostic_profile, tmp_path):
-    state = MagicMock(spec=AnalysisState)
+    state = make_analysis_state()
     state.pipeline_mode = PipelineMode.DIAGNOSTIC
     # Extensions load the frame from csv_path (csv_data is never serialised).
     csv_path = tmp_path / "diagnostic.csv"

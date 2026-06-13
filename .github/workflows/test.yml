@@ -12,6 +12,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  deps-check:
+    name: Dependency resolution check
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # Fast, isolated clean-room resolve of the pinned lock. Fails with
+      # ResolutionImpossible on a conflicting set (e.g. python-jose<3.5 capping
+      # pyasn1<0.5 against google-auth's pyasn1>=0.6) — surfacing it here in
+      # seconds, clearly labelled, instead of buried in every job's install step.
+      - name: Resolve requirements.txt (no install)
+        run: |
+          python -m pip install --upgrade pip
+          pip install --dry-run --ignore-installed -r requirements.txt
+
   backend-unit:
     name: Backend unit tests
     runs-on: ubuntu-latest

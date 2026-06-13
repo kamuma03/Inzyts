@@ -14,6 +14,7 @@ from src.models.handoffs import (
     ValidationStrategy,
 )
 from src.models.state import AnalysisState
+from tests.factories import make_analysis_state
 
 
 def _make_strategy(analysis_type: AnalysisType, **overrides) -> StrategyToCodeGenHandoff:
@@ -37,7 +38,7 @@ def _make_strategy(analysis_type: AnalysisType, **overrides) -> StrategyToCodeGe
 
 def _make_state(**overrides) -> MagicMock:
     """Create a mock AnalysisState."""
-    state = MagicMock(spec=AnalysisState)
+    state = make_analysis_state()
     state.csv_path = "/data/test.csv"
     state.analysis_validation_reports = overrides.get("analysis_validation_reports", [])
     return state

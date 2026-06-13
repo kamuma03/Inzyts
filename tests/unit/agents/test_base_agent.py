@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 from src.agents.base import BaseAgent
 from src.models.state import AnalysisState, Phase
 from src.models.common import Issue
+from tests.factories import make_analysis_state
 
 
 class ConcreteAgent(BaseAgent):
@@ -354,7 +355,7 @@ class TestProcessMethod:
                 system_prompt="Test prompt"
             )
 
-            state = MagicMock(spec=AnalysisState)
+            state = make_analysis_state()
             result = agent.process(state)
 
             assert isinstance(result, dict)

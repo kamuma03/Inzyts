@@ -2,10 +2,11 @@
 # Mutmut config is in setup.cfg.
 
 [tool.ruff]
-cache-dir = ".cache/ruff"
+# Cache lives at the default .ruff_cache/ (gitignored). Avoid a shared
+# .cache/ parent: a root-running container created it root-owned, so a
+# non-root dev couldn't write to it (pytest/ruff/mypy all failed silently).
 
 [tool.mypy]
-cache_dir = ".cache/mypy"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -15,7 +16,8 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
-cache_dir = ".cache/pytest"
+# Cache lives at the default .pytest_cache/ (gitignored) — see the [tool.ruff]
+# note above for why we don't consolidate under a shared .cache/ parent.
 # Default: skip integration / e2e / UI suites AND the `slow` marker.
 # `slow` covers tests that spawn real Jupyter kernels (test_sandbox_security.py).
 # Those exercise setrlimit / setsid / killpg machinery on real subprocesses —
@@ -24,8 +26,17 @@ cache_dir = ".cache/pytest"
 # desktop session down with it. Opt in explicitly with `pytest -m slow` only
 # after reading the safety guarantees in src/services/sandbox_executor.py.
 addopts = "--ignore=tests/ui --ignore=tests/integration --ignore=tests/e2e -m 'not slow'"
+# Per-test wall-clock cap: a hung or accidentally-real-kernel test fails in
+# seconds instead of dominating the suite (a mocked validator that secretly
+# span up a real kernel once stretched the suite to ~40 min). `thread` method
+# (vs the default `signal`) avoids interfering with the sandbox's own
+# setsid/SIGALRM machinery. Slow real-kernel tests opt out via
+# `@pytest.mark.timeout(0)` or run under `-m slow`.
+timeout = 120
+timeout_method = "thread"
 markers = [
     "requires_redis: tests that need a running Redis instance",
     "requires_db: tests that need a real PostgreSQL database (via testcontainers)",
+    "requires_docker: tests that need a Docker daemon (testcontainers, etc.)",
     "slow: tests that spawn real Jupyter kernels — opt in with `pytest -m slow`",
 ]

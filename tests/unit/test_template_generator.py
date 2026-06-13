@@ -10,6 +10,7 @@ from src.models.handoffs import (
     ValidationStrategy
 )
 from src.models.state import AnalysisState
+from tests.factories import make_analysis_state
 
 class TestTemplateGenerator:
     
@@ -19,7 +20,7 @@ class TestTemplateGenerator:
         
     @pytest.fixture
     def state(self):
-        return MagicMock(spec=AnalysisState)
+        return make_analysis_state()
 
     @pytest.fixture
     def mock_classification_strategy(self):

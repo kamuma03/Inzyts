@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 from src.agents.phase2.prompt_builder import PromptBuilder
 from src.models.handoffs import StrategyToCodeGenHandoff, AnalysisType, ModelSpec, ValidationStrategy
 from src.models.state import AnalysisState
+from tests.factories import make_analysis_state
 
 class TestPromptBuilder:
     def test_build_generation_prompt(self):
@@ -16,7 +17,7 @@ class TestPromptBuilder:
             evaluation_metrics=["accuracy"],
             result_visualizations=[]
         )
-        state = MagicMock(spec=AnalysisState)
+        state = make_analysis_state()
         state.csv_path = "data.csv"
         state.analysis_validation_reports = []
         

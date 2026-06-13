@@ -16,6 +16,7 @@ from src.models.handoffs import (
     StrategyToCodeGenHandoff,
     AnalysisType
 )
+from tests.factories import make_analysis_state
 
 @pytest.fixture
 def forecasting_data():
@@ -53,7 +54,7 @@ def forecasting_profile(forecasting_data):
 
 @pytest.fixture
 def mock_state(forecasting_data, forecasting_profile, tmp_path):
-    state = MagicMock(spec=AnalysisState)
+    state = make_analysis_state()
     state.pipeline_mode = PipelineMode.FORECASTING
     # Extensions load the frame from csv_path (csv_data is never serialised).
     csv_path = tmp_path / "forecasting.csv"

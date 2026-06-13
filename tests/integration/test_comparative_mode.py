@@ -16,6 +16,7 @@ from src.models.handoffs import (
     AnalysisType,
     RecommendedTest
 )
+from tests.factories import make_analysis_state
 
 @pytest.fixture
 def comparative_data():
@@ -62,7 +63,7 @@ def comparative_profile(comparative_data):
 
 @pytest.fixture
 def mock_state(comparative_data, comparative_profile, tmp_path):
-    state = MagicMock(spec=AnalysisState)
+    state = make_analysis_state()
     state.pipeline_mode = PipelineMode.COMPARATIVE
     # Extensions load the frame from csv_path (csv_data is never serialised).
     csv_path = tmp_path / "comparative.csv"
