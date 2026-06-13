@@ -118,6 +118,12 @@ def _node(agent, phase: Phase, label: str):
         def wrapper(state: AnalysisState) -> Dict[str, Any]:
             start_time = time.time()
             agent_name = agent(state) if callable(agent) else agent
+            if not agent_name:
+                # A dynamic resolver may decline this node — e.g. a pipeline mode
+                # with no pre-strategy extension. Skip cleanly: no agent fetch,
+                # no LLM call, no token attribution.
+                logger.debug(f"{label} node: no agent for this mode, skipping.")
+                return {}
             agent_instance = AgentFactory.get_agent(agent_name)
             with _track(agent_instance, state, phase) as updates:
                 try:
@@ -232,27 +238,14 @@ _EXTENSION_AGENTS = {
 }
 
 
-def extension_node(state: AnalysisState) -> Dict[str, Any]:
-    """Run mode-specific pre-strategy extension (forecasting / A-B / diagnostic)."""
-    start_time = time.time()
-    mode = state.pipeline_mode
-    mode_val = mode.value if mode else "unknown"
-    agent_name = _EXTENSION_AGENTS.get(mode)
-    if agent_name is None:
-        logger.debug(f"extension_node: no extension agent registered for mode '{mode_val}', skipping.")
-        return {}
+@_node(lambda state: _EXTENSION_AGENTS.get(state.pipeline_mode), "extensions", "Extension")
+def extension_node(state: AnalysisState, agent: Any) -> Dict[str, Any]:
+    """Run mode-specific pre-strategy extension (forecasting / A-B / diagnostic).
 
-    agent = AgentFactory.get_agent(agent_name)
-    with _track(agent, state, "extensions") as updates:
-        try:
-            result = agent.process(state)
-            if isinstance(result, dict):
-                updates.update(result)
-            logger.log_execution_time(f"extension_node ({mode_val})", time.time() - start_time)
-        except Exception as e:
-            logger.error(f"Extension Agent {mode_val} failed: {e}")
-            updates["errors"] = state.errors + [f"Extension {mode_val} failed: {e}"]
-    return updates
+    Modes with no entry in ``_EXTENSION_AGENTS`` resolve to ``None`` and ``@_node``
+    skips the node without touching the factory.
+    """
+    return agent.process(state)
 
 
 def _llm_delta(agent: Any, snapshot: tuple) -> tuple:
@@ -414,7 +407,8 @@ def analysis_validator_node(state: AnalysisState, agent: Any) -> Dict[str, Any]:
     return updates
 
 
-def assemble_notebook_node(state: AnalysisState) -> Dict[str, Any]:
+@_node("orchestrator", "phase2", "AssembleNotebook")
+def assemble_notebook_node(state: AnalysisState, agent: Any) -> Dict[str, Any]:
     """
     Assemble the final Jupyter Notebook.
 
@@ -466,15 +460,9 @@ def assemble_notebook_node(state: AnalysisState) -> Dict[str, Any]:
         total_tokens_used=state.total_tokens_used,
     )
 
-    # 4. Invoke Orchestrator to finalize and save
-    start_time = time.time()
-    orchestrator = AgentFactory.get_agent("orchestrator")
-    with _track(orchestrator, state, "phase2") as updates:
-        res = orchestrator.process(state, action="assemble_notebook", assembly_handoff=assembly_handoff)
-        if isinstance(res, dict):
-            updates.update(res)
-    logger.log_execution_time("assemble_notebook_node", time.time() - start_time)
-    return updates
+    # 4. Invoke Orchestrator to finalize and save (token-tracked by @_node).
+    res = agent.process(state, action="assemble_notebook", assembly_handoff=assembly_handoff)
+    return res if isinstance(res, dict) else {}
 
 
 @_node("exploratory_conclusions", "phase2", "ExploratoryConclusions")
